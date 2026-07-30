@@ -19,4 +19,13 @@ module.exports = {
     '@typescript-eslint/no-explicit-any': 'warn',
   },
   ignorePatterns: ['dist', 'build', 'node_modules', 'coverage', 'unity'],
+  overrides: [
+    {
+      files: ['apps/web/src/features/twin/**/*.{ts,tsx}'],
+      rules: {
+        // R3F / Three.js JSX props are valid native-like attributes.
+        'react/no-unknown-property': 'off',
+      },
+    },
+  ],
 };

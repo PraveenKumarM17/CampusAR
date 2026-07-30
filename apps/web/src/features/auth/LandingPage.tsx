@@ -8,7 +8,7 @@ export function LandingPage() {
   const setSession = useAuthStore((s) => s.setSession);
   const navigate = useNavigate();
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('student@northridge.edu');
+  const [email, setEmail] = useState('student@smartcampus.edu');
   const [password, setPassword] = useState('student123');
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -55,18 +55,18 @@ export function LandingPage() {
       <div className="relative mx-auto grid min-h-screen max-w-6xl items-center gap-10 px-4 py-12 lg:grid-cols-2">
         <section className="space-y-6">
           <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-accent-soft">
-            <Sparkles size={14} /> Northridge Campus
+            <Sparkles size={14} /> Smart Campus
           </p>
           <h1 className="font-display text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl">
             Campus<span className="text-accent">AR</span>
           </h1>
           <p className="max-w-md text-lg text-white/70">
-            Intelligent AR navigation with safety-aware routing, accessibility preferences, and live
-            campus awareness.
+            AI-driven AR navigation with IoT crowd awareness, predictive routing, Digital Twin
+            monitoring, and safety-aware campus guidance.
           </p>
           <div className="flex flex-wrap gap-3 text-sm text-white/60">
             <span className="inline-flex items-center gap-1.5 rounded-lg glass px-3 py-2">
-              <Compass size={16} className="text-accent" /> A* smart routes
+              <Compass size={16} className="text-accent" /> Predictive A* routes
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-lg glass px-3 py-2">
               <Shield size={16} className="text-accent-mint" /> Safety & SOS
@@ -145,7 +145,7 @@ export function LandingPage() {
             Continue as guest
           </button>
           <p className="mt-4 text-xs text-white/45">
-            Demo: student@northridge.edu / student123 · admin@northridge.edu / admin123
+            Demo: student@smartcampus.edu / student123 · admin@smartcampus.edu / admin123
           </p>
         </section>
       </div>

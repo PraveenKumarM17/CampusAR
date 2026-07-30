@@ -1,9 +1,9 @@
--- Northridge Campus seed data (idempotent-ish via fixed UUIDs)
+-- Smart Campus seed data (idempotent-ish via fixed UUIDs)
 -- Passwords: admin123 / student123 (bcrypt)
 
 TRUNCATE sos_events, analytics_navigations, analytics_searches, notification_reads,
   notifications, emergency_exits, emergency_contacts, events, crowd_levels,
-  danger_zones, edges, rooms, nodes, floors, buildings, users, route_weights
+  sensor_readings, danger_zones, edges, rooms, nodes, floors, buildings, users, route_weights
 CASCADE;
 
 INSERT INTO route_weights (id, w_distance, w_safety, w_crowd, w_accessibility, w_blocked_penalty)
@@ -11,15 +11,15 @@ VALUES (1, 0.4, 0.25, 0.2, 0.15, 1000000);
 
 -- bcrypt hashes generated for 'admin123' and 'student123'
 INSERT INTO users (id, email, password_hash, name, role) VALUES
-  ('11111111-1111-1111-1111-111111111111', 'admin@northridge.edu',
+  ('11111111-1111-1111-1111-111111111111', 'admin@smartcampus.edu',
    '$2a$10$8K1p/a0dL1LXMIgoEDFrwOfMQsJuHhqxqHqFqHqFqHqFqHqFqHqFq', 'Campus Admin', 'admin'),
-  ('22222222-2222-2222-2222-222222222222', 'student@northridge.edu',
+  ('22222222-2222-2222-2222-222222222222', 'student@smartcampus.edu',
    '$2a$10$8K1p/a0dL1LXMIgoEDFrwOfMQsJuHhqxqHqFqHqFqHqFqHqFqHqFq', 'Alex Student', 'user');
 
 -- Fix password hashes properly via app seed if needed; placeholder above may be invalid.
 -- Real hashes will be set by seed.ts; keep SQL structure for docker init with valid hashes below.
-UPDATE users SET password_hash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy' WHERE email = 'admin@northridge.edu';
-UPDATE users SET password_hash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy' WHERE email = 'student@northridge.edu';
+UPDATE users SET password_hash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy' WHERE email = 'admin@smartcampus.edu';
+UPDATE users SET password_hash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy' WHERE email = 'student@smartcampus.edu';
 -- Note: above hash is commonly used bcrypt for 'password'. Seed script will reset to admin123/student123.
 
 INSERT INTO buildings (id, name, code, description, latitude, longitude, floors_count) VALUES
@@ -108,7 +108,7 @@ INSERT INTO edges (id, from_node_id, to_node_id, distance_m, kind, bidirectional
   ('e0000001-0000-0000-0000-000000000028', 'a1000001-0000-0000-0000-000000000023', 'a1000001-0000-0000-0000-000000000003', 35, 'walkway', TRUE, FALSE, 0.9, 0.2, 1.0);
 
 INSERT INTO danger_zones (id, name, type, latitude, longitude, radius_m, description, active) VALUES
-  ('d0000001-0000-0000-0000-000000000001', 'West Construction', 'construction', 37.77465, -122.41890, 30, 'Pathway closed for utility work', TRUE),
+  ('d0000001-0000-0000-0000-000000000001', 'West Construction', 'construction', 37.77455, -122.41855, 18, 'Pathway closed for utility work near Student Union', TRUE),
   ('d0000001-0000-0000-0000-000000000002', 'Poorly Lit Alley', 'poor_lighting', 37.77435, -122.41940, 25, 'Limited lighting after dusk', TRUE),
   ('d0000001-0000-0000-0000-000000000003', 'Isolated Corner', 'unsafe', 37.77430, -122.41955, 20, 'Low foot traffic area', TRUE);
 
@@ -121,7 +121,7 @@ UPDATE edges e SET crowd_score = c.intensity
 FROM crowd_levels c WHERE c.edge_id = e.id;
 
 INSERT INTO events (id, title, description, latitude, longitude, starts_at, ends_at, affects_routing, active) VALUES
-  ('a3000001-0000-0000-0000-000000000001', 'Career Fair', 'Booths on the Quad', 37.77480, -122.41900,
+  ('a3000001-0000-0000-0000-000000000001', 'Career Fair', 'Booths near East Path', 37.77485, -122.41845,
    NOW() - INTERVAL '1 day', NOW() + INTERVAL '2 days', TRUE, TRUE),
   ('a3000001-0000-0000-0000-000000000002', 'Library Late Night', 'Extended study hours', 37.77520, -122.41880,
    NOW(), NOW() + INTERVAL '7 days', FALSE, TRUE);

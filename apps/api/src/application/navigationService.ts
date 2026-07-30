@@ -6,7 +6,15 @@ import {
   type RouteStep,
 } from '@campusar/shared';
 import { AppError } from '../domain/errors';
-import { aStar, bearingDegrees, buildAdjacency, turnInstruction } from '../domain/routing/astar';
+import {
+  aStar,
+  applyHazardsToEdges,
+  applyPredictedCrowd,
+  bearingDegrees,
+  buildAdjacency,
+  turnInstruction,
+} from '../domain/routing/astar';
+import { defaultCrowdPredictor } from '../domain/prediction/crowdPredictor';
 import { analyticsRepository } from '../infrastructure/repositories/analyticsRepository';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
 
@@ -16,13 +24,25 @@ export const navigationService = {
     destinationNodeId: string;
     accessibility?: Partial<AccessibilityPrefs>;
     userId?: string | null;
+    usePrediction?: boolean;
   }): Promise<RouteResponse> {
     const prefs: AccessibilityPrefs = {
       ...DEFAULT_ACCESSIBILITY,
       ...input.accessibility,
     };
+    const usePrediction = input.usePrediction !== false;
     const weights = await campusRepository.getWeights();
-    const { nodes, edges } = await campusRepository.getRoutingGraph();
+    const { nodes, edges: rawEdges } = await campusRepository.getRoutingGraph();
+    const zones = await campusRepository.listActiveDangerZones();
+    const events = await campusRepository.listActiveRoutingEvents();
+
+    let edges = applyHazardsToEdges(rawEdges, nodes, zones, events);
+    if (usePrediction) {
+      edges = applyPredictedCrowd(edges, (edgeId, live) =>
+        defaultCrowdPredictor.predictEdgeCrowd(edgeId, live),
+      );
+    }
+
     const adjacency = buildAdjacency(edges, weights, prefs);
     const result = aStar(input.sourceNodeId, input.destinationNodeId, nodes, adjacency, {
       wDistance: weights.wDistance,
@@ -69,6 +89,7 @@ export const navigationService = {
       totalDistanceM: Math.round(result.totalDistanceM * 10) / 10,
       etaMinutes: Math.round(etaMinutes * 10) / 10,
       cost: Math.round(result.cost * 1000) / 1000,
+      predictionUsed: usePrediction,
     };
 
     await analyticsRepository.recordNavigation({

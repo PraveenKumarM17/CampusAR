@@ -11,11 +11,13 @@ import type {
   EmergencyExit,
   GraphEdge,
   GraphNode,
+  IotStatus,
   Room,
   RouteRequest,
   RouteResponse,
   RouteWeights,
   SearchResult,
+  SensorReading,
 } from '@campusar/shared';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
@@ -108,6 +110,11 @@ export const api = {
   notifications: (token?: string | null) => request<AppNotification[]>('/notifications', {}, token),
   markRead: (id: string, token: string) =>
     request<void>(`/notifications/${id}/read`, { method: 'POST' }, token),
+  iotStatus: () => request<IotStatus>('/iot/status'),
+  iotSensors: () => request<SensorReading[]>('/iot/sensors'),
+  iotCrowd: () => request<CrowdLevel[]>('/iot/crowd'),
+  iotStart: (token: string) => request<IotStatus>('/iot/start', { method: 'POST' }, token),
+  iotStop: (token: string) => request<IotStatus>('/iot/stop', { method: 'POST' }, token),
   weights: (token: string) => request<RouteWeights>('/admin/weights', {}, token),
   updateWeights: (weights: RouteWeights, token: string) =>
     request<RouteWeights>(

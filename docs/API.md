@@ -40,6 +40,7 @@ Body:
 {
   "sourceNodeId": "uuid",
   "destinationNodeId": "uuid",
+  "usePrediction": true,
   "accessibility": {
     "wheelchairMode": false,
     "preferLift": false,
@@ -48,6 +49,19 @@ Body:
   }
 }
 ```
+
+## IoT
+
+| Method | Path           | Description             |
+| ------ | -------------- | ----------------------- |
+| GET    | `/iot/status`  | Simulator status        |
+| GET    | `/iot/sensors` | Latest sensor readings  |
+| GET    | `/iot/crowd`   | Current crowd levels    |
+| POST   | `/iot/start`   | Start simulator (admin) |
+| POST   | `/iot/stop`    | Stop simulator (admin)  |
+| POST   | `/iot/tick`    | Force one tick (admin)  |
+
+WebSocket: `ws://host:4000/ws` — messages `{ type, payload, at }` with types `crowd`, `sensors`, `hazard`, `iot_status`, `ping`.
 
 ## Safety & notifications
 

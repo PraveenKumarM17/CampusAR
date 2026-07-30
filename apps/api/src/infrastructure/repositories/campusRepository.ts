@@ -12,9 +12,12 @@ import type {
   Room,
   RouteWeights,
   SearchResult,
+  SensorKind,
+  SensorReading,
 } from '@campusar/shared';
 import { query } from '../db/pool';
 import type { RoutingEdge, RoutingNode } from '../../domain/routing/astar';
+import { broadcast } from '../realtime/wsHub';
 
 export const campusRepository = {
   async listBuildings(): Promise<Building[]> {
@@ -387,7 +390,7 @@ export const campusRepository = {
       ],
     );
     const r = rows[0] as Record<string, unknown>;
-    return {
+    const zone = {
       id: r.id as string,
       name: r.name as string,
       type: r.type as DangerZone['type'],
@@ -397,6 +400,8 @@ export const campusRepository = {
       description: r.description as string | null,
       active: r.active as boolean,
     };
+    broadcast('hazard', { zones: [zone] });
+    return zone;
   },
 
   async updateDangerZone(id: string, input: Partial<Omit<DangerZone, 'id'>>) {
@@ -504,6 +509,77 @@ export const campusRepository = {
 
   async deleteCrowdLevel(id: string) {
     await query(`DELETE FROM crowd_levels WHERE id = $1`, [id]);
+  },
+
+  async upsertCrowdByEdge(edgeId: string, intensity: number, label?: string | null) {
+    const existing = await query(`SELECT id FROM crowd_levels WHERE edge_id = $1 LIMIT 1`, [
+      edgeId,
+    ]);
+    if (existing.rows[0]) {
+      return this.upsertCrowdLevel({
+        id: (existing.rows[0] as { id: string }).id,
+        intensity,
+        label: label ?? null,
+      });
+    }
+    return this.upsertCrowdLevel({ edgeId, intensity, label: label ?? null });
+  },
+
+  async insertSensorReading(input: {
+    zoneKey: string;
+    buildingId?: string | null;
+    kind: SensorKind;
+    value: number;
+  }): Promise<SensorReading> {
+    const { rows } = await query(
+      `INSERT INTO sensor_readings (zone_key, building_id, kind, value)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [input.zoneKey, input.buildingId ?? null, input.kind, input.value],
+    );
+    const r = rows[0] as Record<string, unknown>;
+    return {
+      id: r.id as string,
+      zoneKey: r.zone_key as string,
+      buildingId: r.building_id as string | null,
+      kind: r.kind as SensorKind,
+      value: Number(r.value),
+      recordedAt: (r.recorded_at as Date).toISOString(),
+    };
+  },
+
+  async listLatestSensors(limit = 80): Promise<SensorReading[]> {
+    const { rows } = await query(
+      `SELECT DISTINCT ON (zone_key, kind) *
+       FROM sensor_readings
+       ORDER BY zone_key, kind, recorded_at DESC
+       LIMIT $1`,
+      [limit],
+    );
+    return (rows as Array<Record<string, unknown>>).map((r) => ({
+      id: r.id as string,
+      zoneKey: r.zone_key as string,
+      buildingId: r.building_id as string | null,
+      kind: r.kind as SensorKind,
+      value: Number(r.value),
+      recordedAt: (r.recorded_at as Date).toISOString(),
+    }));
+  },
+
+  async listActiveDangerZones(): Promise<DangerZone[]> {
+    const zones = await this.listDangerZones();
+    return zones.filter((z) => z.active);
+  },
+
+  async listActiveRoutingEvents(now = new Date()): Promise<CampusEvent[]> {
+    const events = await this.listEvents();
+    const t = now.getTime();
+    return events.filter(
+      (e) =>
+        e.active &&
+        e.affectsRouting &&
+        new Date(e.startsAt).getTime() <= t &&
+        new Date(e.endsAt).getTime() >= t,
+    );
   },
 
   async listEvents(): Promise<CampusEvent[]> {

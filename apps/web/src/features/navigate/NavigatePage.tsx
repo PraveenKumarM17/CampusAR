@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Polyline, CircleMarker } from 'react-leaflet';
-import { RefreshCw, Accessibility, Mic, MicOff } from 'lucide-react';
+import { RefreshCw, Accessibility, Mic, MicOff, Brain } from 'lucide-react';
 import type { GraphNode, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -15,6 +15,7 @@ export function NavigatePage() {
   const [route, setRoute] = useState<RouteResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [usePrediction, setUsePrediction] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export function NavigatePage() {
     setError(null);
     try {
       const fn = recalc ? api.recalculate : api.route;
-      const r = await fn({ sourceNodeId, destinationNodeId, accessibility }, token);
+      const r = await fn({ sourceNodeId, destinationNodeId, accessibility, usePrediction }, token);
       setRoute(r);
       if (voiceEnabled && r.path[0]) {
         const utter = new SpeechSynthesisUtterance(r.path[0].instruction);
@@ -50,6 +51,15 @@ export function NavigatePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!sourceNodeId || !destinationNodeId) return;
+    const t = setInterval(() => {
+      void compute(true);
+    }, 10_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceNodeId, destinationNodeId, accessibility, usePrediction, token]);
+
   const points = (route?.path ?? []).map((p) => [p.latitude, p.longitude] as [number, number]);
 
   return (
@@ -58,7 +68,7 @@ export function NavigatePage() {
         <div>
           <h1 className="font-display text-2xl font-bold">Navigation</h1>
           <p className="text-sm text-white/60">
-            Smart A* routing with safety, crowd, and accessibility costs.
+            Predictive A* routing with safety, crowd, and accessibility costs.
           </p>
         </div>
         <div className="flex gap-2">
@@ -114,6 +124,16 @@ export function NavigatePage() {
                 ))}
               </select>
             </div>
+            <label className="flex items-center justify-between text-sm">
+              <span className="inline-flex items-center gap-2">
+                <Brain size={14} className="text-accent" /> Crowd prediction
+              </span>
+              <input
+                type="checkbox"
+                checked={usePrediction}
+                onChange={(e) => setUsePrediction(e.target.checked)}
+              />
+            </label>
             <button
               className="btn-primary w-full"
               type="button"
@@ -153,6 +173,13 @@ export function NavigatePage() {
               <p className="text-sm">
                 <strong>{route.totalDistanceM} m</strong> · ETA{' '}
                 <strong>{route.etaMinutes} min</strong>
+              </p>
+              <p className="mt-1 text-xs text-white/50">
+                Cost {route.cost}
+                {route.predictionUsed != null
+                  ? ` · prediction ${route.predictionUsed ? 'on' : 'off'}`
+                  : ''}
+                {' · auto-refresh 10s'}
               </p>
               <ol className="mt-3 max-h-64 space-y-2 overflow-auto text-sm text-white/75">
                 {route.path.map((step, i) => (

@@ -20,6 +20,7 @@ import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
+import { useCampusLive } from '../../hooks/useCampusLive';
 
 function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
@@ -36,24 +37,57 @@ export function MapPage() {
   const { sourceNodeId, destinationNodeId, setSource, setDestination } = useNavStore();
   const navigate = useNavigate();
   const [buildings, setBuildings] = useState<Building[]>([]);
+  const [rooms, setRooms] = useState<{ buildingId: string; category: string }[]>([]);
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [zones, setZones] = useState<DangerZone[]>([]);
+  const [edges, setEdges] = useState<
+    { id: string; crowdScore: number; fromNodeId: string; toNodeId: string }[]
+  >([]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [category, setCategory] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [route, setRoute] = useState<RouteResponse | null>(null);
+  const live = useCampusLive();
 
   useEffect(() => {
-    Promise.all([api.buildings(token), api.nodes(token), api.zones(), api.categories()]).then(
-      ([b, n, z, c]) => {
-        setBuildings(b);
-        setNodes(n);
-        setZones(z.filter((x) => x.active));
-        setCategories(c);
-      },
-    );
+    Promise.all([
+      api.buildings(token),
+      api.rooms(token),
+      api.nodes(token),
+      api.edges(token),
+      api.zones(),
+      api.categories(),
+    ]).then(([b, r, n, e, z, c]) => {
+      setBuildings(b);
+      setRooms(r.map((room) => ({ buildingId: room.buildingId, category: room.category })));
+      setNodes(n);
+      setEdges(
+        e.map((edge) => ({
+          id: edge.id,
+          crowdScore: edge.crowdScore,
+          fromNodeId: edge.fromNodeId,
+          toNodeId: edge.toNodeId,
+        })),
+      );
+      setZones(z.filter((x) => x.active));
+      setCategories(c);
+    });
   }, [token]);
+
+  useEffect(() => {
+    if (!live.crowd.length) return;
+    setEdges((prev) =>
+      prev.map((edge) => {
+        const hit = live.crowd.find((c) => c.edgeId === edge.id);
+        return hit ? { ...edge, crowdScore: hit.intensity } : edge;
+      }),
+    );
+  }, [live.crowd]);
+
+  useEffect(() => {
+    if (live.zones.length) setZones(live.zones.filter((z) => z.active));
+  }, [live.zones]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -71,14 +105,44 @@ export function MapPage() {
 
   const filteredBuildings = useMemo(() => {
     if (!category) return buildings;
-    return buildings;
-  }, [buildings, category]);
+    const buildingIds = new Set(
+      rooms.filter((r) => r.category === category).map((r) => r.buildingId),
+    );
+    return buildings.filter((b) => buildingIds.has(b.id));
+  }, [buildings, rooms, category]);
+
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
+  const crowdPolylines = useMemo(() => {
+    return edges
+      .map((edge) => {
+        const from = nodeById.get(edge.fromNodeId);
+        const to = nodeById.get(edge.toNodeId);
+        if (!from || !to) return null;
+        return {
+          id: edge.id,
+          crowdScore: edge.crowdScore,
+          positions: [
+            [from.latitude, from.longitude] as [number, number],
+            [to.latitude, to.longitude] as [number, number],
+          ],
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      crowdScore: number;
+      positions: [number, number][];
+    }>;
+  }, [edges, nodeById]);
 
   async function startRoute(destNodeId: string) {
     setDestination(destNodeId);
     if (!sourceNodeId) return;
     try {
-      const r = await api.route({ sourceNodeId, destinationNodeId: destNodeId }, token);
+      const r = await api.route(
+        { sourceNodeId, destinationNodeId: destNodeId, usePrediction: true },
+        token,
+      );
       setRoute(r);
     } catch {
       setRoute(null);
@@ -87,12 +151,21 @@ export function MapPage() {
 
   const routePoints = (route?.path ?? []).map((p) => [p.latitude, p.longitude] as [number, number]);
 
+  function crowdColor(score: number): string {
+    if (score < 0.33) return '#3ddeb5';
+    if (score < 0.66) return '#f0a35e';
+    return '#f07178';
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold">Campus map</h1>
-          <p className="text-sm text-white/60">Search buildings, rooms, and plan a route.</p>
+          <p className="text-sm text-white/60">
+            Search buildings, rooms, and plan a route.
+            {live.connected ? ' · IoT live' : ' · IoT offline'}
+          </p>
         </div>
         <div className="flex gap-2">
           <div className="relative flex-1 sm:w-72">
@@ -160,6 +233,17 @@ export function MapPage() {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
               url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             />
+            {crowdPolylines.map((line) => (
+              <Polyline
+                key={line.id}
+                positions={line.positions}
+                pathOptions={{
+                  color: crowdColor(line.crowdScore),
+                  weight: 3,
+                  opacity: 0.55,
+                }}
+              />
+            ))}
             {filteredBuildings.map((b) => (
               <CircleMarker
                 key={b.id}
@@ -207,7 +291,7 @@ export function MapPage() {
                 radius={z.radiusM}
                 pathOptions={{
                   color:
-                    z.type === 'construction'
+                    z.type === 'construction' || z.type === 'fire'
                       ? '#f0a35e'
                       : z.type === 'poor_lighting'
                         ? '#a78bfa'
@@ -247,6 +331,11 @@ export function MapPage() {
                 <p>
                   ETA: <strong>{route.etaMinutes} min</strong>
                 </p>
+                {route.predictionUsed != null && (
+                  <p className="text-xs text-white/50">
+                    Prediction {route.predictionUsed ? 'on' : 'off'}
+                  </p>
+                )}
                 <button
                   className="btn-primary mt-3 w-full"
                   type="button"
@@ -261,18 +350,28 @@ export function MapPage() {
                 >
                   Start AR
                 </button>
+                <button
+                  className="btn-ghost mt-2 w-full"
+                  type="button"
+                  onClick={() => navigate('/twin')}
+                >
+                  Digital Twin
+                </button>
               </div>
             )}
           </div>
           <div className="glass rounded-2xl p-4">
-            <p className="label">Buildings</p>
+            <p className="label">Buildings{category ? ` · ${category}` : ''}</p>
             <ul className="max-h-64 space-y-2 overflow-auto text-sm">
-              {buildings.map((b) => (
+              {filteredBuildings.map((b) => (
                 <li key={b.id} className="rounded-lg border border-white/5 bg-black/10 px-2 py-1.5">
                   <p className="font-medium">{b.name}</p>
                   <p className="text-xs text-white/45">{b.code}</p>
                 </li>
               ))}
+              {filteredBuildings.length === 0 && (
+                <li className="text-xs text-white/45">No buildings match this category.</li>
+              )}
             </ul>
           </div>
         </aside>

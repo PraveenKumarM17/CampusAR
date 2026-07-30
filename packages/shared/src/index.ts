@@ -105,6 +105,7 @@ export interface RouteRequest {
   sourceNodeId: string;
   destinationNodeId: string;
   accessibility?: Partial<AccessibilityPrefs>;
+  usePrediction?: boolean;
 }
 
 export interface RouteStep {
@@ -123,9 +124,10 @@ export interface RouteResponse {
   totalDistanceM: number;
   etaMinutes: number;
   cost: number;
+  predictionUsed?: boolean;
 }
 
-export type DangerZoneType = 'unsafe' | 'poor_lighting' | 'construction';
+export type DangerZoneType = 'unsafe' | 'poor_lighting' | 'construction' | 'fire';
 
 export interface DangerZone {
   id: string;
@@ -209,6 +211,41 @@ export interface AnalyticsSummary {
   edgeHeat: Array<{ edgeId: string; count: number }>;
 }
 
+export type SensorKind = 'temperature' | 'humidity' | 'aqi' | 'occupancy';
+
+export interface SensorReading {
+  id: string;
+  zoneKey: string;
+  buildingId: string | null;
+  kind: SensorKind;
+  value: number;
+  recordedAt: string;
+}
+
+export interface IotStatus {
+  running: boolean;
+  intervalMs: number;
+  lastTickAt: string | null;
+  tickCount: number;
+}
+
+export type WsMessageType = 'crowd' | 'sensors' | 'hazard' | 'iot_status' | 'ping';
+
+export interface WsMessage<T = unknown> {
+  type: WsMessageType;
+  payload: T;
+  at: string;
+}
+
+export interface CrowdBroadcastPayload {
+  levels: Array<{
+    edgeId: string | null;
+    nodeId: string | null;
+    intensity: number;
+    label: string | null;
+  }>;
+}
+
 export interface ApiErrorBody {
   code: string;
   message: string;
@@ -231,3 +268,5 @@ export const DEFAULT_ACCESSIBILITY: AccessibilityPrefs = {
 };
 
 export const WALKING_SPEED_MPS = 1.4;
+export const IOT_TICK_MS = 10_000;
+export const PREDICTION_HORIZON_MINUTES = 20;

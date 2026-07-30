@@ -5,13 +5,14 @@ import type {
   CrowdLevel,
   DangerZone,
   GraphEdge,
+  IotStatus,
   RouteWeights,
 } from '@campusar/shared';
 import { DEFAULT_ROUTE_WEIGHTS } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 
-type Tab = 'weights' | 'buildings' | 'paths' | 'zones' | 'crowd' | 'events';
+type Tab = 'weights' | 'buildings' | 'paths' | 'zones' | 'crowd' | 'events' | 'iot';
 
 export function AdminPage() {
   const token = useAuthStore((s) => s.accessToken)!;
@@ -22,16 +23,18 @@ export function AdminPage() {
   const [zones, setZones] = useState<DangerZone[]>([]);
   const [crowd, setCrowd] = useState<CrowdLevel[]>([]);
   const [events, setEvents] = useState<CampusEvent[]>([]);
+  const [iot, setIot] = useState<IotStatus | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   async function refresh() {
-    const [w, b, e, z, c, ev] = await Promise.all([
+    const [w, b, e, z, c, ev, status] = await Promise.all([
       api.weights(token),
       api.buildings(token),
       api.adminEdges.list(token),
       api.zones(),
       api.adminCrowd.list(token),
       api.adminEvents.list(token),
+      api.iotStatus(),
     ]);
     setWeights(w);
     setBuildings(b);
@@ -39,6 +42,7 @@ export function AdminPage() {
     setZones(z);
     setCrowd(c);
     setEvents(ev);
+    setIot(status);
   }
 
   useEffect(() => {
@@ -79,6 +83,7 @@ export function AdminPage() {
     { id: 'zones', label: 'Danger zones' },
     { id: 'crowd', label: 'Crowd' },
     { id: 'events', label: 'Events' },
+    { id: 'iot', label: 'IoT sim' },
   ];
 
   return (
@@ -390,6 +395,52 @@ export function AdminPage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {tab === 'iot' && (
+        <div className="glass rounded-2xl p-4 max-w-xl space-y-3">
+          <p className="font-semibold">IoT crowd/sensor simulator</p>
+          <p className="text-sm text-white/60">
+            Broadcasts crowd and environmental readings every 10 seconds over WebSocket.
+          </p>
+          <p className="text-sm">
+            Status: <strong>{iot?.running ? 'running' : 'stopped'}</strong>
+            {iot?.lastTickAt ? ` · last tick ${new Date(iot.lastTickAt).toLocaleTimeString()}` : ''}
+            {iot ? ` · ticks ${iot.tickCount}` : ''}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={async () => {
+                setIot(await api.iotStart(token));
+                setMessage('IoT simulator started');
+              }}
+            >
+              Start
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={async () => {
+                setIot(await api.iotStop(token));
+                setMessage('IoT simulator stopped');
+              }}
+            >
+              Stop
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={async () => {
+                await refresh();
+                setMessage('IoT status refreshed');
+              }}
+            >
+              Refresh
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   aStar,
+  applyHazardsToEdges,
   buildAdjacency,
   edgeTraversalCost,
   isEdgeAllowed,
@@ -150,5 +151,28 @@ describe('aStar', () => {
     const adj = buildAdjacency(safeEdges, weights, DEFAULT_ACCESSIBILITY);
     const result = aStar('a', 'd', nodes, adj);
     expect(result!.nodeIds).toEqual(['a', 'c', 'd']);
+  });
+
+  it('blocks edges inside tight fire hazard zones', () => {
+    const nodes = new Map([
+      ['a', node('a', 0, 0)],
+      ['b', node('b', 0, 0.001)],
+      ['c', node('c', 0, 0.002)],
+    ]);
+    const edges: RoutingEdge[] = [
+      edge({ id: 'ab', fromNodeId: 'a', toNodeId: 'b', distanceM: 20 }),
+      edge({ id: 'bc', fromNodeId: 'b', toNodeId: 'c', distanceM: 20 }),
+      edge({ id: 'ac', fromNodeId: 'a', toNodeId: 'c', distanceM: 100 }),
+    ];
+    const hazed = applyHazardsToEdges(
+      edges,
+      nodes,
+      [{ latitude: 0, longitude: 0.0005, radiusM: 40, type: 'fire' }],
+      [],
+    );
+    const adj = buildAdjacency(hazed, DEFAULT_ROUTE_WEIGHTS, DEFAULT_ACCESSIBILITY);
+    const result = aStar('a', 'c', nodes, adj);
+    expect(result).not.toBeNull();
+    expect(result!.edgeIds).toEqual(['ac']);
   });
 });

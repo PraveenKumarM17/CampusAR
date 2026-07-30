@@ -12,15 +12,15 @@ async function seed() {
   const studentHash = await bcrypt.hash('student123', 10);
   await pool.query(`UPDATE users SET password_hash = $1 WHERE email = $2`, [
     adminHash,
-    'admin@northridge.edu',
+    'admin@smartcampus.edu',
   ]);
   await pool.query(`UPDATE users SET password_hash = $1 WHERE email = $2`, [
     studentHash,
-    'student@northridge.edu',
+    'student@smartcampus.edu',
   ]);
 
   console.log(
-    'Seed applied (admin@northridge.edu / admin123, student@northridge.edu / student123)',
+    'Seed applied (admin@smartcampus.edu / admin123, student@smartcampus.edu / student123)',
   );
   await pool.end();
 }

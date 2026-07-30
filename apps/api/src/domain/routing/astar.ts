@@ -90,12 +90,92 @@ export function edgeTraversalCost(
     accessibilityPenalty = Math.max(accessibilityPenalty, 0.9);
   }
 
+  // Paper-aligned composite: α·d̃ + β·c̃ (+ safety/accessibility terms)
   return (
     weights.wDistance * distNorm +
     weights.wSafety * (1 - edge.safetyScore) +
     weights.wCrowd * edge.crowdScore +
     weights.wAccessibility * accessibilityPenalty
   );
+}
+
+export interface HazardZone {
+  latitude: number;
+  longitude: number;
+  radiusM: number;
+  type: string;
+}
+
+export interface RoutingEvent {
+  latitude: number | null;
+  longitude: number | null;
+  affectsRouting: boolean;
+}
+
+/** Apply danger-zone and event effects onto edge safety/crowd/blocked flags. */
+export function applyHazardsToEdges(
+  edges: RoutingEdge[],
+  nodes: Map<string, RoutingNode>,
+  zones: HazardZone[],
+  events: RoutingEvent[],
+  eventRadiusM = 40,
+): RoutingEdge[] {
+  return edges.map((edge) => {
+    const from = nodes.get(edge.fromNodeId);
+    const to = nodes.get(edge.toNodeId);
+    if (!from || !to) return edge;
+
+    const midLat = (from.latitude + to.latitude) / 2;
+    const midLon = (from.longitude + to.longitude) / 2;
+    let safetyScore = edge.safetyScore;
+    let crowdScore = edge.crowdScore;
+    let blocked = edge.blocked;
+
+    for (const z of zones) {
+      const d = haversineMeters(midLat, midLon, z.latitude, z.longitude);
+      if (d > z.radiusM) continue;
+      if (z.type === 'fire') {
+        blocked = true;
+      } else if (z.type === 'construction') {
+        // Heavy detour penalty; hard-block only when radius is very tight on the edge
+        if (d <= z.radiusM * 0.35) {
+          blocked = true;
+        } else {
+          safetyScore = Math.min(safetyScore, 0.15);
+          crowdScore = Math.max(crowdScore, 0.7);
+        }
+      } else if (z.type === 'poor_lighting') {
+        safetyScore = Math.min(safetyScore, 0.35);
+      } else {
+        safetyScore = Math.min(safetyScore, 0.25);
+        crowdScore = Math.max(crowdScore, 0.55);
+      }
+    }
+
+    for (const ev of events) {
+      if (!ev.affectsRouting || ev.latitude == null || ev.longitude == null) continue;
+      const d = haversineMeters(midLat, midLon, ev.latitude, ev.longitude);
+      if (d <= eventRadiusM) {
+        crowdScore = Math.max(crowdScore, 0.85);
+        safetyScore = Math.min(safetyScore, 0.5);
+      }
+    }
+
+    return { ...edge, safetyScore, crowdScore, blocked };
+  });
+}
+
+/** Blend live crowd with predicted intensity when prediction is enabled. */
+export function applyPredictedCrowd(
+  edges: RoutingEdge[],
+  predict: (edgeId: string, live: number) => number,
+  blend = 0.6,
+): RoutingEdge[] {
+  return edges.map((edge) => {
+    const predicted = predict(edge.id, edge.crowdScore);
+    const crowdScore = Math.max(0, Math.min(1, (1 - blend) * edge.crowdScore + blend * predicted));
+    return { ...edge, crowdScore };
+  });
 }
 
 export function buildAdjacency(

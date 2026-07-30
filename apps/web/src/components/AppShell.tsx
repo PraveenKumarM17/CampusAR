@@ -10,6 +10,7 @@ import {
   Moon,
   Sun,
   Bell,
+  Box,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
@@ -21,6 +22,7 @@ const links = [
   { to: '/map', label: 'Map', icon: Map },
   { to: '/navigate', label: 'Navigate', icon: Navigation },
   { to: '/ar', label: 'AR', icon: Scan },
+  { to: '/twin', label: 'Twin', icon: Box },
   { to: '/safety', label: 'Safety', icon: ShieldAlert },
 ];
 

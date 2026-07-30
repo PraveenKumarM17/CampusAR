@@ -11,6 +11,7 @@ import { campusRouter } from './routes/campusRoutes';
 import { navigationRouter } from './routes/navigationRoutes';
 import { notificationRouter, safetyRouter } from './routes/safetyRoutes';
 import { adminRouter, analyticsRouter } from './routes/adminRoutes';
+import { iotRouter } from './routes/iotRoutes';
 
 export function createApp() {
   const app = express();
@@ -30,6 +31,7 @@ export function createApp() {
   app.use('/api/notifications', notificationRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/analytics', analyticsRouter);
+  app.use('/api/iot', iotRouter);
 
   app.use(errorHandler);
   return app;

@@ -16,6 +16,7 @@ const routeSchema = z.object({
   sourceNodeId: z.string().uuid(),
   destinationNodeId: z.string().uuid(),
   accessibility: accessibilitySchema,
+  usePrediction: z.boolean().optional(),
 });
 
 export const navigationRouter = Router();

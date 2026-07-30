@@ -78,7 +78,7 @@ CREATE INDEX IF NOT EXISTS edges_to_idx ON edges(to_node_id);
 CREATE TABLE IF NOT EXISTS danger_zones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('unsafe', 'poor_lighting', 'construction')),
+  type TEXT NOT NULL CHECK (type IN ('unsafe', 'poor_lighting', 'construction', 'fire')),
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
   radius_m DOUBLE PRECISION NOT NULL DEFAULT 25,
@@ -98,6 +98,18 @@ CREATE TABLE IF NOT EXISTS crowd_levels (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (edge_id IS NOT NULL OR node_id IS NOT NULL)
 );
+
+CREATE TABLE IF NOT EXISTS sensor_readings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  zone_key TEXT NOT NULL,
+  building_id UUID REFERENCES buildings(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('temperature', 'humidity', 'aqi', 'occupancy')),
+  value DOUBLE PRECISION NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS sensor_readings_zone_idx ON sensor_readings (zone_key, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS sensor_readings_kind_idx ON sensor_readings (kind);
 
 CREATE TABLE IF NOT EXISTS events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -190,3 +202,13 @@ CREATE INDEX IF NOT EXISTS nodes_geom_idx ON nodes USING GIST (geom);
 CREATE INDEX IF NOT EXISTS danger_zones_geom_idx ON danger_zones USING GIST (geom);
 CREATE INDEX IF NOT EXISTS analytics_searches_query_idx ON analytics_searches (query);
 CREATE INDEX IF NOT EXISTS analytics_nav_created_idx ON analytics_navigations (created_at);
+
+-- Allow fire hazard type on existing databases created before the CHECK expansion
+DO $$
+BEGIN
+  ALTER TABLE danger_zones DROP CONSTRAINT IF EXISTS danger_zones_type_check;
+  ALTER TABLE danger_zones ADD CONSTRAINT danger_zones_type_check
+    CHECK (type IN ('unsafe', 'poor_lighting', 'construction', 'fire'));
+EXCEPTION
+  WHEN undefined_table THEN NULL;
+END $$;

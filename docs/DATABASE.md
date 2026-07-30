@@ -18,18 +18,19 @@ Docker Compose mounts both into `docker-entrypoint-initdb.d` for first boot. Pas
 
 ## Core tables
 
-| Table                                          | Purpose              |
-| ---------------------------------------------- | -------------------- |
-| `users`                                        | Auth + roles         |
-| `buildings` / `floors` / `rooms`               | Campus hierarchy     |
-| `nodes` / `edges`                              | Navigation graph     |
-| `danger_zones`                                 | Safety overlays      |
-| `crowd_levels`                                 | Simulated crowd      |
-| `events`                                       | Campus events        |
-| `route_weights`                                | Singleton A* weights |
-| `notifications` / `notification_reads`         | Alerts               |
-| `emergency_contacts` / `emergency_exits`       | Safety               |
-| `analytics_searches` / `analytics_navigations` | Metrics              |
-| `sos_events`                                   | SOS log              |
+| Table                                          | Purpose                      |
+| ---------------------------------------------- | ---------------------------- |
+| `users`                                        | Auth + roles                 |
+| `buildings` / `floors` / `rooms`               | Campus hierarchy             |
+| `nodes` / `edges`                              | Navigation graph             |
+| `danger_zones`                                 | Safety overlays (incl. fire) |
+| `crowd_levels`                                 | Live / simulated crowd       |
+| `sensor_readings`                              | Temp / humidity / AQI / occ. |
+| `events`                                       | Campus events                |
+| `route_weights`                                | Singleton A* weights         |
+| `notifications` / `notification_reads`         | Alerts                       |
+| `emergency_contacts` / `emergency_exits`       | Safety                       |
+| `analytics_searches` / `analytics_navigations` | Metrics                      |
+| `sos_events`                                   | SOS log                      |
 
 Geography columns use `GEOGRAPHY(POINT, 4326)` for spatial indexing.
