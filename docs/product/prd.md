@@ -8,7 +8,7 @@ CampusAR V1 is a web-based smart-campus navigation product. Users search campus 
 
 ### In scope (V1)
 
-- Account types: guest, registered user, admin
+- Account types: **guest (primary navigation)**; **organization admin** (email/password for Admin Dashboard). General visitor registration is not required.
 - Campus place search (buildings, rooms, categories)
 - Graph-based routing with distance, crowd, safety, accessibility preferences
 - Map visualization with route polyline and live crowd coloring (when data available)
@@ -37,12 +37,15 @@ CampusAR V1 is a web-based smart-campus navigation product. Users search campus 
 
 | ID | Requirement |
 |----|-------------|
-| FR-1.1 | Users can register with email/password and receive JWT session |
-| FR-1.2 | Users can log in and refresh tokens |
-| FR-1.3 | Users can continue as guest with limited persistence |
-| FR-1.4 | Admin-only screens and APIs require admin role |
+| FR-1.1 | Users can **Continue as Guest** on an organization URL/QR without creating an account (primary path) |
+| FR-1.2 | Organization administrators can log in with email/password and receive a session (JWT or equivalent) |
+| FR-1.3 | Admin tokens can refresh; logout and membership revocation invalidate access |
+| FR-1.4 | Admin Dashboard screens and APIs require Organization Admin (or future Super Admin); guests are denied |
+| FR-1.5 | Guest access is limited to navigation-related features for the resolved organization |
 
-**Why:** Separates public try-before-login from privileged campus management.
+**Why:** Majority of users are visitors; credentials are reserved for people who configure the org. See [login-experience.md](./login-experience.md), [role-permissions.md](./role-permissions.md).
+
+**NaaS note:** General visitor registration is not required for V1/NaaS guest navigation. Optional “save trips” accounts may appear later without changing admin login.
 
 ### FR-2 Campus discovery
 
@@ -153,7 +156,11 @@ See [risks.md](./risks.md). Top risks: indoor positioning expectations; browser 
 
 ## Future scope (post-V1)
 
-BLE/MQTT IoT, LSTM prediction, native AR, multi-campus, voice assistant, smart parking, federated learning, LiDAR twin bootstrapping. See [future-opportunities.md](./future-opportunities.md) and [roadmap.md](./roadmap.md).
+**Platform (NaaS):** Organization tenancy, visual map editor, QR entry, per-org branding, industry templates — see [multi-tenancy.md](./multi-tenancy.md) and [roadmap.md](./roadmap.md) (V1.5–V2).
+
+**Depth:** BLE/MQTT IoT, LSTM prediction, native AR, voice assistant, smart parking, federated learning, LiDAR twin bootstrapping. See [future-opportunities.md](./future-opportunities.md).
+
+V1 PRD assumptions (e.g. A-1 single campus graph) remain valid for the **reference tenant**; schema and roadmap prepare multi-org.
 
 ## Acceptance of V1 (product)
 

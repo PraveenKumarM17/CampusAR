@@ -167,6 +167,8 @@ Fusion policy examples:
 
 Server may store beacon → node maps later; routing engine remains node-based.
 
+**Platform note:** Org-scoped snapping and the full adapter roadmap (Wi‑Fi, SLAM, UWB) are specified in [`gps-abstraction.md`](./gps-abstraction.md). This document remains the V1 browser-GPS pipeline detail.
+
 ---
 
 ## Security / privacy notes
@@ -174,3 +176,4 @@ Server may store beacon → node maps later; routing engine remains node-based.
 - Do not upload high-frequency trails by default
 - SOS sends point-in-time location only
 - Clear watches on logout
+- Snap and route only against the **resolved organization's** graph

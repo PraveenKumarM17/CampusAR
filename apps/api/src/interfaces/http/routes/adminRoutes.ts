@@ -120,6 +120,28 @@ adminRouter.post('/paths/nodes', async (req, res, next) => {
   }
 });
 
+adminRouter.put('/paths/nodes/:id', async (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        name: z.string().nullable().optional(),
+        latitude: z.number().optional(),
+        longitude: z.number().optional(),
+        floorId: z.string().uuid().nullable().optional(),
+        buildingId: z.string().uuid().nullable().optional(),
+        kind: z
+          .enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit'])
+          .optional(),
+      })
+      .parse(req.body);
+    const updated = await campusRepository.updateNode(String(req.params.id), body);
+    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
 adminRouter.delete('/paths/nodes/:id', async (req, res, next) => {
   try {
     await campusRepository.deleteNode(String(req.params.id));

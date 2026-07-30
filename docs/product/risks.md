@@ -22,12 +22,14 @@
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| Compared unfairly to Google Maps | Lost stakeholder buy-in | High | Position as **campus-operated**, safety/IoT/admin control |
+| Single-campus custom forever | Not a product | Medium | NaaS track V1.5–V2; org model + map editor; see [multi-tenancy.md](./multi-tenancy.md) |
+| Cross-tenant data leak | Trust / legal catastrophe | Low–Med (impact Critical) | `organizationId` on all queries; isolation tests; audited platform admin |
+| Editor UX too hard → stale graphs | Bad routes at scale | Medium | Click-to-create editor; templates; validation strip |
+| Compared unfairly to Google Maps | Lost stakeholder buy-in | High | Position as **org-operated** private-site NaaS, safety/IoT/admin control |
 | Scope creep (IoT/ML/native at once) | No shippable V1 | High | MoSCoW; Won’t Have list; phase roadmap |
-| Single-campus custom forever | Not a product | Medium | Keep tenant-shaped config even in V1 |
-| Privacy concerns (tracking students) | Adoption block | Medium | Transparent policy; optional accounts; aggregate analytics |
+| Privacy concerns (tracking users) | Adoption block | Medium | Transparent policy; guest default; aggregate analytics |
 | Security liability over SOS expectations | Legal exposure | Medium | Explicit non-SLA copy; legal review before pilot |
-| Weak champion on campus | Pilot stalls | Medium | Admin persona value (twin, analytics) for facilities/CIO |
+| Weak champion at customer org | Pilot stalls | Medium | Admin persona value (editor, branding, analytics) for facilities/CIO |
 
 ---
 

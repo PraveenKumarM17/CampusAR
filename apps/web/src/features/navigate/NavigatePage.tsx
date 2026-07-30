@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Polyline, CircleMarker } from 'react-leaflet';
+import { MapContainer, Polyline, CircleMarker, Circle, Tooltip } from 'react-leaflet';
 import { RefreshCw, Accessibility, Mic, MicOff } from 'lucide-react';
 import type { GraphNode, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
-import { CAMPUS_MAP_CENTER } from '../../lib/campus';
+import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAP_CENTER } from '../../lib/campus';
+import { useGeolocation } from '../../hooks/useGeolocation';
+import { nearestNode } from '../../lib/geo';
+import {
+  BasemapModeSwitcher,
+  RealBasemapTiles,
+  type BasemapMode,
+} from '../../components/maps/RealBasemap';
+import { GoogleCampusMap, hasGoogleMapsKey } from '../../components/maps/GoogleCampusMap';
 
 export function NavigatePage() {
   const token = useAuthStore((s) => s.accessToken);
@@ -17,15 +25,28 @@ export function NavigatePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [usePrediction, setUsePrediction] = useState(true);
+  const [basemapMode, setBasemapMode] = useState<BasemapMode>('hybrid');
   const navigate = useNavigate();
+  const { pose, error: gpsError } = useGeolocation(true);
+  const useGoogle = hasGoogleMapsKey();
 
   useEffect(() => {
     api.nodes(token).then(setNodes);
   }, [token]);
 
+  useEffect(() => {
+    if (!pose || nodes.length === 0) return;
+    const snap = nearestNode(pose, nodes, 120);
+    if (snap && snap.node.id !== sourceNodeId) setSource(snap.node.id);
+  }, [pose, nodes, sourceNodeId, setSource]);
+
   async function compute(recalc = false) {
     if (!sourceNodeId || !destinationNodeId) {
-      setError('Select source and destination nodes');
+      setError('Select source and destination (GPS sets source when available)');
+      return;
+    }
+    if (sourceNodeId === destinationNodeId) {
+      setError('You are already at the destination');
       return;
     }
     setLoading(true);
@@ -50,7 +71,7 @@ export function NavigatePage() {
   useEffect(() => {
     if (sourceNodeId && destinationNodeId) void compute(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sourceNodeId, destinationNodeId]);
 
   useEffect(() => {
     if (!sourceNodeId || !destinationNodeId) return;
@@ -62,13 +83,18 @@ export function NavigatePage() {
   }, [sourceNodeId, destinationNodeId, accessibility, usePrediction, token]);
 
   const points = (route?.path ?? []).map((p) => [p.latitude, p.longitude] as [number, number]);
+  const placeNodes = nodes.filter(
+    (n) => n.kind === 'entrance' || n.kind === 'outdoor' || n.kind === 'exit',
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="page-title">Navigation</h1>
-          <p className="page-sub">Routes that account for crowd, safety, and accessibility.</p>
+          <p className="page-sub">
+            Live GPS sets your start · routes around crowd and hazards on RNSIT campus.
+          </p>
         </div>
         <div className="flex gap-2">
           <button
@@ -90,20 +116,22 @@ export function NavigatePage() {
         </div>
       </div>
 
+      {gpsError && <p className="text-sm text-accent-warn">{gpsError}</p>}
+
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
         <div className="space-y-3">
-          <div className="panel rounded-md p-4 space-y-3">
+          <div className="panel rounded-md space-y-3 p-4">
             <div>
-              <label className="label">Source</label>
+              <label className="label">Source (GPS / manual)</label>
               <select
                 className="input"
                 value={sourceNodeId ?? ''}
                 onChange={(e) => setSource(e.target.value || null)}
               >
-                <option value="">Select node</option>
-                {nodes.map((n) => (
+                <option value="">Waiting for GPS…</option>
+                {placeNodes.map((n) => (
                   <option key={n.id} value={n.id}>
-                    {n.name ?? n.kind} ({n.kind})
+                    {n.name ?? n.kind}
                   </option>
                 ))}
               </select>
@@ -115,16 +143,16 @@ export function NavigatePage() {
                 value={destinationNodeId ?? ''}
                 onChange={(e) => setDestination(e.target.value || null)}
               >
-                <option value="">Select node</option>
-                {nodes.map((n) => (
+                <option value="">Select place</option>
+                {placeNodes.map((n) => (
                   <option key={n.id} value={n.id}>
-                    {n.name ?? n.kind} ({n.kind})
+                    {n.name ?? n.kind}
                   </option>
                 ))}
               </select>
             </div>
             <label className="flex items-center justify-between text-sm">
-              <span className="inline-flex items-center gap-2">Crowd prediction</span>
+              <span>Crowd prediction</span>
               <input
                 type="checkbox"
                 checked={usePrediction}
@@ -142,7 +170,7 @@ export function NavigatePage() {
             {error && <p className="text-sm text-accent-danger">{error}</p>}
           </div>
 
-          <div className="panel rounded-md p-4 space-y-3">
+          <div className="panel rounded-md space-y-3 p-4">
             <p className="inline-flex items-center gap-2 text-sm font-semibold">
               <Accessibility size={16} className="text-accent" /> Accessibility
             </p>
@@ -171,13 +199,6 @@ export function NavigatePage() {
                 <strong>{route.totalDistanceM} m</strong> · ETA{' '}
                 <strong>{route.etaMinutes} min</strong>
               </p>
-              <p className="mt-1 text-xs text-ink-faint">
-                Cost {route.cost}
-                {route.predictionUsed != null
-                  ? ` · prediction ${route.predictionUsed ? 'on' : 'off'}`
-                  : ''}
-                {' · auto-refresh 10s'}
-              </p>
               <ol className="mt-3 max-h-64 space-y-2 overflow-auto text-sm text-ink-mute">
                 {route.path.map((step, i) => (
                   <li key={`${step.nodeId}-${i}`} className="rounded-lg bg-paper-soft px-2 py-1.5">
@@ -197,26 +218,63 @@ export function NavigatePage() {
           )}
         </div>
 
-        <div className="overflow-hidden rounded-md border border-line">
-          <MapContainer center={CAMPUS_MAP_CENTER} zoom={17} className="h-[70vh] w-full">
-            <TileLayer
-              attribution="&copy; OSM"
-              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+        <div className="relative overflow-hidden rounded-md border border-line">
+          <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
+          {useGoogle ? (
+            <GoogleCampusMap
+              className="h-[70vh] w-full"
+              mode={basemapMode}
+              placeNodes={placeNodes}
+              sourceNodeId={sourceNodeId}
+              destinationNodeId={destinationNodeId}
+              routePoints={points}
+              pose={pose}
+              onPlaceClick={(id) => setDestination(id)}
             />
-            {points.length > 1 && (
-              <Polyline positions={points} pathOptions={{ color: '#0f6b63', weight: 6 }} />
-            )}
-            {points[0] && (
-              <CircleMarker center={points[0]} radius={8} pathOptions={{ color: '#0f6b63' }} />
-            )}
-            {points.length > 1 && (
-              <CircleMarker
-                center={points[points.length - 1]}
-                radius={8}
-                pathOptions={{ color: '#c47a12' }}
-              />
-            )}
-          </MapContainer>
+          ) : (
+            <MapContainer
+              center={CAMPUS_MAP_CENTER}
+              zoom={CAMPUS_DEFAULT_ZOOM}
+              className="h-[70vh] w-full"
+              maxZoom={20}
+            >
+              <RealBasemapTiles mode={basemapMode} />
+              {points.length > 1 && (
+                <Polyline positions={points} pathOptions={{ color: '#0f6b63', weight: 6 }} />
+              )}
+              {points[0] && (
+                <CircleMarker center={points[0]} radius={8} pathOptions={{ color: '#0f6b63' }} />
+              )}
+              {points.length > 1 && (
+                <CircleMarker
+                  center={points[points.length - 1]}
+                  radius={8}
+                  pathOptions={{ color: '#c47a12' }}
+                />
+              )}
+              {pose && (
+                <>
+                  <Circle
+                    center={[pose.latitude, pose.longitude]}
+                    radius={Math.min(pose.accuracy ?? 20, 40)}
+                    pathOptions={{
+                      color: '#2166a8',
+                      fillColor: '#2166a8',
+                      fillOpacity: 0.12,
+                      weight: 1,
+                    }}
+                  />
+                  <CircleMarker
+                    center={[pose.latitude, pose.longitude]}
+                    radius={8}
+                    pathOptions={{ color: '#fff', fillColor: '#2166a8', fillOpacity: 1, weight: 3 }}
+                  >
+                    <Tooltip permanent>You</Tooltip>
+                  </CircleMarker>
+                </>
+              )}
+            </MapContainer>
+          )}
         </div>
       </div>
     </div>

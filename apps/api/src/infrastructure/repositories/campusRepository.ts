@@ -184,6 +184,25 @@ export const campusRepository = {
         longitude: r.longitude as number,
       })),
     ];
+
+    const { rows: places } = await query(
+      `SELECT id, name, latitude, longitude, kind FROM nodes
+       WHERE name IS NOT NULL AND trim(name) <> '' AND name ILIKE $1
+       LIMIT 20`,
+      [pattern],
+    );
+    for (const p of places as Array<Record<string, unknown>>) {
+      results.push({
+        type: 'place',
+        id: p.id as string,
+        name: p.name as string,
+        code: String(p.kind ?? 'place'),
+        nodeId: p.id as string,
+        latitude: p.latitude as number,
+        longitude: p.longitude as number,
+      });
+    }
+
     return results;
   },
 
@@ -345,6 +364,45 @@ export const campusRepository = {
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
       [input.name, input.latitude, input.longitude, input.floorId, input.buildingId, input.kind],
     );
+    const r = rows[0] as Record<string, unknown>;
+    return {
+      id: r.id as string,
+      name: r.name as string | null,
+      latitude: r.latitude as number,
+      longitude: r.longitude as number,
+      floorId: r.floor_id as string | null,
+      buildingId: r.building_id as string | null,
+      kind: r.kind as GraphNode['kind'],
+    };
+  },
+
+  async updateNode(id: string, input: Partial<Omit<GraphNode, 'id'>>) {
+    const { rows } = await query(
+      `UPDATE nodes SET
+         name = CASE WHEN $2::boolean THEN $3 ELSE name END,
+         latitude = CASE WHEN $4::boolean THEN $5::float8 ELSE latitude END,
+         longitude = CASE WHEN $6::boolean THEN $7::float8 ELSE longitude END,
+         floor_id = CASE WHEN $8::boolean THEN $9::uuid ELSE floor_id END,
+         building_id = CASE WHEN $10::boolean THEN $11::uuid ELSE building_id END,
+         kind = CASE WHEN $12::boolean THEN $13 ELSE kind END
+       WHERE id = $1 RETURNING *`,
+      [
+        id,
+        input.name !== undefined,
+        input.name ?? null,
+        input.latitude !== undefined,
+        input.latitude ?? null,
+        input.longitude !== undefined,
+        input.longitude ?? null,
+        input.floorId !== undefined,
+        input.floorId ?? null,
+        input.buildingId !== undefined,
+        input.buildingId ?? null,
+        input.kind !== undefined,
+        input.kind ?? null,
+      ],
+    );
+    if (!rows[0]) return null;
     const r = rows[0] as Record<string, unknown>;
     return {
       id: r.id as string,

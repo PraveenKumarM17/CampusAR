@@ -48,8 +48,59 @@ body {
 }
 
 .leaflet-container {
-  background: #e8eef0;
+  background: #1a2228;
   font-family: 'Public Sans', system-ui, sans-serif;
+}
+
+.admin-map-pin {
+  background: transparent !important;
+  border: none !important;
+}
+
+.admin-pin-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.admin-bend-pin {
+  cursor: grab !important;
+}
+
+.admin-bend-dot {
+  width: 18px;
+  height: 18px;
+  margin: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+
+.admin-bend-dot-selected {
+  background: #c2410c;
+  width: 20px;
+  height: 20px;
+  margin: 6px;
+  box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.35);
+}
+
+.leaflet-tooltip {
+  background: rgba(26, 34, 40, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 6px;
+}
+
+.leaflet-tooltip-top::before {
+  border-top-color: rgba(26, 34, 40, 0.88);
 }
 
 @keyframes float-arrow {

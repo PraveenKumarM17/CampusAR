@@ -8,14 +8,15 @@ Prioritization principle: ship a **complete navigation loop** (discover → rout
 
 | Feature | Why Must Have |
 |---------|----------------|
-| Guest + login/register | Without entry, no users |
+| Guest access (Continue as Guest) — primary CTA | Majority are visitors; no account wall |
+| Organization admin login (email/password) | Only admins configure the system |
 | Campus search & place listing | Top of funnel |
 | Map with source/destination selection | Spatial mental model |
 | A* / composite-cost routing | Core differentiator vs static maps |
 | Accessibility preferences | Inclusion + institutional requirement posture |
 | Navigate turn-by-turn UI | Completes guidance without AR dependency |
 | Blocked edges & basic hazard impact | Safety credibility |
-| Admin auth + route weights + hazard CRUD | Product must be operable |
+| Admin Dashboard + route weights + hazard CRUD | Product must be operable |
 | REST API + auth | Multi-client foundation |
 | Seeded demo campus | Sales/demo and QA without survey delay |
 | Arrival confirmation | Journey closure |
@@ -62,7 +63,7 @@ Prioritization principle: ship a **complete navigation loop** (discover → rout
 | Production LSTM training pipeline | Needs weeks of labeled occupancy |
 | Unity/ARCore Play Store release | Separate mobile program |
 | Real emergency CAD/SMS SLA | Legal & vendor integrations |
-| Multi-campus SaaS tenancy | Premature until single-campus proof |
+| Multi-campus SaaS tenancy (full marketplace) | Platform track is specified; shipping tenancy is V1.5–V2 — see [multi-tenancy.md](./multi-tenancy.md) |
 | Driving / transit multimodal | Walking-first campus product |
 | Payment / bookings | Dilutes V1 focus |
 | Social feeds / chat | Out of scope |

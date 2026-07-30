@@ -31,7 +31,14 @@ export default function App() {
         <Route path="/map" element={<MapPage />} />
         <Route path="/navigate" element={<NavigatePage />} />
         <Route path="/ar" element={<ArPage />} />
-        <Route path="/twin" element={<TwinPage />} />
+        <Route
+          path="/twin"
+          element={
+            <Protected admin>
+              <TwinPage />
+            </Protected>
+          }
+        />
         <Route path="/safety" element={<SafetyPage />} />
         <Route
           path="/admin"

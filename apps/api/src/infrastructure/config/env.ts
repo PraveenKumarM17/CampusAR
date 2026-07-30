@@ -18,7 +18,7 @@ export const env = {
   ),
   jwtAccessSecret: required('JWT_ACCESS_SECRET', 'dev-access-secret-min-32-characters!!'),
   jwtRefreshSecret: required('JWT_REFRESH_SECRET', 'dev-refresh-secret-min-32-characters!'),
-  jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES ?? '15m',
+  jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES ?? '8h',
   jwtRefreshExpires: process.env.JWT_REFRESH_EXPIRES ?? '7d',
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
   nodeEnv: process.env.NODE_ENV ?? 'development',

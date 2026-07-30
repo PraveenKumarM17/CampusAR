@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   MapContainer,
-  TileLayer,
   CircleMarker,
-  Popup,
   Circle,
+  Popup,
+  Tooltip,
   Polyline,
   useMap,
 } from 'react-leaflet';
-import { Search, Filter } from 'lucide-react';
+import { Search, Filter, LocateFixed, Navigation } from 'lucide-react';
 import type {
   Building,
   DangerZone,
@@ -21,16 +21,51 @@ import { useAuthStore } from '../../stores/authStore';
 import { useNavStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
 import { useCampusLive } from '../../hooks/useCampusLive';
-import { CAMPUS_MAP_CENTER } from '../../lib/campus';
+import { useGeolocation } from '../../hooks/useGeolocation';
+import { CAMPUS_DEFAULT_ZOOM, CAMPUS_LABEL, CAMPUS_MAP_CENTER } from '../../lib/campus';
+import { nearestNode, closestNamedPlace } from '../../lib/geo';
+import {
+  BasemapModeSwitcher,
+  RealBasemapTiles,
+  type BasemapMode,
+} from '../../components/maps/RealBasemap';
+import {
+  GoogleCampusMap,
+  hasGoogleMapsKey,
+} from '../../components/maps/GoogleCampusMap';
 
 function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
     if (points.length > 1) {
-      map.fitBounds(points, { padding: [40, 40] });
+      map.fitBounds(points, { padding: [48, 48] });
     }
   }, [map, points]);
   return null;
+}
+
+function RecenterButton({
+  lat,
+  lon,
+  onClick,
+}: {
+  lat: number;
+  lon: number;
+  onClick?: () => void;
+}) {
+  const map = useMap();
+  return (
+    <button
+      type="button"
+      className="absolute bottom-4 right-4 z-[1000] inline-flex items-center gap-2 rounded-md border border-line bg-paper-raised px-3 py-2 text-sm font-semibold text-ink shadow-sm hover:border-accent"
+      onClick={() => {
+        map.setView([lat, lon], Math.max(map.getZoom(), 18));
+        onClick?.();
+      }}
+    >
+      <LocateFixed size={16} className="text-accent" /> My location
+    </button>
+  );
 }
 
 export function MapPage() {
@@ -49,7 +84,12 @@ export function MapPage() {
   const [category, setCategory] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [route, setRoute] = useState<RouteResponse | null>(null);
+  const [followGps, setFollowGps] = useState(true);
+  const [gpsNote, setGpsNote] = useState<string | null>(null);
+  const [basemapMode, setBasemapMode] = useState<BasemapMode>('hybrid');
+  const useGoogle = hasGoogleMapsKey();
   const live = useCampusLive();
+  const { pose, error: gpsError } = useGeolocation(true);
 
   useEffect(() => {
     Promise.all([
@@ -104,6 +144,24 @@ export function MapPage() {
     return () => clearTimeout(t);
   }, [query, token]);
 
+  // Snap live GPS → nearest campus node and use as route source
+  useEffect(() => {
+    if (!followGps || !pose || nodes.length === 0) return;
+    const snap = nearestNode(pose, nodes, 120);
+    if (!snap) {
+      setGpsNote('You appear outside campus — pick a start node or move closer to RNSIT.');
+      return;
+    }
+    setGpsNote(
+      snap.distanceM < 15
+        ? `Tracking near ${snap.node.name ?? 'path'}`
+        : `Snapped to ${snap.node.name ?? 'nearest path'} (${Math.round(snap.distanceM)} m)`,
+    );
+    if (snap.node.id !== sourceNodeId) {
+      setSource(snap.node.id);
+    }
+  }, [pose, nodes, followGps, sourceNodeId, setSource]);
+
   const filteredBuildings = useMemo(() => {
     if (!category) return buildings;
     const buildingIds = new Set(
@@ -113,6 +171,17 @@ export function MapPage() {
   }, [buildings, rooms, category]);
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const placeNodes = useMemo(
+    () =>
+      nodes.filter(
+        (n) =>
+          Boolean(n.name?.trim()) ||
+          n.kind === 'entrance' ||
+          n.kind === 'outdoor' ||
+          n.kind === 'exit',
+      ),
+    [nodes],
+  );
 
   const crowdPolylines = useMemo(() => {
     return edges
@@ -136,12 +205,10 @@ export function MapPage() {
     }>;
   }, [edges, nodeById]);
 
-  async function startRoute(destNodeId: string) {
-    setDestination(destNodeId);
-    if (!sourceNodeId) return;
+  async function computeRoute(fromId: string, toId: string) {
     try {
       const r = await api.route(
-        { sourceNodeId, destinationNodeId: destNodeId, usePrediction: true },
+        { sourceNodeId: fromId, destinationNodeId: toId, usePrediction: true },
         token,
       );
       setRoute(r);
@@ -150,7 +217,27 @@ export function MapPage() {
     }
   }
 
+  async function startRoute(destNodeId: string) {
+    setDestination(destNodeId);
+    const from = sourceNodeId;
+    if (!from) return;
+    await computeRoute(from, destNodeId);
+  }
+
+  // Recalculate when GPS snap changes source while destination set
+  useEffect(() => {
+    if (!sourceNodeId || !destinationNodeId || !followGps) return;
+    if (sourceNodeId === destinationNodeId) return;
+    const t = setTimeout(() => {
+      void computeRoute(sourceNodeId, destinationNodeId);
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceNodeId, destinationNodeId, followGps]);
+
   const routePoints = (route?.path ?? []).map((p) => [p.latitude, p.longitude] as [number, number]);
+  const sourceNode = sourceNodeId ? nodeById.get(sourceNodeId) : null;
+  const destNode = destinationNodeId ? nodeById.get(destinationNodeId) : null;
 
   function crowdColor(score: number): string {
     if (score < 0.33) return '#0f6b63';
@@ -164,19 +251,19 @@ export function MapPage() {
         <div>
           <h1 className="page-title">Campus map</h1>
           <p className="page-sub">
-            RNSIT · Channasandra, Bengaluru — search buildings and plan a route.
+            {CAMPUS_LABEL} — gate to every block, with live GPS tracking.
             {live.connected ? ' · IoT live' : ' · IoT offline'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <div className="relative flex-1 sm:w-72">
+        <div className="flex flex-wrap gap-2">
+          <div className="relative flex-1 sm:w-64">
             <Search
               className="pointer-events-none absolute left-3 top-3 text-ink-faint"
               size={16}
             />
             <input
               className="input pl-9"
-              placeholder="Search library, SCI-201..."
+              placeholder="Search Admin, ECE, Ground A…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -199,8 +286,42 @@ export function MapPage() {
               ))}
             </select>
           </div>
+          <button
+            type="button"
+            className={`btn-ghost inline-flex items-center gap-2 ${followGps ? '!border-accent !text-accent' : ''}`}
+            onClick={() => setFollowGps((v) => !v)}
+          >
+            <Navigation size={16} />
+            {followGps ? 'GPS on' : 'GPS off'}
+          </button>
+          <button
+            type="button"
+            className="btn-primary inline-flex items-center gap-2"
+            disabled={!pose || placeNodes.length === 0}
+            onClick={() => {
+              if (!pose) return;
+              const nearest = closestNamedPlace(pose, placeNodes);
+              if (!nearest) {
+                setGpsNote('No named places nearby yet — ask an admin to pin locations.');
+                return;
+              }
+              setFollowGps(true);
+              void startRoute(nearest.node.id);
+              setGpsNote(
+                `Routing to closest place: ${nearest.node.name} (${Math.round(nearest.distanceM)} m)`,
+              );
+            }}
+          >
+            Route to closest place
+          </button>
         </div>
       </div>
+
+      {(gpsError || gpsNote) && (
+        <p className={`text-sm ${gpsError ? 'text-accent-warn' : 'text-ink-mute'}`}>
+          {gpsError ?? gpsNote}
+        </p>
+      )}
 
       {results.length > 0 && (
         <div className="panel rounded-md p-3">
@@ -226,109 +347,227 @@ export function MapPage() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-        <div className="overflow-hidden rounded-md border border-line">
-          <MapContainer
-            center={CAMPUS_MAP_CENTER}
-            zoom={17}
-            className="h-[58vh] w-full"
-            scrollWheelZoom
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+      <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+        <div className="relative overflow-hidden rounded-md border border-line">
+          <BasemapModeSwitcher
+            mode={basemapMode}
+            onChange={setBasemapMode}
+          />
+          {useGoogle ? (
+            <GoogleCampusMap
+              className="h-[62vh] w-full"
+              mode={basemapMode}
+              placeNodes={placeNodes}
+              sourceNodeId={sourceNodeId}
+              destinationNodeId={destinationNodeId}
+              routePoints={routePoints}
+              pathLines={crowdPolylines.map((line) => ({
+                id: line.id,
+                positions: line.positions,
+                color: crowdColor(line.crowdScore),
+                weight: 4,
+                opacity: 0.7,
+              }))}
+              zones={zones}
+              pose={pose}
+              onPlaceClick={(id) => {
+                if (followGps && sourceNodeId) {
+                  void startRoute(id);
+                  return;
+                }
+                if (!sourceNodeId) setSource(id);
+                else if (!destinationNodeId) void startRoute(id);
+                else {
+                  setSource(id);
+                  setDestination(null);
+                  setRoute(null);
+                }
+              }}
             />
-            {crowdPolylines.map((line) => (
-              <Polyline
-                key={line.id}
-                positions={line.positions}
-                pathOptions={{
-                  color: crowdColor(line.crowdScore),
-                  weight: 3,
-                  opacity: 0.55,
-                }}
-              />
-            ))}
-            {filteredBuildings.map((b) => (
-              <CircleMarker
-                key={b.id}
-                center={[b.latitude, b.longitude]}
-                radius={10}
-                pathOptions={{ color: '#0f6b63', fillColor: '#0f6b63', fillOpacity: 0.7 }}
-              >
-                <Popup>
-                  <strong>{b.name}</strong>
-                  <br />
-                  {b.code} · {b.floorsCount} floors
-                </Popup>
-              </CircleMarker>
-            ))}
-            {nodes
-              .filter((n) => n.kind === 'outdoor' || n.kind === 'entrance')
-              .map((n) => (
-                <CircleMarker
-                  key={n.id}
-                  center={[n.latitude, n.longitude]}
-                  radius={5}
+          ) : (
+            <MapContainer
+              center={CAMPUS_MAP_CENTER}
+              zoom={CAMPUS_DEFAULT_ZOOM}
+              className="h-[62vh] w-full"
+              scrollWheelZoom
+              maxZoom={20}
+            >
+              <RealBasemapTiles mode={basemapMode} />
+
+              {/* Walk network */}
+              {crowdPolylines.map((line) => (
+                <Polyline
+                  key={line.id}
+                  positions={line.positions}
                   pathOptions={{
-                    color: n.id === sourceNodeId ? '#0f6b63' : '#148a80',
-                    fillOpacity: 0.8,
+                    color: crowdColor(line.crowdScore),
+                    weight: 4,
+                    opacity: 0.75,
                   }}
-                  eventHandlers={{
-                    click: () => {
-                      if (!sourceNodeId) setSource(n.id);
-                      else if (!destinationNodeId) void startRoute(n.id);
-                      else {
-                        setSource(n.id);
-                        setDestination(null);
-                        setRoute(null);
+                />
+              ))}
+
+              {/* Named campus places */}
+              {placeNodes.map((node) => {
+                const isSrc = node.id === sourceNodeId;
+                const isDst = node.id === destinationNodeId;
+                return (
+                  <CircleMarker
+                    key={node.id}
+                    center={[node.latitude, node.longitude]}
+                    radius={isSrc || isDst ? 9 : 6}
+                    pathOptions={{
+                      color: isSrc ? '#0f6b63' : isDst ? '#1a2228' : '#148a80',
+                      fillColor: isSrc ? '#0f6b63' : isDst ? '#1a2228' : '#2aa89c',
+                      fillOpacity: 0.9,
+                      weight: 2,
+                    }}
+                    eventHandlers={{
+                      click: () => {
+                        if (followGps && sourceNodeId) {
+                          void startRoute(node.id);
+                          return;
+                        }
+                        if (!sourceNodeId) setSource(node.id);
+                        else if (!destinationNodeId) void startRoute(node.id);
+                        else {
+                          setSource(node.id);
+                          setDestination(null);
+                          setRoute(null);
+                        }
+                      },
+                    }}
+                  >
+                    <Tooltip
+                      direction="top"
+                      offset={[0, -6]}
+                      opacity={0.95}
+                      permanent={
+                        node.kind === 'entrance' ||
+                        /Ground|Gate|Parking|Temple|Court|Corner|Gallery|Plaza|Junction|Auditorium|Admin|ECE|IT|Civil|Cyber|BCA|School|PUC|MBA|Mech|Jain/.test(
+                          node.name ?? '',
+                        )
                       }
-                    },
-                  }}
+                    >
+                      <span className="font-semibold text-ink">{node.name ?? node.kind}</span>
+                    </Tooltip>
+                    <Popup>
+                      <strong>{node.name}</strong>
+                      <br />
+                      <button type="button" onClick={() => void startRoute(node.id)}>
+                        Route here
+                      </button>
+                    </Popup>
+                  </CircleMarker>
+                );
+              })}
+
+              {filteredBuildings.map((b) => (
+                <CircleMarker
+                  key={`b-${b.id}`}
+                  center={[b.latitude, b.longitude]}
+                  radius={3}
+                  pathOptions={{ color: '#ffffff', fillColor: '#0f6b63', fillOpacity: 0.35, weight: 1 }}
                 >
-                  <Popup>{n.name ?? n.kind}</Popup>
+                  <Popup>
+                    <strong>{b.name}</strong>
+                    <br />
+                    {b.code} · {b.floorsCount} floors
+                  </Popup>
                 </CircleMarker>
               ))}
-            {zones.map((z) => (
-              <Circle
-                key={z.id}
-                center={[z.latitude, z.longitude]}
-                radius={z.radiusM}
-                pathOptions={{
-                  color:
-                    z.type === 'construction' || z.type === 'fire'
-                      ? '#c47a12'
-                      : z.type === 'poor_lighting'
-                        ? '#a78bfa'
-                        : '#b42318',
-                  fillOpacity: 0.2,
-                }}
-              >
-                <Popup>
-                  {z.name} ({z.type})
-                </Popup>
-              </Circle>
-            ))}
-            {routePoints.length > 1 && (
-              <>
-                <Polyline positions={routePoints} pathOptions={{ color: '#0f6b63', weight: 5 }} />
-                <FitBounds points={routePoints} />
-              </>
-            )}
-          </MapContainer>
+
+              {zones.map((z) => (
+                <Circle
+                  key={z.id}
+                  center={[z.latitude, z.longitude]}
+                  radius={z.radiusM}
+                  pathOptions={{
+                    color:
+                      z.type === 'construction' || z.type === 'fire'
+                        ? '#c47a12'
+                        : z.type === 'poor_lighting'
+                          ? '#6b7c8a'
+                          : '#b42318',
+                    fillOpacity: 0.18,
+                  }}
+                >
+                  <Popup>
+                    {z.name} ({z.type})
+                  </Popup>
+                </Circle>
+              ))}
+
+              {pose && (
+                <>
+                  <Circle
+                    center={[pose.latitude, pose.longitude]}
+                    radius={Math.min(pose.accuracy ?? 20, 40)}
+                    pathOptions={{
+                      color: '#2166a8',
+                      fillColor: '#2166a8',
+                      fillOpacity: 0.12,
+                      weight: 1,
+                    }}
+                  />
+                  <CircleMarker
+                    center={[pose.latitude, pose.longitude]}
+                    radius={8}
+                    pathOptions={{ color: '#fff', fillColor: '#2166a8', fillOpacity: 1, weight: 3 }}
+                  >
+                    <Tooltip permanent direction="right" offset={[10, 0]}>
+                      You
+                    </Tooltip>
+                  </CircleMarker>
+                  <RecenterButton lat={pose.latitude} lon={pose.longitude} />
+                </>
+              )}
+
+              {routePoints.length > 1 && (
+                <>
+                  <Polyline positions={routePoints} pathOptions={{ color: '#0f6b63', weight: 6 }} />
+                  <FitBounds points={routePoints} />
+                </>
+              )}
+            </MapContainer>
+          )}
+          {!useGoogle && (
+            <p className="pointer-events-none absolute bottom-3 left-3 z-[1000] max-w-xs rounded-md bg-ink/75 px-2 py-1 text-[10px] text-white/90">
+              Real satellite + roads. Add VITE_GOOGLE_MAPS_API_KEY for Google Maps 3D tilt.
+            </p>
+          )}
         </div>
 
         <aside className="space-y-3">
           <div className="panel rounded-md p-4">
             <p className="label">Route</p>
             <p className="text-sm text-ink-mute">
-              Source:{' '}
-              <span className="font-medium text-ink">{sourceNodeId?.slice(0, 8) ?? '—'}</span>
+              From:{' '}
+              <span className="font-medium text-ink">{sourceNode?.name ?? '— (enable GPS or tap map)'}</span>
             </p>
-            <p className="text-sm text-ink-mute">
-              Destination:{' '}
-              <span className="font-medium text-ink">{destinationNodeId?.slice(0, 8) ?? '—'}</span>
+            <p className="mt-1 text-sm text-ink-mute">
+              To:{' '}
+              <span className="font-medium text-ink">{destNode?.name ?? '—'}</span>
             </p>
+            <label className="label mt-3">Go to</label>
+            <select
+              className="input"
+              value={destinationNodeId ?? ''}
+              onChange={(e) => {
+                const id = e.target.value;
+                if (id) void startRoute(id);
+              }}
+            >
+              <option value="">Select destination…</option>
+              {placeNodes
+                .slice()
+                .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+                .map((node) => (
+                  <option key={node.id} value={node.id}>
+                    {node.name}
+                  </option>
+                ))}
+            </select>
             {route && (
               <div className="mt-3 space-y-1 text-sm">
                 <p>
@@ -337,11 +576,6 @@ export function MapPage() {
                 <p>
                   ETA: <strong>{route.etaMinutes} min</strong>
                 </p>
-                {route.predictionUsed != null && (
-                  <p className="text-xs text-ink-faint">
-                    Prediction {route.predictionUsed ? 'on' : 'off'}
-                  </p>
-                )}
                 <button
                   className="btn-primary mt-3 w-full"
                   type="button"
@@ -356,28 +590,37 @@ export function MapPage() {
                 >
                   Start AR
                 </button>
-                <button
-                  className="btn-ghost mt-2 w-full"
-                  type="button"
-                  onClick={() => navigate('/twin')}
-                >
-                  Digital Twin
-                </button>
               </div>
             )}
           </div>
+
           <div className="panel rounded-md p-4">
-            <p className="label">Buildings{category ? ` · ${category}` : ''}</p>
-            <ul className="max-h-64 space-y-2 overflow-auto text-sm">
-              {filteredBuildings.map((b) => (
-                <li key={b.id} className="rounded-lg border border-line bg-paper-soft px-2 py-1.5">
-                  <p className="font-medium">{b.name}</p>
-                  <p className="text-xs text-ink-faint">{b.code}</p>
-                </li>
-              ))}
-              {filteredBuildings.length === 0 && (
-                <li className="text-xs text-ink-faint">No buildings match this category.</li>
-              )}
+            <p className="label">Campus places</p>
+            <ul className="max-h-72 space-y-1.5 overflow-auto text-sm">
+              {filteredBuildings
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((b) => {
+                  const linked = placeNodes.find(
+                    (n) =>
+                      n.buildingId === b.id ||
+                      n.name?.toLowerCase().includes(b.name.split(' ')[0].toLowerCase()),
+                  );
+                  return (
+                    <li key={b.id}>
+                      <button
+                        type="button"
+                        className="w-full rounded-md border border-line bg-paper-soft px-2 py-1.5 text-left hover:border-accent/40"
+                        onClick={() => {
+                          if (linked) void startRoute(linked.id);
+                        }}
+                      >
+                        <p className="font-medium">{b.name}</p>
+                        <p className="text-xs text-ink-faint">{b.code}</p>
+                      </button>
+                    </li>
+                  );
+                })}
             </ul>
           </div>
         </aside>

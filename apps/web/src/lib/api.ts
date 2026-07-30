@@ -20,6 +20,8 @@ import type {
   SensorReading,
 } from '@campusar/shared';
 
+import { useAuthStore } from '../stores/authStore';
+
 /** Prefer same-origin `/api` (Vite proxy in dev) so LAN hosts avoid CORS issues. */
 const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -34,14 +36,50 @@ export class ApiError extends Error {
   }
 }
 
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const { refreshToken, setSession, logout } = useAuthStore.getState();
+    if (!refreshToken) {
+      logout();
+      return null;
+    }
+    try {
+      const res = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        logout();
+        return null;
+      }
+      const body = data as AuthResponse;
+      setSession(body.user, body.tokens.accessToken, body.tokens.refreshToken);
+      return body.tokens.accessToken;
+    } catch {
+      logout();
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
   token?: string | null,
+  retried = false,
 ): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const authToken = token ?? useAuthStore.getState().accessToken;
+  if (authToken) headers.set('Authorization', `Bearer ${authToken}`);
 
   let res: Response;
   try {
@@ -53,13 +91,26 @@ async function request<T>(
       0,
     );
   }
+
+  if (res.status === 401 && !retried && !path.startsWith('/auth/')) {
+    const next = await refreshAccessToken();
+    if (next) return request<T>(path, options, next, true);
+    throw new ApiError(
+      'UNAUTHORIZED',
+      'Session expired — sign in again as organization admin.',
+      401,
+    );
+  }
+
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const fallback =
       res.status === 502 || res.status === 503 || res.status === 504
         ? 'Cannot reach the CampusAR API. Start the database and API, then try again.'
-        : 'Request failed';
+        : res.status === 401
+          ? 'Session expired — sign in again as organization admin.'
+          : 'Request failed';
     throw new ApiError(
       data.code ?? 'ERROR',
       data.message ?? fallback,
@@ -164,6 +215,44 @@ export const api = {
       ),
     remove: (id: string, token: string) =>
       request<void>(`/admin/paths/edges/${id}`, { method: 'DELETE' }, token),
+  },
+  adminNodes: {
+    list: (token: string) => request<GraphNode[]>('/admin/paths/nodes', {}, token),
+    create: (
+      body: {
+        name?: string | null;
+        latitude: number;
+        longitude: number;
+        floorId?: string | null;
+        buildingId?: string | null;
+        kind: GraphNode['kind'];
+      },
+      token: string,
+    ) =>
+      request<GraphNode>(
+        '/admin/paths/nodes',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    update: (
+      id: string,
+      body: Partial<{
+        name: string | null;
+        latitude: number;
+        longitude: number;
+        floorId: string | null;
+        buildingId: string | null;
+        kind: GraphNode['kind'];
+      }>,
+      token: string,
+    ) =>
+      request<GraphNode>(
+        `/admin/paths/nodes/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    remove: (id: string, token: string) =>
+      request<void>(`/admin/paths/nodes/${id}`, { method: 'DELETE' }, token),
   },
   adminZones: {
     create: (body: Omit<DangerZone, 'id'>, token: string) =>

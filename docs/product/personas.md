@@ -12,9 +12,9 @@
 | **Daily workflow** | Check timetable → walk/bus to campus → find classroom → move between lectures → library → leave |
 | **Technical ability** | High smartphone literacy; expects consumer-app polish |
 | **Device usage** | Mid-range Android/iPhone; uses browser and camera; headphones often on |
-| **Success looks like** | Opens CampusAR, picks “SCI-201”, follows AR doll + turns, arrives without asking anyone |
+| **Success looks like** | Opens org link/QR → Continue as Guest → picks destination → follows map/AR → arrives without asking anyone |
 
-**Why we design for Aisha:** Highest volume user; retention depends on daily reliability.
+**Why we design for Aisha:** Highest volume user; retention depends on daily reliability. Uses **Guest** access (no account required).
 
 ---
 
@@ -30,9 +30,9 @@
 | **Daily workflow** | Arrive by car/taxi → ask guard → wander → late to appointment |
 | **Technical ability** | Medium; will abandon complex flows |
 | **Device usage** | Smartphone; may refuse app install; prefers web/guest |
-| **Success looks like** | Guest mode → search destination → large clear map steps → optional AR |
+| **Success looks like** | QR → Continue as Guest → search destination → large clear map steps → optional AR |
 
-**Why we design for Rohan:** Guest mode and clarity over feature depth.
+**Why we design for Rohan:** Guest-first entry and clarity over feature depth. Never see admin login as a blocker.
 
 ---
 
@@ -48,9 +48,9 @@
 | **Daily workflow** | Office → lecture → another building → office hours |
 | **Technical ability** | Medium–high |
 | **Device usage** | Phone + laptop; AR occasional |
-| **Success looks like** | Saved prefs (avoid stairs), fast recalculation when a path is closed |
+| **Success looks like** | Guest session with saved local prefs (avoid stairs), fast recalculation when a path is closed |
 
-**Why we design for Dr. Mehta:** Accessibility prefs and reliability build institutional trust.
+**Why we design for Dr. Mehta:** Accessibility prefs and reliability build institutional trust. Navigation remains Guest; no mandatory faculty account.
 
 ---
 
@@ -84,9 +84,21 @@
 | **Daily workflow** | Tickets → update floor plans → events → reports |
 | **Technical ability** | High for IT; may not code |
 | **Device usage** | Desktop primary; tablet for walkthroughs |
-| **Success looks like** | Admin console for weights, buildings, hazards, twin view, analytics export narrative |
+| **Success looks like** | Admin email/password → Dashboard: visual map editor, branding, hazards, QR, analytics; no developer ticket for node edits |
 
-**Why we design for Arjun:** Buyer persona; determines renewal and expansion to IoT.
+**Why we design for Arjun:** Buyer persona; **only role that uses Administrator Login** for day-to-day configuration. Determines renewal and expansion.
+
+---
+
+## Access model note (NaaS)
+
+| Persona | Entry mode |
+|---------|------------|
+| Aisha, Rohan, Dr. Mehta (when navigating) | **Continue as Guest** |
+| Kavya (ops) | Future operator role or Org Admin tools |
+| Arjun | **Administrator Login** (email + password) |
+
+See [login-experience.md](./login-experience.md) and [role-permissions.md](./role-permissions.md).
 
 ---
 

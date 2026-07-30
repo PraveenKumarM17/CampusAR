@@ -94,14 +94,16 @@ Ideas beyond V1, aligned to the research vision. Each notes **why** and **depend
 
 ---
 
-## Multi-campus SaaS
+## Multi-tenant NaaS (strategic platform — in roadmap)
 
-**Why:** Venture-scale productization.  
-**Dependency:** Tenancy, onboarding tooling, billing, support.
+**Why:** Sell one application to many private organizations with hard isolation and self-serve maps.  
+**Status:** Product + architecture specified — see [`multi-tenancy.md`](./multi-tenancy.md) and [`../architecture/multi-tenant-architecture.md`](../architecture/multi-tenant-architecture.md). Delivery is **V1.5–V2** (tenant foundation, map editor, QR, branding), not a late V5 invention.  
+**Still later:** Billing scale, marketplace, multi-region residency (V3–V5).
 
 ---
 
 ## Prioritization hint
 
-Advance opportunities that **reuse V1 loop**: MQTT → better crowd → better routing → better metrics.  
-Defer opportunities that **fork the product** (parking, social) until navigation retention is proven.
+Advance opportunities that **reuse the navigation loop**: MQTT → better crowd → better routing → better metrics.  
+Prioritize **NaaS self-serve** (editor, QR, branding) before forking into parking/social.  
+Defer opportunities that **fork the product** until navigation retention and second-tenant proof are solid.

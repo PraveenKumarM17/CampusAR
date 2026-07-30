@@ -50,7 +50,7 @@ export interface Room {
 }
 
 export interface SearchResult {
-  type: 'building' | 'room';
+  type: 'building' | 'room' | 'place';
   id: string;
   name: string;
   code: string;

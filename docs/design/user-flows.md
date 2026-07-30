@@ -4,140 +4,113 @@ Aligned to product journeys; adds alternative and failure branches for UI design
 
 ---
 
-## Student
+## Visitor / Guest (primary)
 
 ### Normal
-Open → (login optional) → Map → Search class → Set OD → Route preview → Navigate or AR → Recalc as needed → Arrive → Done
+QR or org slug → Org landing → **Continue as Guest** (primary CTA) → Allow location → Map → Search/nearby → Route preview → Navigate or AR → Arrive
+
+Admin sign-in is a secondary text link only—never required for this flow.
 
 ### Alternative
-- Use category browse instead of search  
-- Enable step-free in Settings first  
+- Destination QR preselects place after Guest continue  
+- Category browse instead of search  
+- Enable step-free before start  
 - Switch Map ↔ AR mid-trip  
-- Prediction toggle on for busy hour  
+- Share location / report map issue  
 
 ### Failure
 | Failure | UI path |
 |---------|---------|
-| GPS deny | Manual source sheet |
+| GPS deny | Manual source / snap pick |
 | No route | Error + edit OD / relax access |
 | Camera deny | Stay on Navigate |
-| Off route | Toast + auto/manual recalc |
+| Hits `/admin` as guest | Redirect map + “Administrators only” |
 
 ```mermaid
 flowchart TD
-  A[Open] --> B[Map search]
-  B --> C[Route]
-  C -->|OK| D[Guide]
-  C -->|Fail| E[Fix OD / prefs]
-  E --> C
-  D -->|AR deny| D
-  D --> F[Arrive]
+  QR[QR / slug] --> L[Org landing]
+  L --> G[Continue as Guest]
+  G --> M[Map + GPS]
+  M --> S[Search]
+  S --> R[Route]
+  R --> N[Navigate / AR]
+  N --> A[Arrive]
+  L -.->|secondary| AD[Admin sign-in]
 ```
 
----
-
-## Visitor (Guest)
-
-### Normal
-Landing → Continue as guest → Map → Category/Admissions → Source=Main Gate → Preview (note construction) → Navigate + optional voice → Arrive → Soft register CTA
-
-### Alternative
-- Shared deep link to place  
-- Safety tab for contacts after arrival  
-
-### Failure
-| Failure | UI path |
-|---------|---------|
-| Account wall absent | Never block nav |
-| Lost in AR | Exit to Map instructions |
-| Network drop | Offline banner; keep last route if mid-nav |
+Full capability list: [`../product/guest-experience.md`](../product/guest-experience.md).
 
 ---
 
-## Faculty
+## Student / Faculty (navigating)
 
-### Normal
-Login → Settings: avoid stairs → Map → Lecture hall → Verify accessible badge on preview → Navigate → Arrive
+Same as Guest. Preferences may live in local storage. No mandatory account for navigation.
 
 ### Alternative
-- Lift outage hazard → Recalc prompt → New path  
-- Twin glance between meetings (optional)  
+- Accessibility prefs before route  
+- Emergency mode / exits  
 
 ### Failure
-| Failure | UI path |
-|---------|---------|
-| NO_ROUTE with access on | Explain + offer relax prefs + facilities contact |
-| Session expired mid-admin | N/A; if prefs save fails, toast + reauth |
+Same as Guest GPS/route failures.
 
 ---
 
 ## Administrator
 
 ### Normal
-Login → Admin → Create construction hazard → Save → Twin/Map verify overlay → Incognito/guest test route diversion → Adjust weights if needed → Analytics check → Expire hazard later
+Secondary **Administrator Login** → Email + Password → Dashboard → Visual map editor / branding / hazards / QR / analytics → Preview as Guest to verify
 
 ### Alternative
-- Block edge directly in Graph  
-- Start IoT sim for demo day  
+- Invite another admin  
+- Regenerate QR for reception  
+- Publish emergency alert  
 
 ### Failure
 | Failure | UI path |
 |---------|---------|
-| Validation geometry | Inline form errors |
-| 403 | Unexpected role — error page |
-| Clients not updating | StatusChip reconnect; refresh snapshot |
+| Bad credentials | Inline error |
+| 403 wrong org | Error page |
+| Validation on node save | Inspector errors |
 
 ```mermaid
 flowchart TD
-  L[Login admin] --> H[Create hazard]
-  H --> V[Verify twin/map]
-  V --> T[Test as user]
-  T -->|Bad| W[Tune weights/geometry]
-  W --> T
-  T -->|Good| Done[Monitor]
+  L[Admin login] --> D[Dashboard]
+  D --> E[Map editor]
+  E --> V[Preview as guest]
+  V -->|Bad| E
+  V -->|Good| Done[Publish / monitor]
 ```
+
+Feature catalog: [`../product/admin-dashboard-features.md`](../product/admin-dashboard-features.md).
 
 ---
 
 ## Emergency
 
-### Normal (operator)
-Admin marks fire hazard → WS updates → Active navigators toast “Route updated” / emergency styling → Users follow new path or Safety exits → Twin shows cleared corridor heat shift
+### Normal (operator / admin)
+Admin marks hazard or emergency alert → WS updates → Active navigators toast → Guests follow new path or exits → Twin/map reflect state
 
 ### Normal (individual SOS)
-Tap SOS → Confirm dialog → Success state with contacts → (Admin sees log)
+Guest taps SOS → Confirm → Success with contacts → Admin sees log
 
 ### Alternative
-- User already in hazard → UI prioritizes “Leave area” + exits  
+- User already in hazard → “Leave area” + exits  
 - Prediction ignored under fire hard-block  
 
 ### Failure
 | Failure | UI path |
 |---------|---------|
-| SOS offline | Hard error — try phone contacts still listed |
+| SOS offline | Hard error — phone contacts still listed |
 | NO_ROUTE campus-wide | Exits + contacts full screen |
 | User thinks SMS sent | Copy: “Alert recorded. Contact security.” — never “dispatch notified” |
-
----
-
-## Guest (explicit)
-
-Guest is a **mode**, overlapping Visitor.
-
-### Normal
-Same as Visitor; prefs in local storage (doll, voice).
-
-### Alternative
-Register from Profile banner → merge local prefs when product supports (V1 may reset — disclose).
-
-### Failure
-Attempt Admin URL → redirect Map + toast “Admin only”.
 
 ---
 
 ## Cross-cutting UX rules in flows
 
 1. Never dead-end without CTA  
-2. Confirm before SOS and destructive admin deletes  
-3. Label Simulated whenever sim data is shown  
-4. Preserve route session when hopping Navigate ↔ AR  
+2. Guest CTA dominates org landing; admin login is secondary  
+3. Confirm before SOS and destructive admin deletes  
+4. Label Simulated whenever sim data is shown  
+5. Preserve route session when hopping Navigate ↔ AR  
+6. Guests never see admin chrome  

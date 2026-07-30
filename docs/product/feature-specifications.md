@@ -9,41 +9,49 @@ Specifications for Must Have and Should Have features. Could Have items are summ
 ## F-01 Authentication & sessions
 
 ### Purpose
-Identify users, persist preferences, and gate admin capabilities.
+Separate **guest navigation** (majority) from **organization administrator** configuration access.
 
 ### Description
-Support guest continuation, email/password register & login, JWT (or equivalent) session, logout. Guest identity is ephemeral; registered users persist preferences (e.g. guide gender, accessibility).
+Primary entry: **Continue as Guest** on an organization URL/QR—no account.  
+Secondary: **Administrator login** with email + password for Admin Dashboard only.  
+Sessions: guest token (org-bound, navigation APIs) vs admin JWT/refresh (membership-scoped).  
+Visitor self-registration is not part of the primary product path (optional “save trips” later).
+
+Canonical docs: [login-experience.md](./login-experience.md), [role-permissions.md](./role-permissions.md), [../architecture/authentication-authorization.md](../architecture/authentication-authorization.md).
 
 ### Business Rules
-- Guests may search, route, navigate, use AR; may not access admin or mutate campus data.
-- Passwords stored hashed; tokens expire per security policy.
-- Admin role required for `/admin` APIs and UI.
+- Guests may use navigation features only; may not access admin or mutate org graph/branding.
+- Email/password accounts are for **Organization Admins** (and future Super Admins), not general visitors.
+- Passwords stored hashed; admin tokens expire per security policy.
+- Admin role + org membership required for `/admin` APIs and UI.
+- Guest preferences (a11y, map style) may persist in local storage without an account.
 
 ### Edge Cases
-- Duplicate email on register → clear validation error.
-- Expired token mid-navigation → allow finish of current route client-side; block admin calls.
-- Guest upgrades to registered → optional preference merge (V1: start fresh OK).
+- Invalid admin credentials → clear error; no guest elevation.
+- Expired admin token mid-edit → re-auth; guest navigation unaffected.
+- Guest opens `/admin` → login challenge or redirect + “Administrators only.”
+- Removed membership → refresh revoked; immediate 403 on admin APIs.
 
 ### Permissions
-| Action | Guest | Student/Faculty | Admin | Security |
-|--------|-------|-----------------|-------|----------|
-| Login/register | Y | Y | Y | Y |
-| Navigate | Y | Y | Y | Y |
-| Admin CRUD | N | N | Y | Limited* |
-
-\*Security may get hazard/SOS views in V2; V1 treat as admin-assisted.
+| Action | Guest | Org Admin | Super Admin (future) |
+|--------|-------|-----------|----------------------|
+| Continue as Guest | Y | Y (preview) | Y |
+| Admin email/password login | N | Y | Y (platform) |
+| Navigate / AR / SOS | Y | Y | Y |
+| Admin Dashboard CRUD | N | Y (own org) | Y (audited) |
 
 ### Dependencies
-User store; auth middleware; web auth store.
+User + membership store; auth middleware; guest session; web auth store.
 
 ### Acceptance Criteria
-- [ ] Guest can reach Navigate without account.
-- [ ] Valid login returns usable session; invalid shows message.
-- [ ] Non-admin cannot open admin tools successfully.
-- [ ] Logout clears session and sensitive UI state.
+- [ ] Guest can reach Navigate without account after org resolve.
+- [ ] Guest CTA is primary on org landing; admin sign-in is secondary.
+- [ ] Valid admin login returns usable session; invalid shows message.
+- [ ] Non-admin cannot open admin tools successfully (UI + API).
+- [ ] Logout clears admin session and sensitive UI state.
 
 ### Future Enhancements
-SSO (SAML/OIDC), campus ID, MFA for admins.
+SSO (SAML/OIDC) for admins; MFA for admins/Super Admin; optional visitor save-trips accounts.
 
 ---
 
@@ -420,33 +428,39 @@ Twilio/SMS, campus security console, silent SOS, share live location.
 ## F-13 Admin console & routing weights
 
 ### Purpose
-Operate the digital campus without engineering deploys.
+Operate the organization’s navigation system without engineering deploys. Entry: **Administrator Login** only.
 
 ### Description
-Admin UI/API for buildings, nodes/edges, blockages, crowd overrides, events, hazards, IoT simulator, routing weight triad (distance / safety / crowd), analytics views.
+Organization Admin Dashboard: profile/branding, visual map editor (nodes/edges—no manual coordinates), buildings/floors, categories/landmarks/zones, navigation policies, safety, QR, analytics, user management, content (announcements/events/alerts), map settings, routing weights, IoT simulator (when enabled).
+
+Catalog: [admin-dashboard-features.md](./admin-dashboard-features.md), [node-management.md](./node-management.md), [organization-management.md](./organization-management.md).
 
 ### Business Rules
-- All mutations audited (who/when) — **Assumption: audit log V1 minimal (DB timestamps + user id); full audit trail V2.**
+- Guests cannot access any admin surface.
+- All mutations org-scoped and audited (who/when) — **Assumption: audit log V1 minimal (DB timestamps + user id); full audit trail expands with NaaS.**
 - Weights normalized or validated to sane ranges.
 - Destructive deletes guarded (confirm).
+- Nodes created via map click; paths via select A → select B → Create Path.
 
 ### Edge Cases
 - Invalid geometry → reject with validation errors.
 - Weight extremes (0 distance) → reject or warn.
+- Admin of org A calling org B APIs → 403.
 
 ### Permissions
-Admin only.
+Organization Admin (own org) only; Super Admin future for support. See [role-permissions.md](./role-permissions.md).
 
 ### Dependencies
-Auth; repositories; analytics.
+Auth + membership; repositories; analytics; branding storage.
 
 ### Acceptance Criteria
 - [ ] Admin can adjust weights and observe route behaviour change.
-- [ ] CRUD for core entities works with validation.
-- [ ] Non-admin forbidden.
+- [ ] Visual CRUD for nodes/edges works without lat/lng text entry.
+- [ ] Non-admin / guest forbidden on admin APIs.
+- [ ] Branding and QR manageable from dashboard.
 
 ### Future Enhancements
-Draft/publish workflow, RBAC fine-grained roles, change review.
+Draft/publish workflow, operator role, department QR, change review.
 
 ---
 

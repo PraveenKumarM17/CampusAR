@@ -6,9 +6,9 @@
 2. Apply **multi-criteria routing** (distance, crowd, safety, accessibility) with explainable outcomes.
 3. Support **map and Web AR** guidance without making AR a hard dependency.
 4. Provide **operator visibility** (admin, hazards, twin, analytics) on the same data plane as end users.
-5. Remain **extensible** for BLE positioning, MQTT IoT, ML predictors, native AR, and multi-campus tenancy **without rewriting core domains**.
+5. Remain **extensible** for multi-tenant NaaS, BLE positioning, MQTT IoT, ML predictors, and native AR **without rewriting core domains**.
 
-Product source of truth: [`../product/prd.md`](../product/prd.md).
+Product source of truth: [`../product/prd.md`](../product/prd.md) (V1) and [`../product/multi-tenancy.md`](../product/multi-tenancy.md) (platform).
 
 ---
 
@@ -22,7 +22,7 @@ Product source of truth: [`../product/prd.md`](../product/prd.md).
 | Event projection (light) | IoT/sim writes state; WS fan-out notifies clients |
 | Ports & adapters | Predictors, position providers, IoT ingest behind interfaces |
 
-**Assumption (V1):** Single campus tenant; multi-tenant isolation arrives in V5 via config + row-level `campus_id` prepared early.
+**Assumption (V1):** Single reference campus operates as the first organization. Multi-tenant isolation is a **platform track (V1.5–V2)**, not deferred to a late V5 discovery — see [`multi-tenant-architecture.md`](./multi-tenant-architecture.md). Row-level `organization_id` is the tenancy key.
 
 ---
 

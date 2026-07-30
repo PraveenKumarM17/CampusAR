@@ -11,8 +11,10 @@ Aligned to product entities: users, campus graph, routing config, hazards, crowd
 1. **Graph + GIS together** — topology (nodes/edges) and geometry coexist.
 2. **Live crowd is mutable state** — high churn; keep separate from static geometry.
 3. **Hazards are first-class** — time-bounded, typed, geometrically queryable.
-4. **Prepare `campus_id`** — even if V1 single campus, column/context ready for V5.
+4. **Tenant key `organization_id`** — even if V1 runs one org, stamp every tenant-owned row; see [`organization-domain.md`](./organization-domain.md).
 5. **Minimize PII** — analytics aggregates; SOS stores only what product requires.
+
+> **NaaS note:** Prefer the name **Organization** over **Campus** as the root entity. Legacy docs may say `campus_id`; treat that as synonymous with `organization_id` during migration.
 
 ---
 
@@ -31,7 +33,7 @@ Guest may have no User row.
 
 | Entity | Description |
 |--------|-------------|
-| **Campus** | Tenant root (id, name, bounds polygon, timezone) |
+| **Organization (Campus)** | Tenant root (id, slug, name, bounds polygon, timezone, status) |
 | **Building** | Named structure, footprint geometry, metadata |
 | **Place / Room** | Searchable destination; category; optional floor; link to node(s) |
 | **Node** | Walkable graph vertex; point geometry; type (entrance, junction, indoor, exit) |

@@ -7,30 +7,11 @@ import { useAuthStore } from '../../stores/authStore';
 export function LandingPage() {
   const setSession = useAuthStore((s) => s.setSession);
   const navigate = useNavigate();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('student@smartcampus.edu');
-  const [password, setPassword] = useState('student123');
-  const [name, setName] = useState('');
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [email, setEmail] = useState('admin@smartcampus.edu');
+  const [password, setPassword] = useState('admin123');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      const res =
-        mode === 'login'
-          ? await api.login(email, password)
-          : await api.register(email, password, name || 'Student');
-      setSession(res.user, res.tokens.accessToken, res.tokens.refreshToken);
-      navigate('/map');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function enterGuest() {
     setLoading(true);
@@ -40,7 +21,26 @@ export function LandingPage() {
       setSession(res.user, res.tokens.accessToken, res.tokens.refreshToken);
       navigate('/map');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Guest login failed');
+      setError(err instanceof Error ? err.message : 'Guest access failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onAdminSubmit(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.login(email, password);
+      if (res.user.role !== 'admin') {
+        setError('This sign-in is for organization administrators only.');
+        return;
+      }
+      setSession(res.user, res.tokens.accessToken, res.tokens.refreshToken);
+      navigate('/admin');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Admin login failed');
     } finally {
       setLoading(false);
     }
@@ -58,89 +58,96 @@ export function LandingPage() {
             Find any room at RNSIT without asking for directions.
           </h1>
           <p className="mt-3 max-w-md text-base text-ink-mute sm:text-lg">
-            Channasandra, Bengaluru — live routes that steer around crowds, hazards, and closed
-            paths, on a map or through your camera.
+            Channasandra, Bengaluru — scan, allow location, and navigate. No account needed.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3 animate-fade-up-delay">
+          <div className="mt-8 flex flex-col items-start gap-3 animate-fade-up-delay sm:flex-row sm:flex-wrap sm:items-center">
             <button className="btn-primary" type="button" onClick={enterGuest} disabled={loading}>
-              Enter as guest <ArrowRight size={16} />
+              Continue as Guest <ArrowRight size={16} />
             </button>
             <button
-              className="btn-ghost"
+              className="text-sm font-medium text-ink-mute underline-offset-4 hover:text-ink hover:underline"
               type="button"
-              onClick={() =>
-                document.getElementById('sign-in')?.scrollIntoView({ behavior: 'smooth' })
-              }
+              onClick={() => {
+                setShowAdmin(true);
+                setError(null);
+                requestAnimationFrame(() =>
+                  document.getElementById('admin-sign-in')?.scrollIntoView({ behavior: 'smooth' }),
+                );
+              }}
             >
-              Sign in
+              Organization admin sign in
             </button>
           </div>
+          {error && !showAdmin && (
+            <p className="mt-4 max-w-md border border-accent-danger/30 bg-accent-danger/5 px-3 py-2 text-sm text-accent-danger">
+              {error}
+            </p>
+          )}
         </header>
 
-        <section
-          id="sign-in"
-          className="animate-fade-up-delay-2 w-full max-w-md border border-line bg-paper-raised p-6 sm:p-7"
-        >
-          <div className="mb-5 flex gap-6 border-b border-line">
-            <button
-              type="button"
-              className={`pb-3 text-sm font-semibold ${
-                mode === 'login' ? 'border-b-2 border-accent text-ink' : 'text-ink-faint'
-              }`}
-              onClick={() => setMode('login')}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              className={`pb-3 text-sm font-semibold ${
-                mode === 'register' ? 'border-b-2 border-accent text-ink' : 'text-ink-faint'
-              }`}
-              onClick={() => setMode('register')}
-            >
-              Create account
-            </button>
-          </div>
-          <form className="space-y-4" onSubmit={onSubmit}>
-            {mode === 'register' && (
+        {showAdmin && (
+          <section
+            id="admin-sign-in"
+            className="animate-fade-up-delay-2 w-full max-w-md border border-line bg-paper-raised p-6 sm:p-7"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+              Administrators only
+            </p>
+            <h2 className="mt-1 font-display text-xl font-semibold">Admin sign in</h2>
+            <p className="mt-1 text-sm text-ink-mute">
+              Manage the map, nodes, branding, safety, and analytics for this organization.
+            </p>
+            <form className="mt-5 space-y-4" onSubmit={onAdminSubmit}>
               <div>
-                <label className="label">Name</label>
-                <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+                <label className="label" htmlFor="admin-email">
+                  Email
+                </label>
+                <input
+                  id="admin-email"
+                  className="input"
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
               </div>
-            )}
-            <div>
-              <label className="label">Email</label>
-              <input
-                className="input"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="label">Password</label>
-              <input
-                className="input"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            {error && (
-              <p className="border border-accent-danger/30 bg-accent-danger/5 px-3 py-2 text-sm text-accent-danger">
-                {error}
-              </p>
-            )}
-            <button className="btn-primary w-full" type="submit" disabled={loading}>
-              {mode === 'login' ? 'Sign in' : 'Create account'}
+              <div>
+                <label className="label" htmlFor="admin-password">
+                  Password
+                </label>
+                <input
+                  id="admin-password"
+                  className="input"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              {error && (
+                <p className="border border-accent-danger/30 bg-accent-danger/5 px-3 py-2 text-sm text-accent-danger">
+                  {error}
+                </p>
+              )}
+              <button className="btn-primary w-full" type="submit" disabled={loading}>
+                Sign in to Dashboard
+              </button>
+            </form>
+            <button
+              type="button"
+              className="mt-4 text-sm text-ink-mute hover:text-ink"
+              onClick={() => {
+                setShowAdmin(false);
+                setError(null);
+              }}
+            >
+              Back — continue as guest instead
             </button>
-          </form>
-          <p className="mt-4 text-xs text-ink-faint">
-            Demo · student@smartcampus.edu / student123 · admin@smartcampus.edu / admin123
-          </p>
-        </section>
+            <p className="mt-4 text-xs text-ink-faint">Demo admin · admin@smartcampus.edu / admin123</p>
+          </section>
+        )}
       </div>
     </div>
   );

@@ -59,7 +59,7 @@ interface NavState {
 }
 
 export const useNavStore = create<NavState>((set) => ({
-  sourceNodeId: 'a1000001-0000-0000-0000-000000000001',
+  sourceNodeId: null,
   destinationNodeId: null,
   setSource: (sourceNodeId) => set({ sourceNodeId }),
   setDestination: (destinationNodeId) => set({ destinationNodeId }),

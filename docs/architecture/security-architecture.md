@@ -11,15 +11,18 @@
 
 ## Authentication
 
+NaaS dual-entry model (see [`authentication-authorization.md`](./authentication-authorization.md)):
+
 | Mechanism | Use |
 |-----------|-----|
-| Email + password | V1 registered users |
+| **Continue as Guest** | Primary path; org-bound guest session; no account |
+| Email + password | **Organization administrators only** |
 | Password hashing | Modern KDF (e.g. bcrypt/argon2) — impl detail |
-| Access JWT | Short-lived; carries `sub`, `role`, `campus_id` |
-| Refresh token | Longer-lived; rotatable; revoke on logout |
-| Guest | Limited principal; no admin |
+| Access JWT | Short-lived; carries `sub`, `role`, `organizationId` / memberships |
+| Refresh token | Admin sessions; rotatable; revoke on logout / membership removal |
+| Guest token | Limited principal; navigation APIs only; never admin |
 
-**Future:** Campus SSO (OIDC/SAML) as additional `AuthProvider` without changing RBAC checks.
+**Future:** Enterprise SSO (OIDC/SAML) for **admins** as additional `AuthProvider` without changing guest flow or RBAC checks.
 
 ---
 
@@ -27,14 +30,13 @@
 
 | Role | Capabilities |
 |------|----------------|
-| Guest | Search, route, navigate, AR, safety read, SOS |
-| User (student/faculty) | Guest + persisted prefs |
-| Security | Future: hazard/SOS console; V1 may map to admin-assisted |
-| Admin | All mutations, analytics, IoT controls |
+| Guest | Navigation-only: search, route, navigate, AR, safety read, SOS create, share, report issue |
+| Organization Admin | All org mutations: editor, branding, safety, QR, analytics, users, content |
+| Super Admin (future) | Platform tenant lifecycle; audited support access |
+| Org operator (optional future) | Hazards / SOS console without full admin |
 
-Enforce on **server use cases**, not only UI hides.
-
-Optional resource checks later (per-campus admin).
+Enforce on **server use cases**, not only UI hides.  
+Permission matrix: [`../product/role-permissions.md`](../product/role-permissions.md).
 
 ---
 

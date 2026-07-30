@@ -15,13 +15,14 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import type { AppNotification } from '@campusar/shared';
 
-const links = [
+const navLinks = [
   { to: '/map', label: 'Map', icon: Map },
   { to: '/navigate', label: 'Navigate', icon: Navigation },
   { to: '/ar', label: 'AR', icon: Scan },
-  { to: '/twin', label: 'Twin', icon: Box },
   { to: '/safety', label: 'Safety', icon: ShieldAlert },
 ];
+
+const twinLink = { to: '/twin', label: 'Twin', icon: Box };
 
 export function AppShell() {
   const user = useAuthStore((s) => s.user);
@@ -38,13 +39,19 @@ export function AppShell() {
       .catch(() => setNotes([]));
   }, [token]);
 
-  const adminLinks =
-    user?.role === 'admin'
-      ? [
-          { to: '/admin', label: 'Admin', icon: LayoutDashboard },
-          { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-        ]
-      : [];
+  const isAdmin = user?.role === 'admin';
+  const isGuest = user?.role === 'guest';
+
+  const links = isAdmin ? [...navLinks, twinLink] : navLinks;
+
+  const adminLinks = isAdmin
+    ? [
+        { to: '/admin', label: 'Admin', icon: LayoutDashboard },
+        { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+      ]
+    : [];
+
+  const roleLabel = isAdmin ? 'Admin' : isGuest ? 'Guest' : 'Member';
 
   return (
     <div className="min-h-screen bg-atlas text-ink">
@@ -101,11 +108,12 @@ export function AppShell() {
             </div>
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold">{user?.name}</p>
-              <p className="text-xs text-ink-faint">{user?.role}</p>
+              <p className="text-xs text-ink-faint">{roleLabel}</p>
             </div>
             <button
               type="button"
               className="btn-ghost !px-2.5 !py-2"
+              aria-label={isGuest ? 'Leave guest session' : 'Sign out'}
               onClick={() => {
                 logout();
                 navigate('/');
