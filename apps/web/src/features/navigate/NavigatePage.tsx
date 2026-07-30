@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
+import { CAMPUS_MAP_CENTER } from '../../lib/campus';
 
 export function NavigatePage() {
   const token = useAuthStore((s) => s.accessToken);
@@ -197,7 +198,7 @@ export function NavigatePage() {
         </div>
 
         <div className="overflow-hidden rounded-md border border-line">
-          <MapContainer center={[37.7748, -122.419]} zoom={17} className="h-[70vh] w-full">
+          <MapContainer center={CAMPUS_MAP_CENTER} zoom={17} className="h-[70vh] w-full">
             <TileLayer
               attribution="&copy; OSM"
               url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"

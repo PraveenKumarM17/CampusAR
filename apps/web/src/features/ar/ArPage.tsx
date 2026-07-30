@@ -6,6 +6,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { useCampusLive } from '../../hooks/useCampusLive';
 import { GuideDollViewport, poseFromRouteContext } from './GuideDoll';
+import { CAMPUS_LABEL } from '../../lib/campus';
 
 export function ArPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -91,8 +92,8 @@ export function ArPage() {
   const step = route?.path[stepIndex];
   const arrived = Boolean(
     route &&
-    stepIndex >= route.path.length - 1 &&
-    (step?.distanceM === 0 || step?.instruction.toLowerCase().includes('arrived')),
+      stepIndex >= route.path.length - 1 &&
+      (step?.distanceM === 0 || step?.instruction.toLowerCase().includes('arrived')),
   );
 
   const remaining = useMemo(() => {
@@ -167,7 +168,7 @@ export function ArPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="page-title">AR Navigation</h1>
-          <p className="page-sub">Follow the guide on camera — your doll mirrors each turn.</p>
+          <p className="page-sub">{CAMPUS_LABEL} — follow the guide on camera.</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-ink-mute">Guide doll</span>
@@ -210,78 +211,82 @@ export function ArPage() {
         </div>
       )}
 
+      {/* Viewport: doll on right, chrome top + bottom — nothing over the doll */}
       <div className="relative overflow-hidden rounded-md border border-line bg-ink-950">
-        <video ref={videoRef} className="h-[70vh] w-full object-cover" playsInline muted />
+        <video ref={videoRef} className="h-[min(78vh,720px)] w-full object-cover" playsInline muted />
         {!videoRef.current?.srcObject && cameraError && (
           <div className="absolute inset-0 bg-[linear-gradient(160deg,#2a353e,#12171c)]" />
         )}
 
-        {/* 3D guide doll */}
+        {/* Top status bar */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-3 sm:p-4">
+          <div className="rounded-md border border-white/20 bg-ink/80 px-3 py-2 text-sm text-white backdrop-blur-sm">
+            <p className="text-xs text-white/70">Distance remaining</p>
+            <p className="font-display text-xl font-semibold">
+              {showSuccess ? 0 : Math.round(remaining)} m
+            </p>
+            {route && !showSuccess && (
+              <p className="text-xs text-white/65">ETA ~{route.etaMinutes} min</p>
+            )}
+          </div>
+          <div className="rounded-md border border-white/20 bg-ink/80 px-3 py-2 text-right text-sm text-white backdrop-blur-sm">
+            <p className="inline-flex items-center justify-end gap-1 text-xs text-white/65">
+              <MapPin size={12} /> {showSuccess ? 'Arrived' : 'Next waypoint'}
+            </p>
+            <p className="font-semibold">
+              {route
+                ? `Step ${Math.min(stepIndex + 1, route.path.length)}/${route.path.length}`
+                : '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* Bearing arrow — upper center, clear of doll */}
+        {!showSuccess && (
+          <div className="pointer-events-none absolute left-1/2 top-[22%] z-10 -translate-x-1/2">
+            <div className="ar-arrow flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-md">
+              <ArrowUp
+                size={32}
+                className="text-white transition-transform duration-200"
+                style={{ transform: `rotate(${arrowRotation}deg)` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Guide doll — right side only, above bottom panel, no text overlays */}
         <GuideDollViewport
           gender={avatarGender}
           pose={pose}
-          className="pointer-events-none absolute bottom-28 left-1/2 h-56 w-40 -translate-x-1/2 sm:h-64 sm:w-48"
+          className="pointer-events-none absolute bottom-36 right-2 z-10 h-52 w-36 sm:bottom-40 sm:right-4 sm:h-64 sm:w-44"
         />
 
-        <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="pointer-events-auto rounded-md border border-white/20 bg-ink/75 px-3 py-2 text-sm text-white backdrop-blur-sm">
-              <p className="text-xs text-white/70">Distance remaining</p>
-              <p className="font-display text-xl font-semibold text-white">
-                {showSuccess ? 0 : Math.round(remaining)} m
+        {/* Bottom instruction + controls — full width under doll feet */}
+        <div className="absolute inset-x-0 bottom-0 z-20 border-t border-white/10 bg-gradient-to-t from-ink/95 via-ink/85 to-ink/40 px-3 pb-3 pt-8 sm:px-4">
+          {showSuccess ? (
+            <div className="mx-auto max-w-lg rounded-md border border-accent/40 bg-accent px-4 py-3 text-center text-white animate-fade-up">
+              <p className="inline-flex items-center justify-center gap-2 font-display text-lg font-semibold sm:text-xl">
+                <CheckCircle2 size={20} /> Success
               </p>
-              {route && !showSuccess && (
-                <p className="text-xs text-white/65">ETA ~{route.etaMinutes} min</p>
+              <p className="mt-1 text-sm sm:text-base">You have reached your destination.</p>
+            </div>
+          ) : (
+            <div className="mx-auto max-w-lg rounded-md border border-white/15 bg-ink/70 px-3 py-2.5 text-center text-white backdrop-blur-sm sm:px-4 sm:py-3">
+              {isWaving && (
+                <p className="mb-1 text-xs font-semibold text-[#9fe0d8]">
+                  {pose === 'waveLeft' ? 'Turn left ahead' : 'Turn right ahead'}
+                </p>
               )}
-            </div>
-            <div className="rounded-md border border-white/20 bg-ink/75 px-3 py-2 text-right text-sm text-white backdrop-blur-sm">
-              <p className="inline-flex items-center gap-1 text-xs text-white/65">
-                <MapPin size={12} /> {showSuccess ? 'Arrived' : 'Next waypoint'}
+              <p className="inline-flex items-center justify-center gap-2 text-xs text-white/70">
+                <Volume2 size={12} /> Next instruction
               </p>
-              <p className="font-semibold">
-                {route
-                  ? `Step ${Math.min(stepIndex + 1, route.path.length)}/${route.path.length}`
-                  : '—'}
+              <p className="mt-1 font-display text-base font-semibold sm:text-lg">
+                {step?.instruction ?? 'Waiting for route…'}
               </p>
             </div>
-          </div>
+          )}
 
-          <div className="flex flex-col items-center gap-3">
-            {!showSuccess && (
-              <div className="ar-arrow relative flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white">
-                <ArrowUp
-                  size={32}
-                  className="text-white transition-transform duration-200"
-                  style={{ transform: `rotate(${arrowRotation}deg)` }}
-                />
-              </div>
-            )}
-
-            {showSuccess ? (
-              <div className="max-w-md rounded-md border border-accent/40 bg-accent px-5 py-4 text-center text-white shadow-sm animate-fade-up">
-                <p className="inline-flex items-center justify-center gap-2 font-display text-xl font-semibold">
-                  <CheckCircle2 size={22} /> Success
-                </p>
-                <p className="mt-2 text-base">You have reached your destination.</p>
-              </div>
-            ) : (
-              <div className="max-w-md rounded-md border border-white/20 bg-ink/75 px-4 py-3 text-center text-white backdrop-blur-sm">
-                {isWaving && (
-                  <p className="mb-1 text-xs font-semibold text-[#9fe0d8]">
-                    {pose === 'waveLeft' ? 'Turn left ahead — waving left' : 'Turn right ahead — waving right'}
-                  </p>
-                )}
-                <p className="inline-flex items-center gap-2 text-xs text-white/70">
-                  <Volume2 size={12} /> Next instruction
-                </p>
-                <p className="mt-1 font-display text-lg font-semibold">
-                  {step?.instruction ?? 'Waiting for route…'}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="pointer-events-auto flex justify-center gap-2">
+          <div className="mt-3 flex justify-center gap-2">
             {!showSuccess ? (
               <>
                 <button

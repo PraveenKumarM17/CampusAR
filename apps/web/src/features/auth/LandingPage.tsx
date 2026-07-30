@@ -55,11 +55,11 @@ export function LandingPage() {
             CampusAR
           </p>
           <h1 className="mt-5 max-w-xl font-display text-2xl font-medium leading-snug text-ink sm:text-3xl">
-            Find any room without asking for directions.
+            Find any room at RNSIT without asking for directions.
           </h1>
           <p className="mt-3 max-w-md text-base text-ink-mute sm:text-lg">
-            Live routes that steer around crowds, hazards, and closed paths — on a map or through
-            your camera.
+            Channasandra, Bengaluru — live routes that steer around crowds, hazards, and closed
+            paths, on a map or through your camera.
           </p>
           <div className="mt-8 flex flex-wrap gap-3 animate-fade-up-delay">
             <button className="btn-primary" type="button" onClick={enterGuest} disabled={loading}>

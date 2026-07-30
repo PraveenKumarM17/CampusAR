@@ -21,6 +21,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useNavStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
 import { useCampusLive } from '../../hooks/useCampusLive';
+import { CAMPUS_MAP_CENTER } from '../../lib/campus';
 
 function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
@@ -163,7 +164,7 @@ export function MapPage() {
         <div>
           <h1 className="page-title">Campus map</h1>
           <p className="page-sub">
-            Search buildings, rooms, and plan a route.
+            RNSIT · Channasandra, Bengaluru — search buildings and plan a route.
             {live.connected ? ' · IoT live' : ' · IoT offline'}
           </p>
         </div>
@@ -228,7 +229,7 @@ export function MapPage() {
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         <div className="overflow-hidden rounded-md border border-line">
           <MapContainer
-            center={[37.7748, -122.419]}
+            center={CAMPUS_MAP_CENTER}
             zoom={17}
             className="h-[58vh] w-full"
             scrollWheelZoom

@@ -6,7 +6,9 @@ import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useCampusLive } from '../../hooks/useCampusLive';
 
-const ORIGIN = { lat: 37.7748, lon: -122.419 };
+import { CAMPUS_CENTER } from '../../lib/campus';
+
+const ORIGIN = { lat: CAMPUS_CENTER.lat, lon: CAMPUS_CENTER.lon };
 
 function toLocal(lat: number, lon: number): [number, number] {
   const x = (lon - ORIGIN.lon) * 111_320 * Math.cos((ORIGIN.lat * Math.PI) / 180);

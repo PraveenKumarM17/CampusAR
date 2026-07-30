@@ -3,6 +3,7 @@ import { AlertTriangle, Phone, Siren } from 'lucide-react';
 import type { DangerZone, EmergencyContact, EmergencyExit } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
+import { CAMPUS_CENTER } from '../../lib/campus';
 
 export function SafetyPage() {
   const token = useAuthStore((s) => s.accessToken);
@@ -29,8 +30,8 @@ export function SafetyPage() {
       ).catch(() => null);
       const res = await api.sos(
         {
-          latitude: pos?.coords.latitude ?? 37.7748,
-          longitude: pos?.coords.longitude ?? -122.419,
+          latitude: pos?.coords.latitude ?? CAMPUS_CENTER.lat,
+          longitude: pos?.coords.longitude ?? CAMPUS_CENTER.lon,
           message: 'SOS from CampusAR web client',
         },
         token,
