@@ -1,0 +1,48 @@
+# Deployment guide
+
+## Prerequisites
+
+- Docker & Docker Compose
+- Or Node 20+ and PostgreSQL 16 + PostGIS
+
+## Environment
+
+Copy `.env.example` to `.env` and set strong JWT secrets for production.
+
+## Compose deploy
+
+```bash
+docker compose up --build -d
+```
+
+Services:
+
+| Service      | Port        |
+| ------------ | ----------- |
+| web (nginx)  | 5173 → 80   |
+| api          | 4000        |
+| db (PostGIS) | 5433 → 5432 |
+
+After first DB init, if login passwords are wrong (raw SQL seed), run:
+
+```bash
+docker compose exec api sh -c "node -e \"require('child_process').execSync('npx tsx src/infrastructure/db/seed.ts',{stdio:'inherit'})\" "
+```
+
+Prefer seeding via host npm against the published DB port:
+
+```bash
+DATABASE_URL=postgresql://campusar:campusar_secret@localhost:5433/campusar npm run db:seed -w @campusar/api
+```
+
+## Production notes
+
+1. Terminate TLS at a reverse proxy (Caddy/Nginx/Traefik).
+2. Restrict CORS `CORS_ORIGIN` to the real web origin.
+3. Rotate JWT secrets; use 15m access / 7d refresh (or shorter).
+4. Back up the Postgres volume regularly.
+5. Point Unity `ApiBaseUrl` at the public HTTPS API.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs format, lint, typecheck, tests against PostGIS, and Docker image builds.

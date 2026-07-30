@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  font-family: Manrope, system-ui, sans-serif;
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-glass;
+  }
+  .glass-strong {
+    @apply bg-ink-800/70 backdrop-blur-2xl border border-white/15 shadow-glass;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 font-semibold text-ink-950 transition hover:bg-accent-soft active:scale-[0.98] disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 font-medium text-white/90 transition hover:bg-white/10 active:scale-[0.98];
+  }
+  .input {
+    @apply w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none ring-accent/40 placeholder:text-white/40 focus:ring-2;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-white/55;
+  }
+}
+
+.leaflet-container {
+  background: #0c1220;
+  font-family: Manrope, system-ui, sans-serif;
+}
+
+@keyframes float-arrow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.ar-arrow {
+  animation: float-arrow 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+.pulse-ring::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 9999px;
+  border: 2px solid rgba(61, 155, 253, 0.6);
+  animation: pulse-ring 1.4s ease-out infinite;
+}
