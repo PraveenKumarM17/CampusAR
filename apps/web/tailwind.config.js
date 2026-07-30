@@ -5,32 +5,41 @@ export default {
   theme: {
     extend: {
       colors: {
+        paper: {
+          DEFAULT: '#eef1f3',
+          soft: '#f7f8f9',
+          raised: '#ffffff',
+        },
         ink: {
-          950: '#070b14',
-          900: '#0c1220',
-          800: '#141c2e',
-          700: '#1c2740',
+          DEFAULT: '#1a2228',
+          mute: '#5c6b76',
+          faint: '#8a97a1',
+          950: '#12171c',
+          900: '#1a2228',
+          800: '#2a353e',
+          700: '#3d4b56',
+        },
+        line: {
+          DEFAULT: '#d4dce6',
+          strong: '#b8c2ca',
         },
         accent: {
-          DEFAULT: '#3d9bfd',
-          soft: '#7ec0ff',
-          mint: '#3ddeb5',
-          warn: '#f0a35e',
-          danger: '#f07178',
+          DEFAULT: '#0f6b63',
+          soft: '#148a80',
+          mint: '#1a9b8e',
+          warn: '#c47a12',
+          danger: '#b42318',
         },
       },
       fontFamily: {
-        display: ['"Sora"', 'system-ui', 'sans-serif'],
-        body: ['"Manrope"', 'system-ui', 'sans-serif'],
-      },
-      boxShadow: {
-        glass: '0 8px 32px rgba(0,0,0,0.35)',
+        display: ['"Bricolage Grotesque"', 'Georgia', 'serif'],
+        body: ['"Public Sans"', 'system-ui', 'sans-serif'],
       },
       backgroundImage: {
-        campus:
-          'radial-gradient(ellipse at 20% 0%, rgba(61,155,253,0.25), transparent 50%), radial-gradient(ellipse at 80% 20%, rgba(61,222,181,0.12), transparent 45%), linear-gradient(180deg, #070b14 0%, #0c1220 45%, #10182a 100%)',
-        campusLight:
-          'radial-gradient(ellipse at 20% 0%, rgba(61,155,253,0.18), transparent 50%), linear-gradient(180deg, #e8eef8 0%, #f4f7fc 100%)',
+        atlas:
+          'linear-gradient(180deg, #eef1f3 0%, #e4e9ed 100%), repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(26,34,40,0.04) 31px, rgba(26,34,40,0.04) 32px), repeating-linear-gradient(90deg, transparent, transparent 31px, rgba(26,34,40,0.04) 31px, rgba(26,34,40,0.04) 32px)',
+        heroMap:
+          'radial-gradient(ellipse 80% 60% at 70% 40%, rgba(15,107,99,0.12), transparent 55%), linear-gradient(135deg, #dfe6ea 0%, #eef1f3 45%, #d5ddd8 100%)',
       },
     },
   },

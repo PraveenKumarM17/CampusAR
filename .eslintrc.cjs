@@ -21,7 +21,10 @@ module.exports = {
   ignorePatterns: ['dist', 'build', 'node_modules', 'coverage', 'unity'],
   overrides: [
     {
-      files: ['apps/web/src/features/twin/**/*.{ts,tsx}'],
+      files: [
+        'apps/web/src/features/twin/**/*.{ts,tsx}',
+        'apps/web/src/features/ar/GuideDoll.tsx',
+      ],
       rules: {
         // R3F / Three.js JSX props are valid native-like attributes.
         'react/no-unknown-property': 'off',

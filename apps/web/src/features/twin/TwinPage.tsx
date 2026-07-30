@@ -15,9 +15,9 @@ function toLocal(lat: number, lon: number): [number, number] {
 }
 
 function crowdColor(score: number): string {
-  if (score < 0.33) return '#3ddeb5';
-  if (score < 0.66) return '#f0a35e';
-  return '#f07178';
+  if (score < 0.33) return '#0f6b63';
+  if (score < 0.66) return '#c47a12';
+  return '#b42318';
 }
 
 function BuildingMesh({ b }: { b: Building }) {
@@ -65,7 +65,7 @@ function HazardMarker({ z }: { z: DangerZone }) {
     <mesh position={[x, 0.2, zz]}>
       <cylinderGeometry args={[r, r, 0.3, 24]} />
       <meshStandardMaterial
-        color={z.type === 'fire' ? '#f07178' : '#f0a35e'}
+        color={z.type === 'fire' ? '#b42318' : '#c47a12'}
         transparent
         opacity={0.35}
       />
@@ -164,26 +164,24 @@ export function TwinPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold">Digital Twin</h1>
-          <p className="text-sm text-white/60">
-            Live campus replica with crowd heat and hazard overlays.
-          </p>
+          <h1 className="page-title">Digital Twin</h1>
+          <p className="page-sub">Crowd heat and hazard overlays on a live campus model.</p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-lg glass px-3 py-2">
+          <span className="border border-line bg-paper-raised px-3 py-2 text-sm">
             WS: {live.connected ? 'live' : 'reconnecting…'}
           </span>
-          <span className="rounded-lg glass px-3 py-2">
+          <span className="border border-line bg-paper-raised px-3 py-2 text-sm">
             Simulator: {live.status?.running ? 'on' : 'off'}
           </span>
-          <span className="inline-flex items-center gap-2 rounded-lg glass px-3 py-2">
-            <span className="h-2 w-2 rounded-full bg-[#3ddeb5]" /> light
-            <span className="h-2 w-2 rounded-full bg-[#f0a35e]" /> moderate
-            <span className="h-2 w-2 rounded-full bg-[#f07178]" /> heavy
+          <span className="inline-flex items-center gap-2 border border-line bg-paper-raised px-3 py-2 text-sm">
+            <span className="h-2 w-2 rounded-full bg-[#0f6b63]" /> light
+            <span className="h-2 w-2 rounded-full bg-[#c47a12]" /> moderate
+            <span className="h-2 w-2 rounded-full bg-[#b42318]" /> heavy
           </span>
         </div>
       </div>
-      <div className="h-[70vh] overflow-hidden rounded-3xl border border-white/10 bg-ink-950">
+      <div className="h-[70vh] overflow-hidden rounded-md border border-line bg-ink-950">
         <Canvas camera={{ position: [45, 55, 55], fov: 45 }} shadows>
           <TwinScene
             buildings={buildings}
@@ -192,7 +190,7 @@ export function TwinPage() {
             crowd={crowd}
             zones={zones}
           />
-          <Text position={[0, 28, -70]} fontSize={3} color="#7ec0ff" anchorX="center">
+          <Text position={[0, 28, -70]} fontSize={3} color="#148a80" anchorX="center">
             Smart Campus Twin
           </Text>
         </Canvas>

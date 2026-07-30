@@ -152,24 +152,27 @@ export function MapPage() {
   const routePoints = (route?.path ?? []).map((p) => [p.latitude, p.longitude] as [number, number]);
 
   function crowdColor(score: number): string {
-    if (score < 0.33) return '#3ddeb5';
-    if (score < 0.66) return '#f0a35e';
-    return '#f07178';
+    if (score < 0.33) return '#0f6b63';
+    if (score < 0.66) return '#c47a12';
+    return '#b42318';
   }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold">Campus map</h1>
-          <p className="text-sm text-white/60">
+          <h1 className="page-title">Campus map</h1>
+          <p className="page-sub">
             Search buildings, rooms, and plan a route.
             {live.connected ? ' · IoT live' : ' · IoT offline'}
           </p>
         </div>
         <div className="flex gap-2">
           <div className="relative flex-1 sm:w-72">
-            <Search className="pointer-events-none absolute left-3 top-3 text-white/40" size={16} />
+            <Search
+              className="pointer-events-none absolute left-3 top-3 text-ink-faint"
+              size={16}
+            />
             <input
               className="input pl-9"
               placeholder="Search library, SCI-201..."
@@ -178,7 +181,10 @@ export function MapPage() {
             />
           </div>
           <div className="relative">
-            <Filter className="pointer-events-none absolute left-3 top-3 text-white/40" size={16} />
+            <Filter
+              className="pointer-events-none absolute left-3 top-3 text-ink-faint"
+              size={16}
+            />
             <select
               className="input appearance-none pl-9 pr-8"
               value={category}
@@ -196,22 +202,20 @@ export function MapPage() {
       </div>
 
       {results.length > 0 && (
-        <div className="glass rounded-2xl p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/50">
-            Results
-          </p>
+        <div className="panel rounded-md p-3">
+          <p className="mb-2 text-xs font-semibold text-ink-mute">Results</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {results.map((r) => (
               <button
                 key={`${r.type}-${r.id}`}
                 type="button"
-                className="rounded-xl border border-white/10 bg-black/20 p-3 text-left hover:border-accent/40"
+                className="rounded-md border border-line bg-paper-soft p-3 text-left hover:border-accent/40"
                 onClick={() => {
                   if (r.nodeId) void startRoute(r.nodeId);
                 }}
               >
                 <p className="font-semibold">{r.name}</p>
-                <p className="text-xs text-white/50">
+                <p className="text-xs text-ink-faint">
                   {r.code}
                   {r.buildingName ? ` · ${r.buildingName}` : ''} · {r.type}
                 </p>
@@ -222,7 +226,7 @@ export function MapPage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-        <div className="overflow-hidden rounded-3xl border border-white/10 shadow-glass">
+        <div className="overflow-hidden rounded-md border border-line">
           <MapContainer
             center={[37.7748, -122.419]}
             zoom={17}
@@ -231,7 +235,7 @@ export function MapPage() {
           >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
             />
             {crowdPolylines.map((line) => (
               <Polyline
@@ -249,7 +253,7 @@ export function MapPage() {
                 key={b.id}
                 center={[b.latitude, b.longitude]}
                 radius={10}
-                pathOptions={{ color: '#3d9bfd', fillColor: '#3d9bfd', fillOpacity: 0.7 }}
+                pathOptions={{ color: '#0f6b63', fillColor: '#0f6b63', fillOpacity: 0.7 }}
               >
                 <Popup>
                   <strong>{b.name}</strong>
@@ -266,7 +270,7 @@ export function MapPage() {
                   center={[n.latitude, n.longitude]}
                   radius={5}
                   pathOptions={{
-                    color: n.id === sourceNodeId ? '#3ddeb5' : '#7ec0ff',
+                    color: n.id === sourceNodeId ? '#0f6b63' : '#148a80',
                     fillOpacity: 0.8,
                   }}
                   eventHandlers={{
@@ -292,10 +296,10 @@ export function MapPage() {
                 pathOptions={{
                   color:
                     z.type === 'construction' || z.type === 'fire'
-                      ? '#f0a35e'
+                      ? '#c47a12'
                       : z.type === 'poor_lighting'
                         ? '#a78bfa'
-                        : '#f07178',
+                        : '#b42318',
                   fillOpacity: 0.2,
                 }}
               >
@@ -306,7 +310,7 @@ export function MapPage() {
             ))}
             {routePoints.length > 1 && (
               <>
-                <Polyline positions={routePoints} pathOptions={{ color: '#3ddeb5', weight: 5 }} />
+                <Polyline positions={routePoints} pathOptions={{ color: '#0f6b63', weight: 5 }} />
                 <FitBounds points={routePoints} />
               </>
             )}
@@ -314,14 +318,15 @@ export function MapPage() {
         </div>
 
         <aside className="space-y-3">
-          <div className="glass rounded-2xl p-4">
+          <div className="panel rounded-md p-4">
             <p className="label">Route</p>
-            <p className="text-sm text-white/70">
-              Source: <span className="text-white">{sourceNodeId?.slice(0, 8) ?? '—'}</span>
+            <p className="text-sm text-ink-mute">
+              Source:{' '}
+              <span className="font-medium text-ink">{sourceNodeId?.slice(0, 8) ?? '—'}</span>
             </p>
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-ink-mute">
               Destination:{' '}
-              <span className="text-white">{destinationNodeId?.slice(0, 8) ?? '—'}</span>
+              <span className="font-medium text-ink">{destinationNodeId?.slice(0, 8) ?? '—'}</span>
             </p>
             {route && (
               <div className="mt-3 space-y-1 text-sm">
@@ -332,7 +337,7 @@ export function MapPage() {
                   ETA: <strong>{route.etaMinutes} min</strong>
                 </p>
                 {route.predictionUsed != null && (
-                  <p className="text-xs text-white/50">
+                  <p className="text-xs text-ink-faint">
                     Prediction {route.predictionUsed ? 'on' : 'off'}
                   </p>
                 )}
@@ -360,17 +365,17 @@ export function MapPage() {
               </div>
             )}
           </div>
-          <div className="glass rounded-2xl p-4">
+          <div className="panel rounded-md p-4">
             <p className="label">Buildings{category ? ` · ${category}` : ''}</p>
             <ul className="max-h-64 space-y-2 overflow-auto text-sm">
               {filteredBuildings.map((b) => (
-                <li key={b.id} className="rounded-lg border border-white/5 bg-black/10 px-2 py-1.5">
+                <li key={b.id} className="rounded-lg border border-line bg-paper-soft px-2 py-1.5">
                   <p className="font-medium">{b.name}</p>
-                  <p className="text-xs text-white/45">{b.code}</p>
+                  <p className="text-xs text-ink-faint">{b.code}</p>
                 </li>
               ))}
               {filteredBuildings.length === 0 && (
-                <li className="text-xs text-white/45">No buildings match this category.</li>
+                <li className="text-xs text-ink-faint">No buildings match this category.</li>
               )}
             </ul>
           </div>

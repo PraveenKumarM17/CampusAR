@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Compass, Shield, Sparkles } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -47,52 +47,58 @@ export function LandingPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-campus text-white">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-24 top-16 h-72 w-72 rounded-full bg-accent/20 blur-3xl" />
-        <div className="absolute bottom-10 right-0 h-80 w-80 rounded-full bg-accent-mint/10 blur-3xl" />
-      </div>
-      <div className="relative mx-auto grid min-h-screen max-w-6xl items-center gap-10 px-4 py-12 lg:grid-cols-2">
-        <section className="space-y-6">
-          <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-accent-soft">
-            <Sparkles size={14} /> Smart Campus
+    <div className="relative min-h-screen overflow-hidden bg-heroMap text-ink">
+      <div className="pointer-events-none absolute inset-0 hero-paths" aria-hidden />
+      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col justify-end gap-10 px-5 pb-10 pt-16 lg:justify-center lg:py-16">
+        <header className="animate-fade-up max-w-2xl">
+          <p className="font-display text-5xl font-semibold leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
+            CampusAR
           </p>
-          <h1 className="font-display text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl">
-            Campus<span className="text-accent">AR</span>
+          <h1 className="mt-5 max-w-xl font-display text-2xl font-medium leading-snug text-ink sm:text-3xl">
+            Find any room without asking for directions.
           </h1>
-          <p className="max-w-md text-lg text-white/70">
-            AI-driven AR navigation with IoT crowd awareness, predictive routing, Digital Twin
-            monitoring, and safety-aware campus guidance.
+          <p className="mt-3 max-w-md text-base text-ink-mute sm:text-lg">
+            Live routes that steer around crowds, hazards, and closed paths — on a map or through
+            your camera.
           </p>
-          <div className="flex flex-wrap gap-3 text-sm text-white/60">
-            <span className="inline-flex items-center gap-1.5 rounded-lg glass px-3 py-2">
-              <Compass size={16} className="text-accent" /> Predictive A* routes
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-lg glass px-3 py-2">
-              <Shield size={16} className="text-accent-mint" /> Safety & SOS
-            </span>
+          <div className="mt-8 flex flex-wrap gap-3 animate-fade-up-delay">
+            <button className="btn-primary" type="button" onClick={enterGuest} disabled={loading}>
+              Enter as guest <ArrowRight size={16} />
+            </button>
+            <button
+              className="btn-ghost"
+              type="button"
+              onClick={() =>
+                document.getElementById('sign-in')?.scrollIntoView({ behavior: 'smooth' })
+              }
+            >
+              Sign in
+            </button>
           </div>
-        </section>
+        </header>
 
-        <section className="glass-strong rounded-3xl p-6 sm:p-8">
-          <div className="mb-6 flex gap-2">
+        <section
+          id="sign-in"
+          className="animate-fade-up-delay-2 w-full max-w-md border border-line bg-paper-raised p-6 sm:p-7"
+        >
+          <div className="mb-5 flex gap-6 border-b border-line">
             <button
               type="button"
-              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                mode === 'login' ? 'bg-accent text-ink-950' : 'bg-white/5 text-white/70'
+              className={`pb-3 text-sm font-semibold ${
+                mode === 'login' ? 'border-b-2 border-accent text-ink' : 'text-ink-faint'
               }`}
               onClick={() => setMode('login')}
             >
-              Student login
+              Sign in
             </button>
             <button
               type="button"
-              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                mode === 'register' ? 'bg-accent text-ink-950' : 'bg-white/5 text-white/70'
+              className={`pb-3 text-sm font-semibold ${
+                mode === 'register' ? 'border-b-2 border-accent text-ink' : 'text-ink-faint'
               }`}
               onClick={() => setMode('register')}
             >
-              Register
+              Create account
             </button>
           </div>
           <form className="space-y-4" onSubmit={onSubmit}>
@@ -123,29 +129,16 @@ export function LandingPage() {
               />
             </div>
             {error && (
-              <p className="rounded-xl border border-accent-danger/40 bg-accent-danger/10 px-3 py-2 text-sm text-accent-danger">
+              <p className="border border-accent-danger/30 bg-accent-danger/5 px-3 py-2 text-sm text-accent-danger">
                 {error}
               </p>
             )}
             <button className="btn-primary w-full" type="submit" disabled={loading}>
-              Continue <ArrowRight size={16} />
+              {mode === 'login' ? 'Sign in' : 'Create account'}
             </button>
           </form>
-          <div className="my-5 flex items-center gap-3 text-xs text-white/40">
-            <div className="h-px flex-1 bg-white/10" />
-            or
-            <div className="h-px flex-1 bg-white/10" />
-          </div>
-          <button
-            className="btn-ghost w-full"
-            type="button"
-            onClick={enterGuest}
-            disabled={loading}
-          >
-            Continue as guest
-          </button>
-          <p className="mt-4 text-xs text-white/45">
-            Demo: student@smartcampus.edu / student123 · admin@smartcampus.edu / admin123
+          <p className="mt-4 text-xs text-ink-faint">
+            Demo · student@smartcampus.edu / student123 · admin@smartcampus.edu / admin123
           </p>
         </section>
       </div>

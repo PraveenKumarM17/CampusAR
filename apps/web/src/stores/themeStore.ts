@@ -12,14 +12,16 @@ interface ThemeState {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      dark: true,
+      dark: false,
       hydrate: () => {
-        document.documentElement.classList.toggle('dark', get().dark);
+        // Light atlas theme is the product default; clear any legacy dark class.
+        document.documentElement.classList.remove('dark');
+        if (get().dark) set({ dark: false });
       },
       toggle: () => {
-        const dark = !get().dark;
-        document.documentElement.classList.toggle('dark', dark);
-        set({ dark });
+        // Theme toggle kept for API compatibility; product is light-first.
+        set({ dark: false });
+        document.documentElement.classList.remove('dark');
       },
     }),
     { name: 'campusar-theme' },
@@ -31,6 +33,8 @@ interface PrefsState {
   setAccessibility: (prefs: Partial<AccessibilityPrefs>) => void;
   voiceEnabled: boolean;
   setVoiceEnabled: (v: boolean) => void;
+  avatarGender: 'male' | 'female';
+  setAvatarGender: (g: 'male' | 'female') => void;
 }
 
 export const usePrefsStore = create<PrefsState>()(
@@ -40,6 +44,8 @@ export const usePrefsStore = create<PrefsState>()(
       setAccessibility: (prefs) => set({ accessibility: { ...get().accessibility, ...prefs } }),
       voiceEnabled: true,
       setVoiceEnabled: (voiceEnabled) => set({ voiceEnabled }),
+      avatarGender: 'female',
+      setAvatarGender: (avatarGender) => set({ avatarGender }),
     }),
     { name: 'campusar-prefs' },
   ),

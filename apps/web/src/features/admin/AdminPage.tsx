@@ -89,13 +89,11 @@ export function AdminPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="font-display text-2xl font-bold">Admin dashboard</h1>
-        <p className="text-sm text-white/60">
-          Manage campus graph data and smart-routing weights (simulated crowd & hazards).
-        </p>
+        <h1 className="page-title">Admin dashboard</h1>
+        <p className="page-sub">Campus graph, route weights, crowd simulation, and hazards.</p>
       </div>
       {message && (
-        <p className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm">
+        <p className="rounded-md border border-accent/25 bg-accent/5 text-ink px-3 py-2 text-sm">
           {message}
         </p>
       )}
@@ -106,7 +104,9 @@ export function AdminPage() {
             key={t.id}
             type="button"
             className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-              tab === t.id ? 'bg-accent text-ink-950' : 'bg-white/5 text-white/70'
+              tab === t.id
+                ? 'bg-accent text-white'
+                : 'border border-line bg-paper-raised text-ink-mute'
             }`}
             onClick={() => setTab(t.id)}
           >
@@ -116,8 +116,8 @@ export function AdminPage() {
       </div>
 
       {tab === 'weights' && (
-        <form className="glass rounded-2xl p-4 space-y-4 max-w-xl" onSubmit={saveWeights}>
-          <p className="text-sm text-white/60">
+        <form className="panel rounded-md p-4 space-y-4 max-w-xl" onSubmit={saveWeights}>
+          <p className="text-sm text-ink-mute">
             cost = w_d·dist + w_s·(1−safety) + w_c·crowd + w_a·(1−accessibility) + blocked penalty
           </p>
           {(
@@ -160,7 +160,7 @@ export function AdminPage() {
 
       {tab === 'buildings' && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <form className="glass rounded-2xl p-4 space-y-3" onSubmit={addBuilding}>
+          <form className="panel rounded-md p-4 space-y-3" onSubmit={addBuilding}>
             <p className="font-semibold">Create building</p>
             {['name', 'code', 'description', 'latitude', 'longitude', 'floorsCount'].map((f) => (
               <div key={f}>
@@ -172,13 +172,13 @@ export function AdminPage() {
               Create
             </button>
           </form>
-          <div className="glass rounded-2xl p-4">
+          <div className="panel rounded-md p-4">
             <p className="mb-3 font-semibold">Buildings</p>
             <ul className="space-y-2 max-h-[28rem] overflow-auto text-sm">
               {buildings.map((b) => (
                 <li
                   key={b.id}
-                  className="flex items-center justify-between gap-2 rounded-xl bg-black/20 px-3 py-2"
+                  className="flex items-center justify-between gap-2 rounded-md bg-paper-soft px-3 py-2"
                 >
                   <span>
                     {b.name} ({b.code})
@@ -201,10 +201,10 @@ export function AdminPage() {
       )}
 
       {tab === 'paths' && (
-        <div className="glass rounded-2xl p-4 overflow-auto">
+        <div className="panel rounded-md p-4 overflow-auto">
           <p className="mb-3 font-semibold">Edges / paths</p>
           <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="text-xs uppercase text-white/45">
+            <thead className="text-xs text-ink-faint">
               <tr>
                 <th className="py-2">ID</th>
                 <th>Kind</th>
@@ -217,7 +217,7 @@ export function AdminPage() {
             </thead>
             <tbody>
               {edges.map((edge) => (
-                <tr key={edge.id} className="border-t border-white/5">
+                <tr key={edge.id} className="border-t border-line">
                   <td className="py-2 font-mono text-xs">{edge.id.slice(0, 8)}</td>
                   <td>{edge.kind}</td>
                   <td>{edge.distanceM}m</td>
@@ -245,7 +245,7 @@ export function AdminPage() {
       {tab === 'zones' && (
         <div className="grid gap-4 lg:grid-cols-2">
           <form
-            className="glass rounded-2xl p-4 space-y-3"
+            className="panel rounded-md p-4 space-y-3"
             onSubmit={async (e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
@@ -280,11 +280,11 @@ export function AdminPage() {
               Create zone
             </button>
           </form>
-          <ul className="glass rounded-2xl p-4 space-y-2 text-sm max-h-[28rem] overflow-auto">
+          <ul className="panel rounded-md p-4 space-y-2 text-sm max-h-[28rem] overflow-auto">
             {zones.map((z) => (
               <li
                 key={z.id}
-                className="flex justify-between gap-2 rounded-xl bg-black/20 px-3 py-2"
+                className="flex justify-between gap-2 rounded-md bg-paper-soft px-3 py-2"
               >
                 <span>
                   {z.name} · {z.type}
@@ -306,12 +306,12 @@ export function AdminPage() {
       )}
 
       {tab === 'crowd' && (
-        <div className="glass rounded-2xl p-4 space-y-3">
+        <div className="panel rounded-md p-4 space-y-3">
           <p className="font-semibold">Simulated crowd levels</p>
           {crowd.map((c) => (
             <div
               key={c.id}
-              className="flex flex-wrap items-center gap-3 rounded-xl bg-black/20 px-3 py-2 text-sm"
+              className="flex flex-wrap items-center gap-3 rounded-md bg-paper-soft px-3 py-2 text-sm"
             >
               <span className="font-mono text-xs">
                 {c.edgeId?.slice(0, 8) ?? c.nodeId?.slice(0, 8)}
@@ -340,7 +340,7 @@ export function AdminPage() {
       {tab === 'events' && (
         <div className="grid gap-4 lg:grid-cols-2">
           <form
-            className="glass rounded-2xl p-4 space-y-3"
+            className="panel rounded-md p-4 space-y-3"
             onSubmit={async (e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
@@ -375,11 +375,11 @@ export function AdminPage() {
               Create event
             </button>
           </form>
-          <ul className="glass rounded-2xl p-4 space-y-2 text-sm max-h-[28rem] overflow-auto">
+          <ul className="panel rounded-md p-4 space-y-2 text-sm max-h-[28rem] overflow-auto">
             {events.map((ev) => (
               <li
                 key={ev.id}
-                className="flex justify-between gap-2 rounded-xl bg-black/20 px-3 py-2"
+                className="flex justify-between gap-2 rounded-md bg-paper-soft px-3 py-2"
               >
                 <span>{ev.title}</span>
                 <button
@@ -399,9 +399,9 @@ export function AdminPage() {
       )}
 
       {tab === 'iot' && (
-        <div className="glass rounded-2xl p-4 max-w-xl space-y-3">
+        <div className="panel rounded-md p-4 max-w-xl space-y-3">
           <p className="font-semibold">IoT crowd/sensor simulator</p>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-ink-mute">
             Broadcasts crowd and environmental readings every 10 seconds over WebSocket.
           </p>
           <p className="text-sm">

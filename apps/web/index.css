@@ -66,6 +66,7 @@ body {
   animation: float-arrow 1.8s ease-in-out infinite;
 }
 
+/* Landing map motif */
 .hero-paths {
   background-image:
     linear-gradient(
