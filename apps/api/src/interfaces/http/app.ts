@@ -16,7 +16,29 @@ import { iotRouter } from './routes/iotRoutes';
 export function createApp() {
   const app = express();
   app.use(helmet({ contentSecurityPolicy: false }));
-  app.use(cors({ origin: env.corsOrigin, credentials: true }));
+  const corsOrigins = env.corsOrigin.split(',').map((o) => o.trim()).filter(Boolean);
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow non-browser / same-origin tools
+        if (!origin) return callback(null, true);
+        // Dev: accept any localhost / LAN origin so Vite host:true works
+        if (env.nodeEnv !== 'production') {
+          if (
+            /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin) ||
+            /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)\d/.test(origin)
+          ) {
+            return callback(null, true);
+          }
+        }
+        if (corsOrigins.includes(origin) || corsOrigins.includes('*')) {
+          return callback(null, true);
+        }
+        return callback(null, false);
+      },
+      credentials: true,
+    }),
+  );
   app.use(express.json({ limit: '1mb' }));
   app.use(morgan(env.nodeEnv === 'test' ? 'tiny' : 'dev'));
 

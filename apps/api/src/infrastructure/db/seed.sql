@@ -9,18 +9,12 @@ CASCADE;
 INSERT INTO route_weights (id, w_distance, w_safety, w_crowd, w_accessibility, w_blocked_penalty)
 VALUES (1, 0.4, 0.25, 0.2, 0.15, 1000000);
 
--- bcrypt hashes generated for 'admin123' and 'student123'
+-- bcrypt hashes for admin123 / student123 (cost 10). seed.ts may rotate these; keep SQL valid for docker init.
 INSERT INTO users (id, email, password_hash, name, role) VALUES
   ('11111111-1111-1111-1111-111111111111', 'admin@smartcampus.edu',
-   '$2a$10$8K1p/a0dL1LXMIgoEDFrwOfMQsJuHhqxqHqFqHqFqHqFqHqFqHqFq', 'Campus Admin', 'admin'),
+   '$2a$10$DcaNRmCcZePvopNHBnP1telVljIcPb7Kzs6kJAT52Eug5pnv.w.VW', 'Campus Admin', 'admin'),
   ('22222222-2222-2222-2222-222222222222', 'student@smartcampus.edu',
-   '$2a$10$8K1p/a0dL1LXMIgoEDFrwOfMQsJuHhqxqHqFqHqFqHqFqHqFqHqFq', 'Alex Student', 'user');
-
--- Fix password hashes properly via app seed if needed; placeholder above may be invalid.
--- Real hashes will be set by seed.ts; keep SQL structure for docker init with valid hashes below.
-UPDATE users SET password_hash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy' WHERE email = 'admin@smartcampus.edu';
-UPDATE users SET password_hash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy' WHERE email = 'student@smartcampus.edu';
--- Note: above hash is commonly used bcrypt for 'password'. Seed script will reset to admin123/student123.
+   '$2a$10$Cil4YWywAo/mr2aAduRuHuQJ/4efdzP02HB8kyM5IDM3KOKJYDnFm', 'Alex Student', 'user');
 
 INSERT INTO buildings (id, name, code, description, latitude, longitude, floors_count) VALUES
   ('b0000001-0000-0000-0000-000000000001', 'Science Hall', 'SCI', 'Labs and STEM classrooms', 37.77490, -122.41940, 3),

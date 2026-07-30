@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { CrowdLevel, DangerZone, IotStatus, SensorReading, WsMessage } from '@campusar/shared';
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:4000/ws';
+function defaultWsUrl(): string {
+  if (typeof window === 'undefined') return 'ws://127.0.0.1:4000/ws';
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${window.location.host}/ws`;
+}
+
+const WS_URL = import.meta.env.VITE_WS_URL ?? defaultWsUrl();
 
 export interface CampusLiveState {
   connected: boolean;

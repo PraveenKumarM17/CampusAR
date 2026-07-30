@@ -19,3 +19,4 @@ unity/CampusAR/Logs/
 unity/CampusAR/Obj/
 unity/CampusAR/UserSettings/
 .turbo/
+.docker-data/

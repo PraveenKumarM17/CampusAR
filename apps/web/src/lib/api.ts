@@ -20,7 +20,8 @@ import type {
   SensorReading,
 } from '@campusar/shared';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
+/** Prefer same-origin `/api` (Vite proxy in dev) so LAN hosts avoid CORS issues. */
+const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
 export class ApiError extends Error {
   constructor(
@@ -42,13 +43,26 @@ async function request<T>(
   headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch {
+    throw new ApiError(
+      'NETWORK_ERROR',
+      'Cannot reach the CampusAR API. Start the database and API (docker compose up -d db && npm run dev:api), then try again.',
+      0,
+    );
+  }
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    const fallback =
+      res.status === 502 || res.status === 503 || res.status === 504
+        ? 'Cannot reach the CampusAR API. Start the database and API, then try again.'
+        : 'Request failed';
     throw new ApiError(
       data.code ?? 'ERROR',
-      data.message ?? 'Request failed',
+      data.message ?? fallback,
       res.status,
       data.details,
     );
