@@ -5,7 +5,7 @@ import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { useCampusLive } from '../../hooks/useCampusLive';
-import { GuideDollViewport, poseFromRouteContext } from './GuideDoll';
+import { GuideDollViewport, guideFacingBearing, poseFromRouteContext, relativeBearingDeg } from './GuideDoll';
 import { CAMPUS_LABEL } from '../../lib/campus';
 
 export function ArPage() {
@@ -20,6 +20,7 @@ export function ArPage() {
   const [error, setError] = useState<string | null>(null);
   const [heading, setHeading] = useState<number | null>(null);
   const [arrivedAck, setArrivedAck] = useState(false);
+  const [greetingWave, setGreetingWave] = useState(false);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -56,7 +57,7 @@ export function ArPage() {
     return () => window.removeEventListener('deviceorientation', onOrient);
   }, []);
 
-  async function loadRoute() {
+  async function loadRoute(options?: { resetProgress?: boolean }) {
     if (!sourceNodeId || !destinationNodeId) {
       setError('Pick a source and destination on Map or Navigate first.');
       return;
@@ -67,8 +68,11 @@ export function ArPage() {
         token,
       );
       setRoute(r);
-      setStepIndex(0);
-      setArrivedAck(false);
+      if (options?.resetProgress) {
+        setStepIndex(0);
+        setArrivedAck(false);
+        setGreetingWave(true);
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load route');
@@ -76,14 +80,14 @@ export function ArPage() {
   }
 
   useEffect(() => {
-    void loadRoute();
+    void loadRoute({ resetProgress: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceNodeId, destinationNodeId, accessibility, token]);
 
   useEffect(() => {
     if (!sourceNodeId || !destinationNodeId || arrivedAck) return;
     const t = setInterval(() => {
-      void loadRoute();
+      void loadRoute({ resetProgress: false });
     }, 10_000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,8 +124,29 @@ export function ArPage() {
     distanceToNextM: step?.distanceM ?? Infinity,
     arrived: arrived || arrivedAck,
     waveWithinM: 30,
+    atRouteStart: greetingWave && !(arrived || arrivedAck),
   });
   const isWaving = pose === 'waveLeft' || pose === 'waveRight';
+
+  // Guide faces the road; starts turning early when the next step is a left/right.
+  const guideBearing = useMemo(
+    () =>
+      guideFacingBearing({
+        currentBearing: step?.bearing,
+        nextBearing: nextStep?.bearing,
+        nextInstruction: nextStep?.instruction,
+        distanceToNextM: step?.distanceM ?? Infinity,
+        turnWithinM: 28,
+      }),
+    [step?.bearing, step?.distanceM, nextStep?.bearing, nextStep?.instruction],
+  );
+  const pathYawDeg = useMemo(() => {
+    // With compass: yaw relative to phone heading.
+    // Without compass (desktop): yaw relative to the previous leg so turns still show.
+    const prevBearing = route?.path[Math.max(0, stepIndex - 1)]?.bearing ?? step?.bearing ?? 0;
+    const reference = heading ?? prevBearing;
+    return relativeBearingDeg(guideBearing, reference);
+  }, [guideBearing, heading, route?.path, stepIndex, step?.bearing]);
 
   useEffect(() => {
     if (!voiceEnabled || !step) return;
@@ -151,6 +176,13 @@ export function ArPage() {
   useEffect(() => {
     if (arrived) setArrivedAck(true);
   }, [arrived]);
+
+  // Greeting wave plays once when a route starts (~wave clip length).
+  useEffect(() => {
+    if (!greetingWave) return;
+    const t = setTimeout(() => setGreetingWave(false), 3800);
+    return () => clearTimeout(t);
+  }, [greetingWave, route?.path?.[0]?.nodeId]);
 
   function goNext() {
     if (!route) return;
@@ -254,11 +286,12 @@ export function ArPage() {
           </div>
         )}
 
-        {/* Guide doll — right side only, above bottom panel, no text overlays */}
+        {/* Guide on the road (center) — turns with the route bearing */}
         <GuideDollViewport
           gender={avatarGender}
           pose={pose}
-          className="pointer-events-none absolute bottom-36 right-2 z-10 h-52 w-36 sm:bottom-40 sm:right-4 sm:h-64 sm:w-44"
+          pathYawDeg={pathYawDeg}
+          className="pointer-events-none absolute bottom-36 left-1/2 z-10 h-72 w-52 -translate-x-1/2 sm:bottom-40 sm:h-[22rem] sm:w-64"
         />
 
         {/* Bottom instruction + controls — full width under doll feet */}
@@ -274,7 +307,7 @@ export function ArPage() {
             <div className="mx-auto max-w-lg rounded-md border border-white/15 bg-ink/70 px-3 py-2.5 text-center text-white backdrop-blur-sm sm:px-4 sm:py-3">
               {isWaving && (
                 <p className="mb-1 text-xs font-semibold text-[#9fe0d8]">
-                  {pose === 'waveLeft' ? 'Turn left ahead' : 'Turn right ahead'}
+                  Guide saying hello — follow her
                 </p>
               )}
               <p className="inline-flex items-center justify-center gap-2 text-xs text-white/70">

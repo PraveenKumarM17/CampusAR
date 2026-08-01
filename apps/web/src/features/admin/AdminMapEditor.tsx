@@ -15,7 +15,7 @@ import type { GraphEdge, GraphNode } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useGeolocation } from '../../hooks/useGeolocation';
-import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAP_CENTER } from '../../lib/campus';
+import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAP_CENTER, CAMPUS_MAX_ZOOM } from '../../lib/campus';
 import { haversineMeters } from '../../lib/geo';
 import { cycleClosedByNewEdge, findRoutePath } from '../../lib/pathCircuit';
 import {
@@ -988,6 +988,7 @@ export function AdminMapEditor() {
             zoom={CAMPUS_DEFAULT_ZOOM}
             className="h-full w-full"
             scrollWheelZoom
+            maxZoom={CAMPUS_MAX_ZOOM}
           >
             <RealBasemapTiles mode={basemapMode} />
             <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />

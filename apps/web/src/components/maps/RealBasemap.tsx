@@ -1,5 +1,7 @@
 import { TileLayer } from 'react-leaflet';
 
+import { BASEMAP_MAX_NATIVE_ZOOM, CAMPUS_MAX_ZOOM } from '../../lib/campus';
+
 export type BasemapMode = 'hybrid' | 'satellite' | 'streets';
 
 /**
@@ -12,7 +14,8 @@ export function RealBasemapTiles({ mode = 'hybrid' }: { mode?: BasemapMode }) {
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        maxZoom={20}
+        maxZoom={CAMPUS_MAX_ZOOM}
+        maxNativeZoom={BASEMAP_MAX_NATIVE_ZOOM}
       />
     );
   }
@@ -22,20 +25,23 @@ export function RealBasemapTiles({ mode = 'hybrid' }: { mode?: BasemapMode }) {
       <TileLayer
         attribution="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics"
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        maxZoom={20}
+        maxZoom={CAMPUS_MAX_ZOOM}
+        maxNativeZoom={BASEMAP_MAX_NATIVE_ZOOM}
       />
       {mode === 'hybrid' && (
         <>
           <TileLayer
             attribution="Roads &copy; Esri"
             url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}"
-            maxZoom={20}
+            maxZoom={CAMPUS_MAX_ZOOM}
+            maxNativeZoom={BASEMAP_MAX_NATIVE_ZOOM}
             opacity={0.95}
           />
           <TileLayer
             attribution="Labels &copy; Esri"
             url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-            maxZoom={20}
+            maxZoom={CAMPUS_MAX_ZOOM}
+            maxNativeZoom={BASEMAP_MAX_NATIVE_ZOOM}
             opacity={0.95}
           />
         </>

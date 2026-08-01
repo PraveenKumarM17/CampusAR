@@ -22,7 +22,12 @@ import { useNavStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
 import { useCampusLive } from '../../hooks/useCampusLive';
 import { useGeolocation } from '../../hooks/useGeolocation';
-import { CAMPUS_DEFAULT_ZOOM, CAMPUS_LABEL, CAMPUS_MAP_CENTER } from '../../lib/campus';
+import {
+  CAMPUS_DEFAULT_ZOOM,
+  CAMPUS_LABEL,
+  CAMPUS_MAP_CENTER,
+  CAMPUS_MAX_ZOOM,
+} from '../../lib/campus';
 import { nearestNode, closestNamedPlace } from '../../lib/geo';
 import {
   BasemapModeSwitcher,
@@ -390,7 +395,7 @@ export function MapPage() {
               zoom={CAMPUS_DEFAULT_ZOOM}
               className="h-[62vh] w-full"
               scrollWheelZoom
-              maxZoom={20}
+              maxZoom={CAMPUS_MAX_ZOOM}
             >
               <RealBasemapTiles mode={basemapMode} />
 

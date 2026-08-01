@@ -6,7 +6,7 @@ import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
-import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAP_CENTER } from '../../lib/campus';
+import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAP_CENTER, CAMPUS_MAX_ZOOM } from '../../lib/campus';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { nearestNode } from '../../lib/geo';
 import {
@@ -236,7 +236,7 @@ export function NavigatePage() {
               center={CAMPUS_MAP_CENTER}
               zoom={CAMPUS_DEFAULT_ZOOM}
               className="h-[70vh] w-full"
-              maxZoom={20}
+              maxZoom={CAMPUS_MAX_ZOOM}
             >
               <RealBasemapTiles mode={basemapMode} />
               {points.length > 1 && (

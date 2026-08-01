@@ -1,327 +1,266 @@
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { useAnimations, useGLTF } from '@react-three/drei';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 export type AvatarGender = 'male' | 'female';
 export type AvatarPose = 'idle' | 'walk' | 'waveLeft' | 'waveRight' | 'celebrate';
 
-const PALETTE = {
-  male: {
-    skin: '#c9956c',
-    hair: '#2c2118',
-    shirt: '#0f6b63',
-    pants: '#2a353e',
-    shoes: '#1a2228',
-  },
-  female: {
-    skin: '#d4a574',
-    hair: '#3d2415',
-    shirt: '#148a80',
-    pants: '#3d4b56',
-    shoes: '#1a2228',
-  },
+const MARI = {
+  idle: '/models/avatars/mari/idel.glb',
+  walk: '/models/avatars/mari/walk.glb',
+  wave: '/models/avatars/mari/wave.glb',
+  celebrate: '/models/avatars/mari/sillyDance.glb',
 } as const;
 
-/** Smoothly approach a rotation target each frame. */
-function approach(current: number, target: number, alpha = 0.18): number {
-  return THREE.MathUtils.lerp(current, target, alpha);
+/** Head-to-toe height in world units. Frame shows roughly -0.9..0.8, so this leaves margin. */
+const TARGET_HEIGHT = 0.6;
+/** Ground line the feet are pinned to. */
+const FOOT_Y = -0.34;
+/** Model forward is +Z, so yaw 0 looks straight at the camera (wave / dance). */
+const FACE_FRONT = 0;
+/** Half turn puts her back to the user so she leads down the road (walk). */
+const FACE_DOWN_ROAD = Math.PI;
+/** How far she drifts across the lane when turning. */
+const LANE_SHIFT = 0.2;
+
+type ClipKey = 'idle' | 'walk' | 'wave' | 'celebrate';
+
+function poseToClip(pose: AvatarPose): ClipKey {
+  if (pose === 'celebrate') return 'celebrate';
+  if (pose === 'waveLeft' || pose === 'waveRight') return 'wave';
+  if (pose === 'walk') return 'walk';
+  return 'idle';
 }
 
-function DollModel({ gender, pose }: { gender: AvatarGender; pose: AvatarPose }) {
-  const root = useRef<THREE.Group>(null);
-  const torso = useRef<THREE.Group>(null);
-  const leftUpperArm = useRef<THREE.Group>(null);
-  const rightUpperArm = useRef<THREE.Group>(null);
-  const leftForearm = useRef<THREE.Group>(null);
-  const rightForearm = useRef<THREE.Group>(null);
-  const leftThigh = useRef<THREE.Group>(null);
-  const rightThigh = useRef<THREE.Group>(null);
-  const leftShin = useRef<THREE.Group>(null);
-  const rightShin = useRef<THREE.Group>(null);
-  const colors = PALETTE[gender];
+/**
+ * Mixamo bakes root motion into `mixamorig:Hips.position` at a mismatched unit scale.
+ * Dropping that track keeps rotation-driven joints and pins her in place.
+ */
+function toInPlaceClip(animations: unknown, label: string): THREE.AnimationClip | null {
+  const clips = animations as THREE.AnimationClip[];
+  if (!clips?.length) return null;
+  const longest = clips.reduce((a, b) => (b.duration >= a.duration ? b : a));
+  const clip = longest.clone();
+  clip.tracks = clip.tracks.filter((track) => !track.name.endsWith('Hips.position'));
+  clip.name = label;
+  return clip;
+}
 
-  const body = useMemo(() => {
-    if (gender === 'female') {
-      return {
-        scale: 1.12,
-        shoulder: 0.32,
-        hip: 0.15,
-        torso: [0.5, 0.68, 0.26] as [number, number, number],
-        head: 0.21,
-        armLen: 0.28,
-        forearmLen: 0.26,
-        thighLen: 0.34,
-        shinLen: 0.32,
-      };
+function findSkinnedMesh(root: THREE.Object3D): THREE.SkinnedMesh | null {
+  let found: THREE.SkinnedMesh | null = null;
+  root.traverse((obj) => {
+    if (!found && (obj as THREE.SkinnedMesh).isSkinnedMesh) {
+      found = obj as THREE.SkinnedMesh;
     }
-    return {
-      scale: 1.18,
-      shoulder: 0.36,
-      hip: 0.16,
-      torso: [0.56, 0.74, 0.3] as [number, number, number],
-      head: 0.23,
-      armLen: 0.3,
-      forearmLen: 0.28,
-      thighLen: 0.36,
-      shinLen: 0.34,
-    };
-  }, [gender]);
+  });
+  return found;
+}
 
-  useFrame((state) => {
-    const t = state.clock.elapsedTime;
-    const rootObj = root.current;
-    if (!rootObj) return;
+/** Asphalt strip + centre line so the guide reads as standing on the road. */
+function RoadStrip() {
+  return (
+    <group position={[0, FOOT_Y - 0.005, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[0.85, 2.6]} />
+        <meshStandardMaterial color="#3a3f46" roughness={0.95} metalness={0.05} />
+      </mesh>
+      <mesh position={[0, 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.035, 2.3]} />
+        <meshStandardMaterial color="#e8c547" roughness={0.7} />
+      </mesh>
+      <mesh position={[-0.39, 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.03, 2.45]} />
+        <meshStandardMaterial color="#d8dde2" roughness={0.85} />
+      </mesh>
+      <mesh position={[0.39, 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.03, 2.45]} />
+        <meshStandardMaterial color="#d8dde2" roughness={0.85} />
+      </mesh>
+    </group>
+  );
+}
 
-    const LArm = leftUpperArm.current;
-    const RArm = rightUpperArm.current;
-    const LFore = leftForearm.current;
-    const RFore = rightForearm.current;
-    const LThigh = leftThigh.current;
-    const RThigh = rightThigh.current;
-    const LShin = leftShin.current;
-    const RShin = rightShin.current;
-    const torsoG = torso.current;
-    if (!LArm || !RArm || !LFore || !RFore || !LThigh || !RThigh || !LShin || !RShin || !torsoG) {
-      return;
-    }
+function CameraRig() {
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    camera.position.set(0, 0.42, 3.1);
+    camera.lookAt(0, -0.05, 0);
+    camera.updateProjectionMatrix();
+  }, [camera]);
+  return null;
+}
 
-    if (pose === 'walk') {
-      // Human gait: opposite arm/leg, ~1.7 steps/sec
-      const phase = t * Math.PI * 3.4;
-      const legSwing = Math.sin(phase) * 0.55;
-      const armSwing = Math.sin(phase) * 0.42;
-      const kneeBend = Math.max(0, -Math.sin(phase)) * 0.75;
-      const kneeBendR = Math.max(0, Math.sin(phase)) * 0.75;
-      const bob = Math.abs(Math.sin(phase)) * 0.05;
-      const sway = Math.sin(phase) * 0.04;
+function MariGuide({ pose, pathYawDeg }: { pose: AvatarPose; pathYawDeg: number }) {
+  const fit = useRef<THREE.Group>(null);
+  const inner = useRef<THREE.Group>(null);
+  const stage = useRef<THREE.Group>(null);
+  const fitted = useRef(false);
+  const yaw = useRef(FACE_DOWN_ROAD);
+  const lateral = useRef(0);
 
-      rootObj.position.y = approach(rootObj.position.y, -0.85 + bob, 0.35);
-      rootObj.rotation.y = approach(rootObj.rotation.y, 0, 0.12);
-      torsoG.rotation.z = approach(torsoG.rotation.z, sway, 0.2);
-      torsoG.rotation.x = approach(torsoG.rotation.x, Math.sin(phase * 2) * 0.03, 0.2);
+  const idleGltf = useGLTF(MARI.idle);
+  const walkGltf = useGLTF(MARI.walk);
+  const waveGltf = useGLTF(MARI.wave);
+  const danceGltf = useGLTF(MARI.celebrate);
 
-      // Legs (left forward when sin>0)
-      LThigh.rotation.x = approach(LThigh.rotation.x, legSwing, 0.28);
-      RThigh.rotation.x = approach(RThigh.rotation.x, -legSwing, 0.28);
-      LShin.rotation.x = approach(LShin.rotation.x, kneeBend, 0.28);
-      RShin.rotation.x = approach(RShin.rotation.x, kneeBendR, 0.28);
+  const model = useMemo(() => {
+    const cloned = cloneSkeleton(idleGltf.scene as unknown as THREE.Object3D) as THREE.Group;
+    cloned.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.frustumCulled = false;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
+    return cloned;
+  }, [idleGltf.scene]);
 
-      // Arms opposite to legs
-      LArm.rotation.x = approach(LArm.rotation.x, -armSwing, 0.28);
-      RArm.rotation.x = approach(RArm.rotation.x, armSwing, 0.28);
-      LArm.rotation.z = approach(LArm.rotation.z, 0.08, 0.15);
-      RArm.rotation.z = approach(RArm.rotation.z, -0.08, 0.15);
-      LFore.rotation.x = approach(LFore.rotation.x, 0.25 + Math.max(0, -armSwing) * 0.4, 0.25);
-      RFore.rotation.x = approach(RFore.rotation.x, 0.25 + Math.max(0, armSwing) * 0.4, 0.25);
-    } else if (pose === 'waveLeft' || pose === 'waveRight') {
-      // Keep a light walk on the legs while waving the turn-side hand
-      const phase = t * Math.PI * 2.6;
-      const legSwing = Math.sin(phase) * 0.28;
-      const wave = Math.sin(t * 10) * 0.55;
-      const isLeft = pose === 'waveLeft';
+  useEffect(() => {
+    fitted.current = false;
+  }, [model]);
 
-      rootObj.position.y = approach(rootObj.position.y, -0.85 + Math.abs(Math.sin(phase)) * 0.03, 0.3);
-      rootObj.rotation.y = approach(rootObj.rotation.y, isLeft ? 0.25 : -0.25, 0.12);
-      torsoG.rotation.z = approach(torsoG.rotation.z, isLeft ? 0.08 : -0.08, 0.15);
-      torsoG.rotation.x = approach(torsoG.rotation.x, 0, 0.15);
+  const clips = useMemo(() => {
+    const list = [
+      toInPlaceClip(idleGltf.animations, 'idle'),
+      toInPlaceClip(walkGltf.animations, 'walk'),
+      toInPlaceClip(waveGltf.animations, 'wave'),
+      toInPlaceClip(danceGltf.animations, 'celebrate'),
+    ];
+    return list.filter((clip): clip is THREE.AnimationClip => clip !== null);
+  }, [idleGltf.animations, walkGltf.animations, waveGltf.animations, danceGltf.animations]);
 
-      LThigh.rotation.x = approach(LThigh.rotation.x, legSwing, 0.2);
-      RThigh.rotation.x = approach(RThigh.rotation.x, -legSwing, 0.2);
-      LShin.rotation.x = approach(LShin.rotation.x, Math.max(0, -Math.sin(phase)) * 0.4, 0.2);
-      RShin.rotation.x = approach(RShin.rotation.x, Math.max(0, Math.sin(phase)) * 0.4, 0.2);
+  const { actions } = useAnimations(clips as never, inner as never);
+  const clipKey = poseToClip(pose);
 
-      if (isLeft) {
-        // Left arm raised and waving
-        LArm.rotation.x = approach(LArm.rotation.x, -2.35, 0.2);
-        LArm.rotation.z = approach(LArm.rotation.z, 0.55 + wave * 0.35, 0.25);
-        LFore.rotation.x = approach(LFore.rotation.x, -0.35 + wave * 0.4, 0.25);
-        RArm.rotation.x = approach(RArm.rotation.x, 0.2, 0.15);
-        RArm.rotation.z = approach(RArm.rotation.z, -0.1, 0.15);
-        RFore.rotation.x = approach(RFore.rotation.x, 0.3, 0.15);
-      } else {
-        RArm.rotation.x = approach(RArm.rotation.x, -2.35, 0.2);
-        RArm.rotation.z = approach(RArm.rotation.z, -0.55 + wave * 0.35, 0.25);
-        RFore.rotation.x = approach(RFore.rotation.x, -0.35 + wave * 0.4, 0.25);
-        LArm.rotation.x = approach(LArm.rotation.x, 0.2, 0.15);
-        LArm.rotation.z = approach(LArm.rotation.z, 0.1, 0.15);
-        LFore.rotation.x = approach(LFore.rotation.x, 0.3, 0.15);
-      }
-    } else if (pose === 'celebrate') {
-      const bounce = Math.abs(Math.sin(t * 6)) * 0.14;
-      rootObj.position.y = approach(rootObj.position.y, -0.85 + bounce, 0.35);
-      rootObj.rotation.y = approach(rootObj.rotation.y, Math.sin(t * 2.2) * 0.4, 0.15);
-      torsoG.rotation.z = approach(torsoG.rotation.z, 0, 0.15);
-      torsoG.rotation.x = approach(torsoG.rotation.x, -0.08, 0.15);
+  useEffect(() => {
+    const next = actions[clipKey] ?? actions.idle;
+    if (!next) return;
+    // Only one clip should ever drive the skeleton, otherwise blends fight each other.
+    Object.entries(actions).forEach(([name, action]) => {
+      if (action && name !== next.getClip().name) action.fadeOut(0.25);
+    });
+    next.reset().setLoop(THREE.LoopRepeat, Infinity).setEffectiveWeight(1).fadeIn(0.25).play();
+  }, [actions, clipKey]);
 
-      LArm.rotation.x = approach(LArm.rotation.x, -2.5 + Math.sin(t * 8) * 0.2, 0.25);
-      RArm.rotation.x = approach(RArm.rotation.x, -2.5 + Math.cos(t * 8) * 0.2, 0.25);
-      LArm.rotation.z = approach(LArm.rotation.z, 0.4, 0.15);
-      RArm.rotation.z = approach(RArm.rotation.z, -0.4, 0.15);
-      LFore.rotation.x = approach(LFore.rotation.x, -0.2, 0.15);
-      RFore.rotation.x = approach(RFore.rotation.x, -0.2, 0.15);
-      LThigh.rotation.x = approach(LThigh.rotation.x, 0.12, 0.15);
-      RThigh.rotation.x = approach(RThigh.rotation.x, -0.12, 0.15);
-      LShin.rotation.x = approach(LShin.rotation.x, 0.1, 0.15);
-      RShin.rotation.x = approach(RShin.rotation.x, 0.1, 0.15);
-    } else {
-      // Idle breathing
-      rootObj.position.y = approach(rootObj.position.y, -0.85 + Math.sin(t * 1.4) * 0.012, 0.15);
-      rootObj.rotation.y = approach(rootObj.rotation.y, 0, 0.1);
-      torsoG.rotation.z = approach(torsoG.rotation.z, 0, 0.1);
-      torsoG.rotation.x = approach(torsoG.rotation.x, Math.sin(t * 1.4) * 0.02, 0.1);
-      LArm.rotation.x = approach(LArm.rotation.x, 0.12, 0.1);
-      RArm.rotation.x = approach(RArm.rotation.x, -0.12, 0.1);
-      LArm.rotation.z = approach(LArm.rotation.z, 0.12, 0.1);
-      RArm.rotation.z = approach(RArm.rotation.z, -0.12, 0.1);
-      LFore.rotation.x = approach(LFore.rotation.x, 0.2, 0.1);
-      RFore.rotation.x = approach(RFore.rotation.x, 0.2, 0.1);
-      LThigh.rotation.x = approach(LThigh.rotation.x, 0.02, 0.1);
-      RThigh.rotation.x = approach(RThigh.rotation.x, -0.02, 0.1);
-      LShin.rotation.x = approach(LShin.rotation.x, 0.05, 0.1);
-      RShin.rotation.x = approach(RShin.rotation.x, 0.05, 0.1);
-    }
+  useFrame((_, delta) => {
+    const clampedYaw = THREE.MathUtils.clamp(pathYawDeg, -85, 85);
+    const onRoad = pose === 'walk';
+    // Facing away, a right turn (+yaw) must swing her forward toward screen right.
+    const targetYaw = onRoad ? FACE_DOWN_ROAD - THREE.MathUtils.degToRad(clampedYaw) : FACE_FRONT;
+    const targetLateral = onRoad
+      ? Math.sin(THREE.MathUtils.degToRad(clampedYaw)) * LANE_SHIFT
+      : 0;
+
+    yaw.current = THREE.MathUtils.damp(yaw.current, targetYaw, 6, delta);
+    lateral.current = THREE.MathUtils.damp(lateral.current, targetLateral, 5, delta);
+    if (inner.current) inner.current.rotation.y = yaw.current;
+    if (stage.current) stage.current.position.x = lateral.current;
+
+    if (fitted.current) return;
+
+    const group = fit.current;
+    const skinned = inner.current ? findSkinnedMesh(inner.current) : null;
+    if (!group || !skinned) return;
+
+    group.scale.setScalar(1);
+    group.position.set(0, 0, 0);
+    group.updateMatrixWorld(true);
+
+    skinned.computeBoundingBox();
+    const bounds = skinned.boundingBox;
+    if (!bounds) return;
+
+    // Measure in the fit group's own space so ancestor transforms can't skew the result.
+    const toFitSpace = new THREE.Matrix4()
+      .copy(group.matrixWorld)
+      .invert()
+      .multiply(skinned.matrixWorld);
+    const box = bounds.clone().applyMatrix4(toFitSpace);
+
+    const height = box.max.y - box.min.y;
+    if (!Number.isFinite(height) || height < 1e-4) return;
+
+    const scale = TARGET_HEIGHT / height;
+    if (!Number.isFinite(scale) || scale <= 0) return;
+
+    group.scale.setScalar(scale);
+    group.position.set(
+      -((box.min.x + box.max.x) / 2) * scale,
+      FOOT_Y - box.min.y * scale,
+      -((box.min.z + box.max.z) / 2) * scale,
+    );
+    group.updateMatrixWorld(true);
+    fitted.current = true;
   });
 
   return (
-    <group ref={root as never} position={[0, -0.85, 0]} scale={body.scale}>
-      <group ref={torso as never}>
-        <mesh position={[0, 0.62, 0]} castShadow>
-          <boxGeometry args={body.torso} />
-          <meshStandardMaterial color={colors.shirt} roughness={0.6} />
-        </mesh>
-
-        <mesh position={[0, 0.18, 0]} castShadow>
-          <boxGeometry args={[0.52, 0.26, 0.28]} />
-          <meshStandardMaterial color={colors.pants} roughness={0.7} />
-        </mesh>
-
-        <mesh position={[0, 1.15, 0]} castShadow>
-          <sphereGeometry args={[body.head, 18, 18]} />
-          <meshStandardMaterial color={colors.skin} roughness={0.5} />
-        </mesh>
-
-        {gender === 'female' ? (
-          <>
-            <mesh position={[0, 1.26, -0.02]} castShadow>
-              <sphereGeometry args={[0.225, 16, 16]} />
-              <meshStandardMaterial color={colors.hair} roughness={0.85} />
-            </mesh>
-            <mesh position={[0, 0.98, -0.12]} castShadow>
-              <boxGeometry args={[0.34, 0.38, 0.12]} />
-              <meshStandardMaterial color={colors.hair} roughness={0.85} />
-            </mesh>
-          </>
-        ) : (
-          <mesh position={[0, 1.3, 0]} castShadow>
-            <boxGeometry args={[0.4, 0.11, 0.36]} />
-            <meshStandardMaterial color={colors.hair} roughness={0.85} />
-          </mesh>
-        )}
-
-        {/* Left arm chain */}
-        <group ref={leftUpperArm as never} position={[-body.shoulder, 0.9, 0]}>
-          <mesh position={[0, -body.armLen / 2, 0]} castShadow>
-            <capsuleGeometry args={[0.07, body.armLen * 0.55, 4, 8]} />
-            <meshStandardMaterial color={colors.skin} />
-          </mesh>
-          <group ref={leftForearm as never} position={[0, -body.armLen, 0]}>
-            <mesh position={[0, -body.forearmLen / 2, 0]} castShadow>
-              <capsuleGeometry args={[0.06, body.forearmLen * 0.55, 4, 8]} />
-              <meshStandardMaterial color={colors.skin} />
-            </mesh>
-          </group>
-        </group>
-
-        {/* Right arm chain */}
-        <group ref={rightUpperArm as never} position={[body.shoulder, 0.9, 0]}>
-          <mesh position={[0, -body.armLen / 2, 0]} castShadow>
-            <capsuleGeometry args={[0.07, body.armLen * 0.55, 4, 8]} />
-            <meshStandardMaterial color={colors.skin} />
-          </mesh>
-          <group ref={rightForearm as never} position={[0, -body.armLen, 0]}>
-            <mesh position={[0, -body.forearmLen / 2, 0]} castShadow>
-              <capsuleGeometry args={[0.06, body.forearmLen * 0.55, 4, 8]} />
-              <meshStandardMaterial color={colors.skin} />
-            </mesh>
-          </group>
-        </group>
-      </group>
-
-      {/* Left leg chain */}
-      <group ref={leftThigh as never} position={[-body.hip, 0.08, 0]}>
-        <mesh position={[0, -body.thighLen / 2, 0]} castShadow>
-          <capsuleGeometry args={[0.09, body.thighLen * 0.55, 4, 8]} />
-          <meshStandardMaterial color={colors.pants} />
-        </mesh>
-        <group ref={leftShin as never} position={[0, -body.thighLen, 0]}>
-          <mesh position={[0, -body.shinLen / 2, 0]} castShadow>
-            <capsuleGeometry args={[0.075, body.shinLen * 0.55, 4, 8]} />
-            <meshStandardMaterial color={colors.pants} />
-          </mesh>
-          <mesh position={[0, -body.shinLen - 0.02, 0.05]} castShadow>
-            <boxGeometry args={[0.16, 0.08, 0.26]} />
-            <meshStandardMaterial color={colors.shoes} />
-          </mesh>
-        </group>
-      </group>
-
-      {/* Right leg chain */}
-      <group ref={rightThigh as never} position={[body.hip, 0.08, 0]}>
-        <mesh position={[0, -body.thighLen / 2, 0]} castShadow>
-          <capsuleGeometry args={[0.09, body.thighLen * 0.55, 4, 8]} />
-          <meshStandardMaterial color={colors.pants} />
-        </mesh>
-        <group ref={rightShin as never} position={[0, -body.thighLen, 0]}>
-          <mesh position={[0, -body.shinLen / 2, 0]} castShadow>
-            <capsuleGeometry args={[0.075, body.shinLen * 0.55, 4, 8]} />
-            <meshStandardMaterial color={colors.pants} />
-          </mesh>
-          <mesh position={[0, -body.shinLen - 0.02, 0.05]} castShadow>
-            <boxGeometry args={[0.16, 0.08, 0.26]} />
-            <meshStandardMaterial color={colors.shoes} />
-          </mesh>
+    <group ref={stage as never}>
+      <RoadStrip />
+      <group ref={fit as never}>
+        <group ref={inner as never}>
+          <primitive object={model} />
         </group>
       </group>
     </group>
   );
 }
 
+useGLTF.preload(MARI.idle);
+useGLTF.preload(MARI.walk);
+useGLTF.preload(MARI.wave);
+useGLTF.preload(MARI.celebrate);
+
+function GuideFallback() {
+  return (
+    <mesh position={[0, FOOT_Y + TARGET_HEIGHT / 2, 0]}>
+      <capsuleGeometry args={[0.09, 0.36, 4, 12]} />
+      <meshStandardMaterial color="#148a80" />
+    </mesh>
+  );
+}
+
 export function GuideDollViewport({
-  gender,
+  gender: _gender,
   pose,
+  pathYawDeg = 0,
   className = '',
 }: {
   gender: AvatarGender;
   pose: AvatarPose;
+  /** Relative path bearing in degrees (0 ahead, −left, +right). */
+  pathYawDeg?: number;
   className?: string;
 }) {
+  void _gender;
+
   return (
     <div className={className}>
       <Canvas
-        camera={{ position: [0, 1.05, 2.55], fov: 36 }}
-        gl={{ alpha: true, antialias: true }}
+        camera={{ position: [0, 0.42, 3.1], fov: 30 }}
+        gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         style={{ background: 'transparent' }}
+        dpr={[1, 1.75]}
       >
-        <ambientLight intensity={0.9} />
-        <directionalLight position={[2.2, 4, 2.5]} intensity={1.15} />
-        <hemisphereLight args={['#f0f4f6', '#8a97a1', 0.35]} />
-        <DollModel gender={gender} pose={pose} />
+        <CameraRig />
+        <ambientLight intensity={0.75} />
+        <directionalLight position={[2.5, 4.5, 3]} intensity={1.4} />
+        <directionalLight position={[-2.5, 2, -1.5]} intensity={0.45} />
+        <hemisphereLight args={['#f5f0ea', '#6b7c86', 0.5]} />
+        <Suspense fallback={<GuideFallback />}>
+          <MariGuide pose={pose} pathYawDeg={pathYawDeg} />
+        </Suspense>
       </Canvas>
     </div>
   );
 }
 
-function turnSide(instruction: string | undefined): 'left' | 'right' | null {
-  if (!instruction) return null;
-  const lower = instruction.toLowerCase();
-  if (lower.includes('left')) return 'left';
-  if (lower.includes('right') || lower.includes('u-turn')) return 'right';
-  return null;
-}
-
 /**
- * Pick doll pose from the current step and the upcoming step.
- * Waves the turn-side hand when a turn is imminent (within threshold meters).
+ * Guide animation state:
+ * 1. Wave once at route start
+ * 2. Walk for the rest of the journey
+ * 3. Silly dance on arrival
  */
 export function poseFromRouteContext(input: {
   instruction?: string;
@@ -329,25 +268,56 @@ export function poseFromRouteContext(input: {
   distanceToNextM?: number;
   arrived: boolean;
   waveWithinM?: number;
+  atRouteStart?: boolean;
 }): AvatarPose {
-  const { instruction, nextInstruction, distanceToNextM = Infinity, arrived, waveWithinM = 28 } =
-    input;
+  const { instruction, arrived, atRouteStart = false } = input;
   if (arrived) return 'celebrate';
   if (instruction?.toLowerCase().includes('arrived')) return 'celebrate';
-
-  const currentTurn = turnSide(instruction);
-  if (currentTurn === 'left') return 'waveLeft';
-  if (currentTurn === 'right') return 'waveRight';
-
-  const upcoming = turnSide(nextInstruction);
-  if (upcoming && distanceToNextM <= waveWithinM) {
-    return upcoming === 'left' ? 'waveLeft' : 'waveRight';
-  }
-
+  if (atRouteStart) return 'waveRight';
   return 'walk';
 }
 
 /** @deprecated use poseFromRouteContext */
 export function poseFromInstruction(instruction: string | undefined, arrived: boolean): AvatarPose {
   return poseFromRouteContext({ instruction, arrived });
+}
+
+/** Normalize compass delta into −180…180. */
+export function relativeBearingDeg(targetBearing: number, heading: number | null): number {
+  if (heading == null) return 0;
+  return ((targetBearing - heading + 540) % 360) - 180;
+}
+
+function isTurnInstruction(instruction: string | undefined): boolean {
+  if (!instruction) return false;
+  const lower = instruction.toLowerCase();
+  return lower.includes('left') || lower.includes('right') || lower.includes('u-turn');
+}
+
+/**
+ * Bearing the guide should face: look ahead on the current leg, then start turning
+ * toward the next leg when a turn is close.
+ */
+export function guideFacingBearing(input: {
+  currentBearing?: number;
+  nextBearing?: number;
+  nextInstruction?: string;
+  distanceToNextM?: number;
+  turnWithinM?: number;
+}): number {
+  const {
+    currentBearing = 0,
+    nextBearing,
+    nextInstruction,
+    distanceToNextM = Infinity,
+    turnWithinM = 28,
+  } = input;
+
+  if (nextBearing != null && isTurnInstruction(nextInstruction) && distanceToNextM <= turnWithinM) {
+    const t = 1 - Math.min(1, distanceToNextM / turnWithinM);
+    const delta = ((nextBearing - currentBearing + 540) % 360) - 180;
+    return (currentBearing + delta * t + 360) % 360;
+  }
+
+  return currentBearing;
 }
