@@ -14,6 +14,10 @@ export interface GeoWatchState {
   pose: UserPose | null;
   error: string | null;
   watching: boolean;
+  /** True after deviceorientation delivers a heading (compass). */
+  compassAvailable: boolean;
+  /** Compass-only heading for turn UI; null when compass unavailable. */
+  compassHeading: number | null;
   requestCompassPermission: () => Promise<boolean>;
   /** Force a fresh high-accuracy read (call when user taps Track me). */
   refreshLocation: () => void;
@@ -173,6 +177,8 @@ export function useGeolocation(enabled = true): GeoWatchState {
   const [pose, setPose] = useState<UserPose | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
+  const [compassAvailable, setCompassAvailable] = useState(false);
+  const [compassHeading, setCompassHeading] = useState<number | null>(null);
   const compassHeadingRef = useRef<number | null>(null);
   const lastFixRef = useRef<{ lat: number; lon: number; t: number; accuracy: number | null } | null>(
     null,
@@ -226,11 +232,16 @@ export function useGeolocation(enabled = true): GeoWatchState {
 
     function onOrient(e: DeviceOrientationEvent) {
       const webkit = e as DeviceOrientationEvent & { webkitCompassHeading?: number };
+      let next: number | null = null;
       if (typeof webkit.webkitCompassHeading === 'number') {
-        compassHeadingRef.current = normalizeHeading(webkit.webkitCompassHeading);
+        next = normalizeHeading(webkit.webkitCompassHeading);
       } else if (e.alpha != null) {
-        compassHeadingRef.current = normalizeHeading(360 - e.alpha);
+        next = normalizeHeading(360 - e.alpha);
       }
+      if (next == null) return;
+      compassHeadingRef.current = next;
+      setCompassAvailable(true);
+      setCompassHeading(next);
     }
 
     window.addEventListener('deviceorientation', onOrient);
@@ -311,5 +322,13 @@ export function useGeolocation(enabled = true): GeoWatchState {
     };
   }, [enabled]);
 
-  return { pose, error, watching, requestCompassPermission, refreshLocation };
+  return {
+    pose,
+    error,
+    watching,
+    compassAvailable,
+    compassHeading,
+    requestCompassPermission,
+    refreshLocation,
+  };
 }

@@ -10,6 +10,7 @@ import {
   useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
+import type { LeafletEvent } from 'leaflet';
 import { LocateFixed, MapPin, Plus, Route, Scissors, Trash2, Waypoints } from 'lucide-react';
 import type { GraphEdge, GraphNode } from '@campusar/shared';
 import { api } from '../../lib/api';
@@ -77,6 +78,19 @@ const BEND_ICON_SELECTED = L.divIcon({
   iconSize: [32, 32],
   iconAnchor: [16, 16],
 });
+
+function stopMapPropagation(e: LeafletEvent) {
+  if ('originalEvent' in e && e.originalEvent instanceof Event) {
+    L.DomEvent.stopPropagation(e.originalEvent);
+  }
+}
+
+function haltMapPointerEvent(e: LeafletEvent) {
+  if ('originalEvent' in e && e.originalEvent instanceof Event) {
+    L.DomEvent.stopPropagation(e.originalEvent);
+    L.DomEvent.preventDefault(e.originalEvent);
+  }
+}
 
 function pinIcon(selected: boolean, pathEndpoint: boolean) {
   const color = pathEndpoint ? '#2563eb' : selected ? '#c2410c' : '#0F6B63';
@@ -174,7 +188,7 @@ function DraggablePin({
       icon={icon}
       eventHandlers={{
         click: (e) => {
-          L.DomEvent.stopPropagation(e);
+          stopMapPropagation(e);
           onSelect();
         },
         dragend: (e) => {
@@ -210,15 +224,14 @@ function BendMarker({
       icon={selected ? BEND_ICON_SELECTED : BEND_ICON}
       eventHandlers={{
         click: (e) => {
-          L.DomEvent.stopPropagation(e);
-          L.DomEvent.preventDefault(e);
+          haltMapPointerEvent(e);
           onSelect();
         },
         mousedown: (e) => {
-          L.DomEvent.stopPropagation(e);
+          stopMapPropagation(e);
         },
         dragstart: (e) => {
-          L.DomEvent.stopPropagation(e);
+          stopMapPropagation(e);
         },
         dragend: (e) => {
           const { lat, lng } = e.target.getLatLng();
@@ -268,6 +281,7 @@ export function AdminMapEditor() {
       tool !== 'break-route');
 
   async function refresh() {
+    if (!token) return;
     const [n, e] = await Promise.all([api.adminNodes.list(token), api.adminEdges.list(token)]);
     setNodes(n);
     setEdges(e);
@@ -492,6 +506,7 @@ export function AdminMapEditor() {
     fromPos: { latitude: number; longitude: number },
     toPos: { latitude: number; longitude: number },
   ) {
+    if (!token) return null;
     const distanceM = Math.max(
       1,
       Math.round(
@@ -516,6 +531,7 @@ export function AdminMapEditor() {
   }
 
   async function handleDrawPinClick(node: GraphNode) {
+    if (!token) return;
     if (!sketch) {
       setSketch({ startId: node.id, bends: [], cursor: null });
       setDrawFromId(node.id);
@@ -562,7 +578,8 @@ export function AdminMapEditor() {
       chainPos.push({ latitude: node.latitude, longitude: node.longitude });
 
       for (let i = 0; i < chainIds.length - 1; i++) {
-        await createEdgeBetween(chainIds[i], chainIds[i + 1], chainPos[i], chainPos[i + 1]);
+        const edge = await createEdgeBetween(chainIds[i], chainIds[i + 1], chainPos[i], chainPos[i + 1]);
+        if (!edge) return;
       }
 
       // Optional circuit highlight when closing a place loop with a direct (0-bend) link
@@ -595,6 +612,7 @@ export function AdminMapEditor() {
   }
 
   async function relinkDistancesForNode(nodeId: string, lat: number, lon: number, all: GraphNode[]) {
+    if (!token) return;
     const related = edges.filter((e) => e.fromNodeId === nodeId || e.toNodeId === nodeId);
     await Promise.all(
       related.map(async (edge) => {
@@ -612,6 +630,7 @@ export function AdminMapEditor() {
 
   async function saveDetails(e: FormEvent) {
     e.preventDefault();
+    if (!token) return;
     if (!details.name.trim()) {
       flash('Place name is required.', 'err');
       return;
@@ -652,6 +671,7 @@ export function AdminMapEditor() {
   }
 
   async function onPinMoved(node: GraphNode, lat: number, lon: number) {
+    if (!token) return;
     // Optimistic update so the marker does not snap back while saving
     setNodes((prev) =>
       prev.map((n) => (n.id === node.id ? { ...n, latitude: lat, longitude: lon } : n)),
@@ -672,6 +692,7 @@ export function AdminMapEditor() {
   }
 
   async function executeRemoveBend(bendId: string) {
+    if (!token) return;
     setBusy(true);
     setConfirm(null);
     try {
@@ -693,12 +714,13 @@ export function AdminMapEditor() {
               (e.fromNodeId === b && e.toNodeId === a),
           );
           if (!already) {
-            await createEdgeBetween(
+            const stitched = await createEdgeBetween(
               a,
               b,
               { latitude: aNode.latitude, longitude: aNode.longitude },
               { latitude: bNode.latitude, longitude: bNode.longitude },
             );
+            if (!stitched) return;
           }
         }
       }
@@ -720,6 +742,7 @@ export function AdminMapEditor() {
   }
 
   async function executeRemoveOne(id: string) {
+    if (!token) return;
     setBusy(true);
     setConfirm(null);
     try {
@@ -735,6 +758,7 @@ export function AdminMapEditor() {
   }
 
   async function executeRemoveAll() {
+    if (!token) return;
     setBusy(true);
     setConfirm(null);
     try {
@@ -754,6 +778,7 @@ export function AdminMapEditor() {
   }
 
   async function executeBreakEdge(id: string) {
+    if (!token) return;
     setBusy(true);
     setConfirm(null);
     try {
@@ -773,6 +798,7 @@ export function AdminMapEditor() {
   }
 
   async function executeBreakRoute(edgeIds: string[], bendIds: string[]) {
+    if (!token) return;
     setBusy(true);
     setConfirm(null);
     try {
@@ -1044,7 +1070,7 @@ export function AdminMapEditor() {
                   tool === 'break-segment'
                     ? {
                         click: (e) => {
-                          L.DomEvent.stopPropagation(e);
+                          stopMapPropagation(e);
                           setConfirm({
                             type: 'break-edge',
                             id: line.id,

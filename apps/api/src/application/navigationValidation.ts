@@ -1,4 +1,4 @@
-import type { GraphNode, RoutePlaceSummary } from '@campusar/shared';
+import type { CampusPlace, GraphNode, RoutePlaceSummary } from '@campusar/shared';
 import { AppError } from '../domain/errors';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
 

@@ -1,12 +1,65 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, MapPin, Volume2, AlertTriangle, Users, CheckCircle2 } from 'lucide-react';
-import type { RouteResponse } from '@campusar/shared';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUp, MapPin, Volume2, AlertTriangle, Users, CheckCircle2, LocateFixed } from 'lucide-react';
+import type { CampusPlace, GraphNode, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { useCampusLive } from '../../hooks/useCampusLive';
-import { GuideDollViewport, guideFacingBearing, poseFromRouteContext, relativeBearingDeg } from './GuideDoll';
+import { useGeolocation } from '../../hooks/useGeolocation';
+import {
+  bearingDegrees,
+  isNavigationGpsReady,
+  isReliableGpsFix,
+  snapGpsForRouting,
+} from '../../lib/geo';
+import {
+  classifyTurn,
+  dampRelativeBearing,
+  relativeBearingDeg,
+} from '../../lib/navigationHeading';
+import {
+  computeRouteProgress,
+  distanceToNextWaypointM,
+  evaluateOffRouteRecalc,
+  formatDistance,
+  isNearDestination,
+  OFF_ROUTE_RECALC_M,
+  updateArrivalHold,
+} from '../../lib/routeProgress';
+import {
+  appendMovementSample,
+  evaluateGpsMovement,
+  type GpsMovementSample,
+} from '../../lib/gpsMovement';
+import { GuideDollViewport, guideFacingBearing, poseFromRouteContext } from './GuideDoll';
 import { CAMPUS_LABEL } from '../../lib/campus';
+
+/** Explicit navigation phases — only one primary phase at a time. */
+export type ArNavPhase =
+  | 'initializing'
+  | 'waiting_gps'
+  | 'gps_unavailable'
+  | 'navigating'
+  | 'off_route'
+  | 'recalculating'
+  | 'arrived';
+
+const OFF_ROUTE_CHECK_MS = 3_000;
+const ARROW_DAMP_DEG = 10;
+const DOLL_YAW_DAMP_DEG = 8;
+const GPS_INIT_TIMEOUT_MS = 12_000;
+
+function campusPlacesToGraphNodes(places: CampusPlace[]): GraphNode[] {
+  return places.map((p) => ({
+    id: p.id,
+    name: p.name,
+    latitude: p.latitude,
+    longitude: p.longitude,
+    floorId: p.floorId,
+    buildingId: p.buildingId,
+    kind: p.kind,
+  }));
+}
 
 export function ArPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -14,13 +67,50 @@ export function ArPage() {
   const { sourceNodeId, destinationNodeId } = useNavStore();
   const { accessibility, voiceEnabled, avatarGender, setAvatarGender } = usePrefsStore();
   const live = useCampusLive();
+  const {
+    pose,
+    error: gpsError,
+    watching,
+    compassHeading,
+    requestCompassPermission,
+    refreshLocation,
+  } = useGeolocation(true);
+
+  const [places, setPlaces] = useState<CampusPlace[]>([]);
   const [route, setRoute] = useState<RouteResponse | null>(null);
-  const [stepIndex, setStepIndex] = useState(0);
+  const [manualStepIndex, setManualStepIndex] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [heading, setHeading] = useState<number | null>(null);
-  const [arrivedAck, setArrivedAck] = useState(false);
+  const [arrived, setArrived] = useState(false);
   const [greetingWave, setGreetingWave] = useState(false);
+  const [loadingRoute, setLoadingRoute] = useState(false);
+  const [gpsNote, setGpsNote] = useState<string | null>(null);
+  const [routeReady, setRouteReady] = useState(false);
+  const [initTimedOut, setInitTimedOut] = useState(false);
+  const [userWalking, setUserWalking] = useState(false);
+
+  const routeReqId = useRef(0);
+  const lastRouteSourceRef = useRef<string | null>(null);
+  const lastRecalcAtRef = useRef(0);
+  const offRouteSinceRef = useRef<number | null>(null);
+  const arrivalHoldRef = useRef<{ since: number | null }>({ since: null });
+  const lastSpokenStepRef = useRef(-1);
+  const bootstrapAttemptedRef = useRef(false);
+  const refreshPendingRef = useRef(false);
+  const movementSamplesRef = useRef<GpsMovementSample[]>([]);
+  const userWalkingRef = useRef(false);
+  const [arrowRotation, setArrowRotation] = useState(0);
+  const [dollYawDeg, setDollYawDeg] = useState(0);
+
+  const placeNodes = useMemo(() => campusPlacesToGraphNodes(places), [places]);
+
+  useEffect(() => {
+    api.places(token).then(setPlaces).catch(() => setPlaces([]));
+  }, [token]);
+
+  useEffect(() => {
+    void requestCompassPermission();
+  }, [requestCompassPermission]);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -44,72 +134,256 @@ export function ArPage() {
     };
   }, []);
 
-  useEffect(() => {
-    function onOrient(e: DeviceOrientationEvent) {
-      const webkit = e as DeviceOrientationEvent & { webkitCompassHeading?: number };
-      if (typeof webkit.webkitCompassHeading === 'number') {
-        setHeading(webkit.webkitCompassHeading);
-      } else if (e.alpha != null) {
-        setHeading((360 - e.alpha) % 360);
+  const resolveRouteSource = useCallback(
+    (preferredId?: string | null): string | null => {
+      if (preferredId) return preferredId;
+      if (pose && placeNodes.length > 0 && isNavigationGpsReady(pose)) {
+        const snap = snapGpsForRouting(pose, placeNodes);
+        setGpsNote(snap.message);
+        if (snap.ok) return snap.node.id;
       }
-    }
-    window.addEventListener('deviceorientation', onOrient);
-    return () => window.removeEventListener('deviceorientation', onOrient);
-  }, []);
-
-  async function loadRoute(options?: { resetProgress?: boolean }) {
-    if (!sourceNodeId || !destinationNodeId) {
-      setError('Pick a source and destination on Map or Navigate first.');
-      return;
-    }
-    try {
-      const r = await api.recalculate(
-        { sourceNodeId, destinationNodeId, accessibility, usePrediction: true },
-        token,
-      );
-      setRoute(r);
-      if (options?.resetProgress) {
-        setStepIndex(0);
-        setArrivedAck(false);
-        setGreetingWave(true);
-      }
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load route');
-    }
-  }
-
-  useEffect(() => {
-    void loadRoute({ resetProgress: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceNodeId, destinationNodeId, accessibility, token]);
-
-  useEffect(() => {
-    if (!sourceNodeId || !destinationNodeId || arrivedAck) return;
-    const t = setInterval(() => {
-      void loadRoute({ resetProgress: false });
-    }, 10_000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceNodeId, destinationNodeId, accessibility, token, arrivedAck]);
-
-  const step = route?.path[stepIndex];
-  const arrived = Boolean(
-    route &&
-      stepIndex >= route.path.length - 1 &&
-      (step?.distanceM === 0 || step?.instruction.toLowerCase().includes('arrived')),
+      return sourceNodeId;
+    },
+    [pose, placeNodes, sourceNodeId],
   );
 
-  const remaining = useMemo(() => {
-    if (!route) return 0;
-    return route.path.slice(stepIndex).reduce((sum, s) => sum + s.distanceM, 0);
-  }, [route, stepIndex]);
+  const loadRoute = useCallback(
+    async (options?: {
+      resetProgress?: boolean;
+      sourceId?: string | null;
+      /** Set after the first bootstrap attempt finishes (success or failure). */
+      markReady?: boolean;
+    }) => {
+      const destination = destinationNodeId;
+      const source = resolveRouteSource(options?.sourceId ?? null);
+      if (!source || !destination) {
+        if (options?.markReady) setRouteReady(true);
+        setError('Pick a source and destination on Map or Navigate first.');
+        return;
+      }
+      if (source === destination) {
+        if (options?.markReady) setRouteReady(true);
+        setError('Source and destination must be different.');
+        return;
+      }
 
-  const arrowRotation = useMemo(() => {
-    const bearing = step?.bearing ?? 0;
-    if (heading == null) return bearing;
-    return ((bearing - heading + 540) % 360) - 180;
-  }, [step?.bearing, heading]);
+      const reqId = ++routeReqId.current;
+      setLoadingRoute(true);
+      try {
+        const r = await api.recalculate(
+          { sourceNodeId: source, destinationNodeId: destination, accessibility, usePrediction: true },
+          token,
+        );
+        if (reqId !== routeReqId.current) return;
+        setRoute(r);
+        lastRouteSourceRef.current = source;
+        lastRecalcAtRef.current = Date.now();
+        offRouteSinceRef.current = null;
+        if (options?.resetProgress) {
+          setManualStepIndex(0);
+          setArrived(false);
+          arrivalHoldRef.current = { since: null };
+          lastSpokenStepRef.current = -1;
+          setGreetingWave(true);
+        }
+        setError(null);
+      } catch (err) {
+        if (reqId !== routeReqId.current) return;
+        setError(err instanceof Error ? err.message : 'Failed to load route');
+      } finally {
+        if (reqId === routeReqId.current) {
+          setLoadingRoute(false);
+          if (options?.markReady) setRouteReady(true);
+        }
+      }
+    },
+    [destinationNodeId, resolveRouteSource, accessibility, token],
+  );
+
+  const loadRouteRef = useRef(loadRoute);
+  loadRouteRef.current = loadRoute;
+
+  // Reset session when endpoints change — do not load a route until GPS bootstrap completes.
+  useEffect(() => {
+    setRoute(null);
+    setRouteReady(false);
+    setInitTimedOut(false);
+    bootstrapAttemptedRef.current = false;
+    offRouteSinceRef.current = null;
+    setArrived(false);
+    arrivalHoldRef.current = { since: null };
+    lastSpokenStepRef.current = -1;
+    setManualStepIndex(0);
+    movementSamplesRef.current = [];
+    userWalkingRef.current = false;
+    setUserWalking(false);
+  }, [sourceNodeId, destinationNodeId, accessibility, token]);
+
+  // Stop waiting indefinitely for GPS during bootstrap.
+  useEffect(() => {
+    if (routeReady || !destinationNodeId) return;
+    const t = window.setTimeout(() => setInitTimedOut(true), GPS_INIT_TIMEOUT_MS);
+    return () => window.clearTimeout(t);
+  }, [routeReady, destinationNodeId, sourceNodeId, accessibility, token]);
+
+  // GPS-first bootstrap: snap current location → calculate route → then render navigation.
+  useEffect(() => {
+    if (routeReady || !destinationNodeId || placeNodes.length === 0) return;
+    if (bootstrapAttemptedRef.current) return;
+
+    if (pose && isNavigationGpsReady(pose)) {
+      const snap = snapGpsForRouting(pose, placeNodes);
+      setGpsNote(snap.message);
+      if (snap.ok) {
+        bootstrapAttemptedRef.current = true;
+        void loadRouteRef.current({
+          resetProgress: true,
+          sourceId: snap.node.id,
+          markReady: true,
+        });
+        return;
+      }
+    }
+
+    if (!initTimedOut) return;
+
+    bootstrapAttemptedRef.current = true;
+    if (sourceNodeId) {
+      void loadRouteRef.current({
+        resetProgress: true,
+        sourceId: sourceNodeId,
+        markReady: true,
+      });
+    } else {
+      setRouteReady(true);
+    }
+  }, [routeReady, destinationNodeId, placeNodes, pose, initTimedOut, sourceNodeId]);
+
+  // Off-route recalculation: sustained deviation + cooldown (never every GPS tick).
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (arrived || loadingRoute || !route?.path.length || !destinationNodeId) return;
+      if (!pose || !isNavigationGpsReady(pose)) return;
+
+      const progress = computeRouteProgress(pose, route.path);
+      const decision = evaluateOffRouteRecalc({
+        distanceToRouteM: progress.distanceToRouteM,
+        now: Date.now(),
+        lastRecalcAt: lastRecalcAtRef.current,
+        offRouteSince: offRouteSinceRef.current,
+        loadingRoute,
+      });
+      offRouteSinceRef.current = decision.offRouteSince;
+      if (!decision.shouldRecalc) return;
+
+      const snap = snapGpsForRouting(pose, placeNodes);
+      if (!snap.ok || snap.node.id === lastRouteSourceRef.current) return;
+      void loadRouteRef.current({ resetProgress: false, sourceId: snap.node.id });
+    }, OFF_ROUTE_CHECK_MS);
+    return () => window.clearInterval(id);
+  }, [arrived, loadingRoute, route, destinationNodeId, pose, placeNodes]);
+
+  const gpsReady = isNavigationGpsReady(pose);
+
+  const progress = useMemo(() => {
+    if (!gpsReady || !route?.path.length || !pose) return null;
+    return computeRouteProgress(pose, route.path);
+  }, [gpsReady, route, pose]);
+
+  const stepIndex = gpsReady && progress ? progress.stepIndex : manualStepIndex;
+  const step = route?.path[stepIndex];
+  const nextStep = route?.path[stepIndex + 1];
+  const nextWaypoint = nextStep ?? step;
+
+  const distToNextMeters = useMemo(() => {
+    if (progress && route?.path.length) {
+      return distanceToNextWaypointM(progress, route.path);
+    }
+    return step?.distanceM ?? 0;
+  }, [progress, route?.path, step?.distanceM]);
+
+  const remaining = progress?.distanceRemainingM ?? route?.totalDistanceM ?? 0;
+
+  const targetBearing = useMemo(() => {
+    if (gpsReady && pose && nextWaypoint) {
+      return bearingDegrees(
+        pose.latitude,
+        pose.longitude,
+        nextWaypoint.latitude,
+        nextWaypoint.longitude,
+      );
+    }
+    return step?.bearing ?? 0;
+  }, [gpsReady, pose, nextWaypoint, step?.bearing]);
+
+  const guideBearing = useMemo(
+    () =>
+      guideFacingBearing({
+        currentBearing: targetBearing,
+        nextBearing: route?.path[stepIndex + 2]?.bearing ?? nextStep?.bearing,
+        nextInstruction: nextStep?.instruction,
+        distanceToNextM: distToNextMeters,
+        turnWithinM: Math.max(35, Math.min(60, distToNextMeters * 0.85)),
+      }),
+    [targetBearing, route?.path, stepIndex, nextStep, distToNextMeters],
+  );
+
+  const rawArrowRel =
+    compassHeading != null ? relativeBearingDeg(targetBearing, compassHeading) : null;
+  const rawDollYaw =
+    compassHeading != null ? relativeBearingDeg(guideBearing, compassHeading) : 0;
+
+  useEffect(() => {
+    if (rawArrowRel == null) return;
+    setArrowRotation((prev) => dampRelativeBearing(prev, rawArrowRel, ARROW_DAMP_DEG));
+  }, [rawArrowRel]);
+
+  useEffect(() => {
+    if (compassHeading == null) {
+      setDollYawDeg(0);
+      return;
+    }
+    setDollYawDeg((prev) => dampRelativeBearing(prev, rawDollYaw, DOLL_YAW_DAMP_DEG));
+  }, [rawDollYaw, compassHeading]);
+
+  const turnClass =
+    rawArrowRel != null ? classifyTurn(rawArrowRel) : null;
+
+  const navPhase: ArNavPhase = useMemo(() => {
+    if (arrived) return 'arrived';
+    if (!destinationNodeId) return 'initializing';
+    if (!routeReady) {
+      if (initTimedOut && !route) return 'gps_unavailable';
+      return 'waiting_gps';
+    }
+    if (loadingRoute) return 'recalculating';
+    if (!route) return 'gps_unavailable';
+    if (!pose) return 'waiting_gps';
+    if (!gpsReady) return 'gps_unavailable';
+    if (progress && progress.distanceToRouteM > OFF_ROUTE_RECALC_M) return 'off_route';
+    return 'navigating';
+  }, [
+    arrived,
+    loadingRoute,
+    destinationNodeId,
+    route,
+    pose,
+    gpsReady,
+    progress,
+    routeReady,
+    initTimedOut,
+  ]);
+
+  const poseAnim = poseFromRouteContext({
+    instruction: step?.instruction,
+    nextInstruction: nextStep?.instruction,
+    distanceToNextM: distToNextMeters,
+    arrived,
+    waveWithinM: 30,
+    atRouteStart: greetingWave && navPhase === 'navigating',
+    isMoving: gpsReady ? userWalking : false,
+  });
+  const isWaving = poseAnim === 'waveLeft' || poseAnim === 'waveRight';
 
   const avgCrowd = useMemo(() => {
     if (!live.crowd.length) return null;
@@ -117,83 +391,112 @@ export function ArPage() {
     return sum / live.crowd.length;
   }, [live.crowd]);
 
-  const nextStep = route?.path[stepIndex + 1];
-  const pose = poseFromRouteContext({
-    instruction: step?.instruction,
-    nextInstruction: nextStep?.instruction,
-    distanceToNextM: step?.distanceM ?? Infinity,
-    arrived: arrived || arrivedAck,
-    waveWithinM: 30,
-    atRouteStart: greetingWave && !(arrived || arrivedAck),
-  });
-  const isWaving = pose === 'waveLeft' || pose === 'waveRight';
-
-  // Guide faces the road; starts turning early when the next step is a left/right.
-  const guideBearing = useMemo(
-    () =>
-      guideFacingBearing({
-        currentBearing: step?.bearing,
-        nextBearing: nextStep?.bearing,
-        nextInstruction: nextStep?.instruction,
-        distanceToNextM: step?.distanceM ?? Infinity,
-        turnWithinM: 28,
-      }),
-    [step?.bearing, step?.distanceM, nextStep?.bearing, nextStep?.instruction],
-  );
-  const pathYawDeg = useMemo(() => {
-    // With compass: yaw relative to phone heading.
-    // Without compass (desktop): yaw relative to the previous leg so turns still show.
-    const prevBearing = route?.path[Math.max(0, stepIndex - 1)]?.bearing ?? step?.bearing ?? 0;
-    const reference = heading ?? prevBearing;
-    return relativeBearingDeg(guideBearing, reference);
-  }, [guideBearing, heading, route?.path, stepIndex, step?.bearing]);
+  useEffect(() => {
+    if (!gpsReady || !route?.path.length || arrived || !pose) return;
+    const near = isNearDestination(pose, route.path);
+    const now = Date.now();
+    const next = updateArrivalHold(near, now, arrivalHoldRef.current);
+    arrivalHoldRef.current = { since: next.since };
+    if (next.arrived) setArrived(true);
+  }, [gpsReady, pose, route, arrived]);
 
   useEffect(() => {
-    if (!voiceEnabled || !step) return;
-    if (arrived || arrivedAck) {
+    if (!voiceEnabled) return;
+    if (arrived) {
+      if (lastSpokenStepRef.current === -2) return;
+      lastSpokenStepRef.current = -2;
       const utter = new SpeechSynthesisUtterance('Success. You have reached your destination.');
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(utter);
       return;
     }
+    if (!step || stepIndex === lastSpokenStepRef.current) return;
+    lastSpokenStepRef.current = stepIndex;
     const utter = new SpeechSynthesisUtterance(step.instruction);
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utter);
-  }, [step, voiceEnabled, arrived, arrivedAck]);
+  }, [step, stepIndex, voiceEnabled, arrived]);
 
-  useEffect(() => {
-    if (!route || heading != null || arrived || arrivedAck) return;
-    const timer = setInterval(() => {
-      setStepIndex((i) => {
-        const next = Math.min(i + 1, route.path.length - 1);
-        if (next === route.path.length - 1) setArrivedAck(true);
-        return next;
-      });
-    }, 8000);
-    return () => clearInterval(timer);
-  }, [route, heading, arrived, arrivedAck]);
+  const routeStartNodeId = route?.path?.[0]?.nodeId;
 
-  useEffect(() => {
-    if (arrived) setArrivedAck(true);
-  }, [arrived]);
-
-  // Greeting wave plays once when a route starts (~wave clip length).
   useEffect(() => {
     if (!greetingWave) return;
     const t = setTimeout(() => setGreetingWave(false), 3800);
     return () => clearTimeout(t);
-  }, [greetingWave, route?.path?.[0]?.nodeId]);
+  }, [greetingWave, routeStartNodeId]);
 
-  function goNext() {
-    if (!route) return;
-    setStepIndex((i) => {
-      const next = Math.min(i + 1, route.path.length - 1);
-      if (next === route.path.length - 1) setArrivedAck(true);
-      return next;
+  // Visual-only: doll walks when GPS shows meaningful displacement (not for navigation progress).
+  useEffect(() => {
+    if (!gpsReady || !pose || navPhase === 'arrived') {
+      if (!gpsReady) {
+        userWalkingRef.current = false;
+        setUserWalking(false);
+        movementSamplesRef.current = [];
+      }
+      return;
+    }
+    movementSamplesRef.current = appendMovementSample(movementSamplesRef.current, {
+      latitude: pose.latitude,
+      longitude: pose.longitude,
+      timestamp: pose.timestamp,
     });
+    const movement = evaluateGpsMovement(
+      movementSamplesRef.current,
+      userWalkingRef.current,
+      Date.now(),
+    );
+    userWalkingRef.current = movement.walking;
+    setUserWalking(movement.walking);
+  }, [gpsReady, pose, navPhase]);
+
+  // After Refresh GPS, recalculate when the next reliable fix arrives.
+  useEffect(() => {
+    if (!refreshPendingRef.current || !destinationNodeId || placeNodes.length === 0) return;
+    if (!pose || !isNavigationGpsReady(pose)) return;
+    refreshPendingRef.current = false;
+    const snap = snapGpsForRouting(pose, placeNodes);
+    setGpsNote(snap.message);
+    if (!snap.ok || snap.node.id === lastRouteSourceRef.current) return;
+    void loadRouteRef.current({ resetProgress: false, sourceId: snap.node.id });
+  }, [pose, destinationNodeId, placeNodes]);
+
+  function handleRefreshGps() {
+    refreshPendingRef.current = true;
+    void requestCompassPermission();
+    refreshLocation();
   }
 
-  const showSuccess = arrived || arrivedAck;
+  function handleManualNext() {
+    if (!route) return;
+    setManualStepIndex((i) => Math.min(i + 1, route.path.length - 1));
+  }
+
+  function handleRestart() {
+    setRoute(null);
+    setRouteReady(false);
+    setInitTimedOut(false);
+    bootstrapAttemptedRef.current = false;
+    movementSamplesRef.current = [];
+    userWalkingRef.current = false;
+    setUserWalking(false);
+  }
+
+  const destLabel =
+    route?.destination?.name ??
+    places.find((p) => p.id === destinationNodeId)?.name ??
+    null;
+
+  const phaseLabel: Record<ArNavPhase, string> = {
+    initializing: 'Loading…',
+    waiting_gps: 'Getting your location…',
+    gps_unavailable: 'GPS unavailable',
+    navigating: 'On route',
+    off_route: 'Off route',
+    recalculating: 'Updating route…',
+    arrived: 'Arrived',
+  };
+
+  const showNavigation = routeReady && route != null;
 
   return (
     <div className="space-y-4">
@@ -201,8 +504,27 @@ export function ArPage() {
         <div>
           <h1 className="page-title">AR Navigation</h1>
           <p className="page-sub">{CAMPUS_LABEL} — follow the guide on camera.</p>
+          {destLabel && (
+            <p className="mt-1 text-sm text-ink-mute">
+              To <span className="font-semibold text-ink">{destLabel}</span>
+              {watching && gpsReady && (
+                <span className="ml-2 text-accent">
+                  · Live GPS
+                  {pose?.accuracy != null ? ` ±${Math.round(pose.accuracy)} m` : ''}
+                </span>
+              )}
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="btn-ghost inline-flex items-center gap-2 !py-2 text-sm"
+            onClick={handleRefreshGps}
+          >
+            <LocateFixed size={16} />
+            Refresh GPS
+          </button>
           <span className="text-sm text-ink-mute">Guide doll</span>
           <div className="inline-flex border border-line bg-paper-raised">
             <button
@@ -243,65 +565,103 @@ export function ArPage() {
         </div>
       )}
 
-      {/* Viewport: doll on right, chrome top + bottom — nothing over the doll */}
       <div className="relative overflow-hidden rounded-md border border-line bg-ink-950">
         <video ref={videoRef} className="h-[min(78vh,720px)] w-full object-cover" playsInline muted />
         {!videoRef.current?.srcObject && cameraError && (
           <div className="absolute inset-0 bg-[linear-gradient(160deg,#2a353e,#12171c)]" />
         )}
 
-        {/* Top status bar */}
+        {!routeReady && navPhase !== 'arrived' && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-ink/75 px-6 text-center backdrop-blur-sm">
+            <p className="font-display text-lg font-semibold text-white">
+              📍 Getting your current location…
+            </p>
+            <p className="max-w-sm text-sm text-white/75">
+              {initTimedOut
+                ? 'GPS fix unavailable — use manual controls below or tap Refresh GPS.'
+                : 'Allow location access and stand outdoors for best accuracy.'}
+            </p>
+            {loadingRoute && (
+              <p className="text-xs text-white/60">Calculating route from your position…</p>
+            )}
+          </div>
+        )}
+
         <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-3 sm:p-4">
           <div className="rounded-md border border-white/20 bg-ink/80 px-3 py-2 text-sm text-white backdrop-blur-sm">
             <p className="text-xs text-white/70">Distance remaining</p>
             <p className="font-display text-xl font-semibold">
-              {showSuccess ? 0 : Math.round(remaining)} m
+              {navPhase === 'arrived' ? 0 : showNavigation ? formatDistance(remaining) : '—'}
             </p>
-            {route && !showSuccess && (
-              <p className="text-xs text-white/65">ETA ~{route.etaMinutes} min</p>
+            {showNavigation && navPhase !== 'arrived' && (
+              <p className="text-xs text-white/65">
+                {navPhase === 'recalculating'
+                  ? 'Updating route…'
+                  : gpsReady
+                    ? `Next turn ${formatDistance(distToNextMeters)}`
+                    : phaseLabel[navPhase]}
+              </p>
             )}
           </div>
           <div className="rounded-md border border-white/20 bg-ink/80 px-3 py-2 text-right text-sm text-white backdrop-blur-sm">
             <p className="inline-flex items-center justify-end gap-1 text-xs text-white/65">
-              <MapPin size={12} /> {showSuccess ? 'Arrived' : 'Next waypoint'}
+              <MapPin size={12} /> {phaseLabel[navPhase]}
             </p>
             <p className="font-semibold">
-              {route
-                ? `Step ${Math.min(stepIndex + 1, route.path.length)}/${route.path.length}`
+              {showNavigation
+                ? `Step ${Math.min(stepIndex + 1, route!.path.length)}/${route!.path.length}`
                 : '—'}
             </p>
           </div>
         </div>
 
-        {/* Bearing arrow — upper center, clear of doll */}
-        {!showSuccess && (
+        {showNavigation && navPhase !== 'arrived' && gpsReady && (
           <div className="pointer-events-none absolute left-1/2 top-[22%] z-10 -translate-x-1/2">
-            <div className="ar-arrow flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-md">
-              <ArrowUp
-                size={32}
-                className="text-white transition-transform duration-200"
-                style={{ transform: `rotate(${arrowRotation}deg)` }}
-              />
-            </div>
+            {compassHeading != null ? (
+              <>
+                <div className="ar-arrow flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-md">
+                  <ArrowUp
+                    size={32}
+                    className="text-white transition-transform duration-200"
+                    style={{ transform: `rotate(${arrowRotation}deg)` }}
+                  />
+                </div>
+                {turnClass && turnClass !== 'straight' && (
+                  <p className="mt-2 max-w-[10rem] text-center text-[10px] font-semibold text-white/90">
+                    {turnClass.replace('-', ' ')}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="max-w-[10rem] rounded bg-ink/70 px-2 py-1 text-center text-[10px] text-white/70">
+                Allow compass for turn arrow
+              </p>
+            )}
           </div>
         )}
 
-        {/* Guide on the road (center) — turns with the route bearing */}
         <GuideDollViewport
           gender={avatarGender}
-          pose={pose}
-          pathYawDeg={pathYawDeg}
+          pose={
+            navPhase === 'arrived'
+              ? 'celebrate'
+              : !routeReady
+                ? 'idle'
+                : poseAnim
+          }
+          pathYawDeg={compassHeading != null ? dollYawDeg : 0}
           className="pointer-events-none absolute bottom-36 left-1/2 z-10 h-72 w-52 -translate-x-1/2 sm:bottom-40 sm:h-[22rem] sm:w-64"
         />
 
-        {/* Bottom instruction + controls — full width under doll feet */}
         <div className="absolute inset-x-0 bottom-0 z-20 border-t border-white/10 bg-gradient-to-t from-ink/95 via-ink/85 to-ink/40 px-3 pb-3 pt-8 sm:px-4">
-          {showSuccess ? (
+          {navPhase === 'arrived' ? (
             <div className="mx-auto max-w-lg rounded-md border border-accent/40 bg-accent px-4 py-3 text-center text-white animate-fade-up">
               <p className="inline-flex items-center justify-center gap-2 font-display text-lg font-semibold sm:text-xl">
-                <CheckCircle2 size={20} /> Success
+                <CheckCircle2 size={20} /> You&apos;ve arrived
               </p>
-              <p className="mt-1 text-sm sm:text-base">You have reached your destination.</p>
+              <p className="mt-1 text-sm sm:text-base">
+                {destLabel ? `Welcome to ${destLabel}.` : 'You have reached your destination.'}
+              </p>
             </div>
           ) : (
             <div className="mx-auto max-w-lg rounded-md border border-white/15 bg-ink/70 px-3 py-2.5 text-center text-white backdrop-blur-sm sm:px-4 sm:py-3">
@@ -314,34 +674,46 @@ export function ArPage() {
                 <Volume2 size={12} /> Next instruction
               </p>
               <p className="mt-1 font-display text-base font-semibold sm:text-lg">
-                {step?.instruction ?? 'Waiting for route…'}
+                {!showNavigation
+                  ? navPhase === 'waiting_gps' && !initTimedOut
+                    ? '📍 Getting your current location…'
+                    : phaseLabel[navPhase]
+                  : step?.instruction ??
+                    (navPhase === 'recalculating' ? 'Calculating route…' : phaseLabel[navPhase])}
               </p>
             </div>
           )}
 
           <div className="mt-3 flex justify-center gap-2">
-            {!showSuccess ? (
+            {navPhase !== 'arrived' ? (
               <>
-                <button
-                  type="button"
-                  className="btn-ghost !bg-paper-raised"
-                  onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
-                >
-                  Back
-                </button>
-                <button type="button" className="btn-primary" onClick={goNext}>
-                  Next turn
-                </button>
+                {!gpsReady && routeReady && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-ghost !bg-paper-raised"
+                      onClick={() => setManualStepIndex((i) => Math.max(0, i - 1))}
+                    >
+                      Back
+                    </button>
+                    <button type="button" className="btn-primary" onClick={handleManualNext}>
+                      Next turn
+                    </button>
+                  </>
+                )}
+                {gpsReady && (
+                  <p className="self-center text-xs text-white/60">
+                    Following GPS · {formatDistance(distToNextMeters)} along route to next turn
+                  </p>
+                )}
+                {!gpsReady && pose && !isReliableGpsFix(pose) && pose.accuracy != null && (
+                  <p className="self-center text-xs text-accent-warn">
+                    Low accuracy (±{Math.round(pose.accuracy)} m) — move outdoors
+                  </p>
+                )}
               </>
             ) : (
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  setStepIndex(0);
-                  setArrivedAck(false);
-                }}
-              >
+              <button type="button" className="btn-primary" onClick={handleRestart}>
                 Walk it again
               </button>
             )}
@@ -349,7 +721,11 @@ export function ArPage() {
         </div>
       </div>
 
-      {(error || cameraError) && <p className="text-sm text-accent-warn">{error ?? cameraError}</p>}
+      {(error || cameraError || gpsError || gpsNote) && (
+        <p className="text-sm text-accent-warn">
+          {error ?? gpsError ?? gpsNote ?? cameraError}
+        </p>
+      )}
     </div>
   );
 }

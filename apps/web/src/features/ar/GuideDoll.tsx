@@ -3,6 +3,7 @@ import { useAnimations, useGLTF } from '@react-three/drei';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { relativeBearingDeg as relativeBearingDegFromLib } from '../../lib/navigationHeading';
 
 export type AvatarGender = 'male' | 'female';
 export type AvatarPose = 'idle' | 'walk' | 'waveLeft' | 'waveRight' | 'celebrate';
@@ -23,7 +24,7 @@ const FACE_FRONT = 0;
 /** Half turn puts her back to the user so she leads down the road (walk). */
 const FACE_DOWN_ROAD = Math.PI;
 /** How far she drifts across the lane when turning. */
-const LANE_SHIFT = 0.2;
+const LANE_SHIFT = 0.28;
 
 type ClipKey = 'idle' | 'walk' | 'wave' | 'celebrate';
 
@@ -153,8 +154,8 @@ function MariGuide({ pose, pathYawDeg }: { pose: AvatarPose; pathYawDeg: number 
       ? Math.sin(THREE.MathUtils.degToRad(clampedYaw)) * LANE_SHIFT
       : 0;
 
-    yaw.current = THREE.MathUtils.damp(yaw.current, targetYaw, 6, delta);
-    lateral.current = THREE.MathUtils.damp(lateral.current, targetLateral, 5, delta);
+    yaw.current = THREE.MathUtils.damp(yaw.current, targetYaw, 8, delta);
+    lateral.current = THREE.MathUtils.damp(lateral.current, targetLateral, 7, delta);
     if (inner.current) inner.current.rotation.y = yaw.current;
     if (stage.current) stage.current.position.x = lateral.current;
 
@@ -269,11 +270,14 @@ export function poseFromRouteContext(input: {
   arrived: boolean;
   waveWithinM?: number;
   atRouteStart?: boolean;
+  /** When false, doll idles instead of walking (visual only). */
+  isMoving?: boolean;
 }): AvatarPose {
-  const { instruction, arrived, atRouteStart = false } = input;
+  const { instruction, arrived, atRouteStart = false, isMoving = true } = input;
   if (arrived) return 'celebrate';
   if (instruction?.toLowerCase().includes('arrived')) return 'celebrate';
   if (atRouteStart) return 'waveRight';
+  if (!isMoving) return 'idle';
   return 'walk';
 }
 
@@ -285,7 +289,7 @@ export function poseFromInstruction(instruction: string | undefined, arrived: bo
 /** Normalize compass delta into −180…180. */
 export function relativeBearingDeg(targetBearing: number, heading: number | null): number {
   if (heading == null) return 0;
-  return ((targetBearing - heading + 540) % 360) - 180;
+  return relativeBearingDegFromLib(targetBearing, heading);
 }
 
 function isTurnInstruction(instruction: string | undefined): boolean {

@@ -4,6 +4,9 @@ import { haversineMeters } from './geo';
 export const STEP_ADVANCE_BUFFER_M = 22;
 export const ARRIVAL_RADIUS_M = 28;
 export const ARRIVAL_HOLD_MS = 3000;
+export const OFF_ROUTE_RECALC_M = 45;
+export const RECALC_COOLDOWN_MS = 15_000;
+export const OFF_ROUTE_HOLD_MS = 2_500;
 
 export function formatDistance(meters: number): string {
   if (!Number.isFinite(meters) || meters <= 0) return '0 m';
@@ -44,6 +47,8 @@ export interface RouteProgress {
   distanceRemainingM: number;
   alongRouteM: number;
   totalRouteM: number;
+  /** Shortest distance from the user to the route polyline (m). */
+  distanceToRouteM: number;
 }
 
 /** Project GPS onto the route polyline and derive step index + remaining distance. */
@@ -52,7 +57,13 @@ export function computeRouteProgress(
   path: RouteStep[],
 ): RouteProgress {
   if (path.length === 0) {
-    return { stepIndex: 0, distanceRemainingM: 0, alongRouteM: 0, totalRouteM: 0 };
+    return {
+      stepIndex: 0,
+      distanceRemainingM: 0,
+      alongRouteM: 0,
+      totalRouteM: 0,
+      distanceToRouteM: Infinity,
+    };
   }
   if (path.length === 1) {
     const d = haversineMeters(
@@ -66,6 +77,7 @@ export function computeRouteProgress(
       distanceRemainingM: d,
       alongRouteM: 0,
       totalRouteM: 0,
+      distanceToRouteM: d,
     };
   }
 
@@ -102,7 +114,54 @@ export function computeRouteProgress(
   }
   stepIndex = Math.min(stepIndex, path.length - 1);
 
-  return { stepIndex, distanceRemainingM, alongRouteM, totalRouteM };
+  return {
+    stepIndex,
+    distanceRemainingM,
+    alongRouteM,
+    totalRouteM,
+    distanceToRouteM: bestDist,
+  };
+}
+
+/** Distance along the route polyline from the user to the next step waypoint. */
+export function distanceToNextWaypointM(progress: RouteProgress, path: RouteStep[]): number {
+  if (path.length <= 1) return 0;
+  const targetIdx = Math.min(progress.stepIndex + 1, path.length - 1);
+  if (targetIdx <= progress.stepIndex) return 0;
+
+  const cumulative: number[] = [0];
+  for (let i = 1; i < path.length; i++) {
+    cumulative.push(cumulative[i - 1]! + segmentLengthM(path[i - 1]!, path[i]!));
+  }
+  return Math.max(0, cumulative[targetIdx]! - progress.alongRouteM);
+}
+
+export interface OffRouteRecalcDecision {
+  shouldRecalc: boolean;
+  offRouteSince: number | null;
+  isOffRoute: boolean;
+}
+
+/** Decide whether to recalculate after sustained off-route with cooldown. */
+export function evaluateOffRouteRecalc(input: {
+  distanceToRouteM: number;
+  now: number;
+  lastRecalcAt: number;
+  offRouteSince: number | null;
+  loadingRoute: boolean;
+}): OffRouteRecalcDecision {
+  const isOffRoute = input.distanceToRouteM > OFF_ROUTE_RECALC_M;
+  if (!isOffRoute) {
+    return { shouldRecalc: false, offRouteSince: null, isOffRoute: false };
+  }
+  const since = input.offRouteSince ?? input.now;
+  const sustained = input.now - since >= OFF_ROUTE_HOLD_MS;
+  const cooledDown = input.now - input.lastRecalcAt >= RECALC_COOLDOWN_MS;
+  return {
+    isOffRoute: true,
+    offRouteSince: since,
+    shouldRecalc: sustained && cooledDown && !input.loadingRoute,
+  };
 }
 
 export function isNearDestination(

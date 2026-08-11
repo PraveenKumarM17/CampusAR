@@ -11,6 +11,8 @@ export const CAMPUS_MAX_SNAP_DISTANCE_M = 35;
 export const CAMPUS_SNAP_RADIUS_M = 45;
 /** Must be within this distance (m) of campus center to auto-track. */
 export const CAMPUS_PROXIMITY_M = 1200;
+/** Treat GPS fixes older than this as stale for navigation progress. */
+export const GPS_STALE_MS = 15_000;
 
 export function haversineMeters(
   lat1: number,
@@ -25,6 +27,22 @@ export function haversineMeters(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Initial bearing from point 1 to point 2 in degrees (0 = north). */
+export function bearingDegrees(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const Δλ = toRad(lon2 - lon1);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 export interface UserPose {
@@ -42,6 +60,16 @@ export function distanceFromCampusM(pose: { latitude: number; longitude: number 
 /** True when the browser-reported accuracy is good enough to follow on the map. */
 export function isReliableGpsFix(pose: UserPose): boolean {
   return pose.accuracy == null || pose.accuracy <= GPS_MAX_ACCURACY_M;
+}
+
+/** True when the fix is recent enough for live navigation progress. */
+export function isFreshGpsFix(pose: UserPose, maxAgeMs = GPS_STALE_MS): boolean {
+  return Date.now() - pose.timestamp <= maxAgeMs;
+}
+
+/** GPS suitable for authoritative step/distance/arrival progress. */
+export function isNavigationGpsReady(pose: UserPose | null): boolean {
+  return pose != null && isReliableGpsFix(pose) && isFreshGpsFix(pose);
 }
 
 /** Auto-follow only when the fix is reliable and plausibly on campus. */

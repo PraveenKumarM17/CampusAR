@@ -3,8 +3,13 @@ import type { RouteStep } from '@campusar/shared';
 import {
   ARRIVAL_RADIUS_M,
   computeRouteProgress,
+  distanceToNextWaypointM,
+  evaluateOffRouteRecalc,
   formatDistance,
   isNearDestination,
+  OFF_ROUTE_HOLD_MS,
+  OFF_ROUTE_RECALC_M,
+  RECALC_COOLDOWN_MS,
   updateArrivalHold,
 } from './routeProgress';
 
@@ -52,6 +57,65 @@ describe('computeRouteProgress', () => {
   it('advances step index near middle', () => {
     const p = computeRouteProgress({ latitude: 12.902, longitude: 77.518 }, path);
     expect(p.stepIndex).toBeGreaterThanOrEqual(1);
+    expect(p.distanceToRouteM).toBeLessThan(5);
+  });
+
+  it('computes distance to next waypoint along route', () => {
+    const p = computeRouteProgress({ latitude: 12.9015, longitude: 77.518 }, path);
+    const d = distanceToNextWaypointM(p, path);
+    expect(d).toBeGreaterThan(0);
+    expect(d).toBeLessThan(p.distanceRemainingM + 1);
+  });
+});
+
+describe('evaluateOffRouteRecalc', () => {
+  it('does not recalc immediately when off route', () => {
+    const now = 10_000;
+    const d = evaluateOffRouteRecalc({
+      distanceToRouteM: OFF_ROUTE_RECALC_M + 10,
+      now,
+      lastRecalcAt: 0,
+      offRouteSince: now,
+      loadingRoute: false,
+    });
+    expect(d.isOffRoute).toBe(true);
+    expect(d.shouldRecalc).toBe(false);
+  });
+
+  it('recalcs after sustained off-route and cooldown', () => {
+    const now = 20_000;
+    const d = evaluateOffRouteRecalc({
+      distanceToRouteM: OFF_ROUTE_RECALC_M + 5,
+      now,
+      lastRecalcAt: now - RECALC_COOLDOWN_MS - 1,
+      offRouteSince: now - OFF_ROUTE_HOLD_MS - 1,
+      loadingRoute: false,
+    });
+    expect(d.shouldRecalc).toBe(true);
+  });
+
+  it('clears off-route state when back on route', () => {
+    const d = evaluateOffRouteRecalc({
+      distanceToRouteM: 5,
+      now: 5000,
+      lastRecalcAt: 0,
+      offRouteSince: 1000,
+      loadingRoute: false,
+    });
+    expect(d.isOffRoute).toBe(false);
+    expect(d.offRouteSince).toBeNull();
+  });
+
+  it('does not recalc while a request is in flight', () => {
+    const now = 30_000;
+    const d = evaluateOffRouteRecalc({
+      distanceToRouteM: OFF_ROUTE_RECALC_M + 20,
+      now,
+      lastRecalcAt: 0,
+      offRouteSince: now - OFF_ROUTE_HOLD_MS - 100,
+      loadingRoute: true,
+    });
+    expect(d.shouldRecalc).toBe(false);
   });
 });
 

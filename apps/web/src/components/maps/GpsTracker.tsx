@@ -70,7 +70,7 @@ export function FollowUser({
     const target = L.latLng(pose.latitude, pose.longitude);
     const z = Math.max(map.getZoom(), zoom);
     map.setView(target, z, { animate: true, duration: 0.35 });
-  }, [map, pose?.latitude, pose?.longitude, enabled, recenterAt, zoom]);
+  }, [map, pose, enabled, recenterAt, zoom]);
 
   return null;
 }
