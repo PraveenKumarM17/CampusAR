@@ -5,7 +5,14 @@ declare namespace google.maps {
     setMapTypeId(id: string): void;
     setTilt(tilt: number): void;
     setHeading(heading: number): void;
+    getZoom(): number | undefined;
+    setZoom(zoom: number): void;
+    panTo(latLng: LatLngLiteral): void;
     fitBounds(bounds: LatLngBounds, padding?: number | Record<string, number>): void;
+    addListener(event: string, handler: () => void): void;
+  }
+  class Point {
+    constructor(x: number, y: number);
   }
   class LatLngBounds {
     extend(latLng: LatLngLiteral): void;
@@ -32,9 +39,11 @@ declare namespace google.maps {
   }
   enum SymbolPath {
     CIRCLE = 0,
+    FORWARD_CLOSED_ARROW = 1,
   }
   const SymbolPath: {
     CIRCLE: SymbolPath;
+    FORWARD_CLOSED_ARROW: SymbolPath;
   };
 }
 

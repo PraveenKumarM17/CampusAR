@@ -52,6 +52,11 @@ body {
   font-family: 'Public Sans', system-ui, sans-serif;
 }
 
+.gps-user-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
 .admin-map-pin {
   background: transparent !important;
   border: none !important;

@@ -23,6 +23,11 @@ interface GoogleCampusMapProps {
   pathLines?: CampusPathLine[];
   zones?: DangerZone[];
   pose?: UserPose | null;
+  /** Keep camera on the user as GPS updates. */
+  followGps?: boolean;
+  /** Bump to force an immediate pan to the user (Track me click). */
+  recenterAt?: number;
+  onFollowBreak?: () => void;
   onPlaceClick?: (nodeId: string) => void;
 }
 
@@ -73,16 +78,24 @@ export function GoogleCampusMap({
   pathLines = [],
   zones = [],
   pose = null,
+  followGps = false,
+  recenterAt = 0,
+  onFollowBreak,
   onPlaceClick,
 }: GoogleCampusMapProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? '';
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const overlaysRef = useRef<google.maps.MVCObject[]>([]);
+  const poseOverlayRef = useRef<google.maps.MVCObject[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const onPlaceClickRef = useRef(onPlaceClick);
   onPlaceClickRef.current = onPlaceClick;
+  const onFollowBreakRef = useRef(onFollowBreak);
+  onFollowBreakRef.current = onFollowBreak;
+  const followGpsRef = useRef(followGps);
+  followGpsRef.current = followGps;
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +116,9 @@ export function GoogleCampusMap({
           clickableIcons: true,
         });
         mapRef.current = map;
+        map.addListener('dragstart', () => {
+          if (followGpsRef.current) onFollowBreakRef.current?.();
+        });
         setReady(true);
       })
       .catch((err: Error) => {
@@ -119,9 +135,10 @@ export function GoogleCampusMap({
     if (!map || !ready) return;
     map.setMapTypeId(toMapTypeId(mode));
     map.setTilt(toMapTypeId(mode) === 'roadmap' ? 45 : 67.5);
-    map.setHeading(20);
-  }, [mode, ready]);
+    if (!followGps) map.setHeading(20);
+  }, [mode, ready, followGps]);
 
+  // Static overlays (paths, places, zones, route) — not pose
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !window.google?.maps) return;
@@ -151,10 +168,13 @@ export function GoogleCampusMap({
         strokeWeight: 6,
       });
       overlaysRef.current.push(route);
-      const bounds = new google.maps.LatLngBounds();
-      routePoints.forEach(([lat, lon]) => bounds.extend({ lat, lng: lon }));
-      map.fitBounds(bounds, 64);
-      map.setTilt(55);
+      // Don't steal the camera while auto-tracking the user.
+      if (!followGpsRef.current) {
+        const bounds = new google.maps.LatLngBounds();
+        routePoints.forEach(([lat, lon]) => bounds.extend({ lat, lng: lon }));
+        map.fitBounds(bounds, 64);
+        map.setTilt(55);
+      }
     }
 
     for (const node of placeNodes) {
@@ -202,32 +222,6 @@ export function GoogleCampusMap({
       });
       overlaysRef.current.push(circle);
     }
-
-    if (pose) {
-      const accuracy = new google.maps.Circle({
-        map,
-        center: { lat: pose.latitude, lng: pose.longitude },
-        radius: Math.min(pose.accuracy ?? 20, 40),
-        fillColor: '#2166a8',
-        fillOpacity: 0.15,
-        strokeWeight: 0,
-      });
-      const you = new google.maps.Marker({
-        map,
-        position: { lat: pose.latitude, lng: pose.longitude },
-        title: 'You',
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: '#2166a8',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 3,
-        },
-        zIndex: 999,
-      });
-      overlaysRef.current.push(accuracy, you);
-    }
   }, [
     ready,
     placeNodes,
@@ -236,8 +230,54 @@ export function GoogleCampusMap({
     routePoints,
     pathLines,
     zones,
-    pose,
   ]);
+
+  // Live pose + heading (updated without rebuilding campus overlays)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !window.google?.maps) return;
+
+    poseOverlayRef.current.forEach((o) => {
+      (o as google.maps.Polyline | google.maps.Marker | google.maps.Circle).setMap(null);
+    });
+    poseOverlayRef.current = [];
+
+    if (!pose) return;
+
+    const accuracy = new google.maps.Circle({
+      map,
+      center: { lat: pose.latitude, lng: pose.longitude },
+      radius: Math.min(Math.max(pose.accuracy ?? 20, 8), 80),
+      fillColor: '#2166a8',
+      fillOpacity: 0.15,
+      strokeWeight: 0,
+    });
+
+    const hasHeading = pose.heading != null && Number.isFinite(pose.heading);
+    const you = new google.maps.Marker({
+      map,
+      position: { lat: pose.latitude, lng: pose.longitude },
+      title: 'You',
+      icon: {
+        path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z',
+        fillColor: '#2166a8',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2,
+        scale: 1.35,
+        anchor: new google.maps.Point(12, 22),
+        rotation: hasHeading ? (pose.heading ?? 0) : 0,
+      },
+      zIndex: 999,
+    });
+    poseOverlayRef.current.push(accuracy, you);
+
+    if (followGps || recenterAt) {
+      const zoom = map.getZoom() ?? CAMPUS_DEFAULT_ZOOM;
+      map.panTo({ lat: pose.latitude, lng: pose.longitude });
+      if (zoom < 18) map.setZoom(18);
+    }
+  }, [ready, pose, followGps, recenterAt]);
 
   if (error) {
     return (

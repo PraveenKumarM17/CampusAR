@@ -28,7 +28,7 @@ import {
   CAMPUS_MAP_CENTER,
   CAMPUS_MAX_ZOOM,
 } from '../../lib/campus';
-import { nearestNode, closestNamedPlace } from '../../lib/geo';
+import { closestNamedPlace, snapGpsForRouting } from '../../lib/geo';
 import {
   BasemapModeSwitcher,
   RealBasemapTiles,
@@ -38,14 +38,18 @@ import {
   GoogleCampusMap,
   hasGoogleMapsKey,
 } from '../../components/maps/GoogleCampusMap';
+import {
+  BreakFollowOnInteract,
+  FollowUser,
+  UserLocationMarker,
+} from '../../components/maps/GpsTracker';
 
-function FitBounds({ points }: { points: [number, number][] }) {
+function FitBounds({ points, enabled }: { points: [number, number][]; enabled: boolean }) {
   const map = useMap();
   useEffect(() => {
-    if (points.length > 1) {
-      map.fitBounds(points, { padding: [48, 48] });
-    }
-  }, [map, points]);
+    if (!enabled || points.length <= 1) return;
+    map.fitBounds(points, { padding: [48, 48] });
+  }, [map, points, enabled]);
   return null;
 }
 
@@ -90,11 +94,13 @@ export function MapPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [route, setRoute] = useState<RouteResponse | null>(null);
   const [followGps, setFollowGps] = useState(true);
+  const [recenterAt, setRecenterAt] = useState(0);
   const [gpsNote, setGpsNote] = useState<string | null>(null);
   const [basemapMode, setBasemapMode] = useState<BasemapMode>('hybrid');
   const useGoogle = hasGoogleMapsKey();
   const live = useCampusLive();
-  const { pose, error: gpsError } = useGeolocation(true);
+  const { pose, error: gpsError, requestCompassPermission, refreshLocation, watching } =
+    useGeolocation(true);
 
   useEffect(() => {
     Promise.all([
@@ -149,23 +155,24 @@ export function MapPage() {
     return () => clearTimeout(t);
   }, [query, token]);
 
-  // Snap live GPS → nearest campus node and use as route source
+  // Snap live GPS → nearest campus node for routing only (marker stays on raw GPS)
   useEffect(() => {
     if (!followGps || !pose || nodes.length === 0) return;
-    const snap = nearestNode(pose, nodes, 120);
-    if (!snap) {
-      setGpsNote('You appear outside campus — pick a start node or move closer to RNSIT.');
-      return;
-    }
-    setGpsNote(
-      snap.distanceM < 15
-        ? `Tracking near ${snap.node.name ?? 'path'}`
-        : `Snapped to ${snap.node.name ?? 'nearest path'} (${Math.round(snap.distanceM)} m)`,
-    );
-    if (snap.node.id !== sourceNodeId) {
+    const snap = snapGpsForRouting(pose, nodes);
+    setGpsNote(snap.message);
+    if (snap.ok && snap.node.id !== sourceNodeId) {
       setSource(snap.node.id);
     }
   }, [pose, nodes, followGps, sourceNodeId, setSource]);
+
+  const trackOnMap = followGps && pose != null;
+
+  function handleTrackMe() {
+    setFollowGps(true);
+    setRecenterAt(Date.now());
+    void requestCompassPermission();
+    refreshLocation();
+  }
 
   const filteredBuildings = useMemo(() => {
     if (!category) return buildings;
@@ -294,10 +301,11 @@ export function MapPage() {
           <button
             type="button"
             className={`btn-ghost inline-flex items-center gap-2 ${followGps ? '!border-accent !text-accent' : ''}`}
-            onClick={() => setFollowGps((v) => !v)}
+            disabled={!pose && !watching}
+            onClick={handleTrackMe}
           >
             <Navigation size={16} />
-            {followGps ? 'GPS on' : 'GPS off'}
+            {followGps ? 'Tracking' : 'Track me'}
           </button>
           <button
             type="button"
@@ -311,6 +319,7 @@ export function MapPage() {
                 return;
               }
               setFollowGps(true);
+              setRecenterAt(Date.now());
               void startRoute(nearest.node.id);
               setGpsNote(
                 `Routing to closest place: ${nearest.node.name} (${Math.round(nearest.distanceM)} m)`,
@@ -322,9 +331,15 @@ export function MapPage() {
         </div>
       </div>
 
-      {(gpsError || gpsNote) && (
+      {(gpsError || gpsNote || pose) && (
         <p className={`text-sm ${gpsError ? 'text-accent-warn' : 'text-ink-mute'}`}>
-          {gpsError ?? gpsNote}
+          {gpsError ??
+            gpsNote ??
+            (pose
+              ? `GPS ${pose.latitude.toFixed(5)}, ${pose.longitude.toFixed(5)}${
+                  pose.accuracy != null ? ` · ±${Math.round(pose.accuracy)} m` : ''
+                }${pose.accuracy != null && pose.accuracy > 65 ? ' · waiting for precise fix' : ''}`
+              : null)}
         </p>
       )}
 
@@ -375,6 +390,9 @@ export function MapPage() {
               }))}
               zones={zones}
               pose={pose}
+              followGps={trackOnMap}
+              recenterAt={recenterAt}
+              onFollowBreak={() => setFollowGps(false)}
               onPlaceClick={(id) => {
                 if (followGps && sourceNodeId) {
                   void startRoute(id);
@@ -398,6 +416,8 @@ export function MapPage() {
               maxZoom={CAMPUS_MAX_ZOOM}
             >
               <RealBasemapTiles mode={basemapMode} />
+              <BreakFollowOnInteract onBreak={() => setFollowGps(false)} />
+              <FollowUser pose={pose} enabled={trackOnMap} recenterAt={recenterAt} />
 
               {/* Walk network */}
               {crowdPolylines.map((line) => (
@@ -505,36 +525,33 @@ export function MapPage() {
 
               {pose && (
                 <>
-                  <Circle
-                    center={[pose.latitude, pose.longitude]}
-                    radius={Math.min(pose.accuracy ?? 20, 40)}
-                    pathOptions={{
-                      color: '#2166a8',
-                      fillColor: '#2166a8',
-                      fillOpacity: 0.12,
-                      weight: 1,
-                    }}
+                  <UserLocationMarker pose={pose} />
+                  <RecenterButton
+                    lat={pose.latitude}
+                    lon={pose.longitude}
+                    onClick={handleTrackMe}
                   />
-                  <CircleMarker
-                    center={[pose.latitude, pose.longitude]}
-                    radius={8}
-                    pathOptions={{ color: '#fff', fillColor: '#2166a8', fillOpacity: 1, weight: 3 }}
-                  >
-                    <Tooltip permanent direction="right" offset={[10, 0]}>
-                      You
-                    </Tooltip>
-                  </CircleMarker>
-                  <RecenterButton lat={pose.latitude} lon={pose.longitude} />
                 </>
               )}
 
               {routePoints.length > 1 && (
                 <>
                   <Polyline positions={routePoints} pathOptions={{ color: '#0f6b63', weight: 6 }} />
-                  <FitBounds points={routePoints} />
+                  <FitBounds points={routePoints} enabled={!trackOnMap} />
                 </>
               )}
             </MapContainer>
+          )}
+          {useGoogle && pose && (
+            <button
+              type="button"
+              className={`absolute bottom-4 right-4 z-[1000] inline-flex items-center gap-2 rounded-md border border-line bg-paper-raised px-3 py-2 text-sm font-semibold text-ink shadow-sm hover:border-accent ${
+                followGps ? 'border-accent text-accent' : ''
+              }`}
+              onClick={handleTrackMe}
+            >
+              <LocateFixed size={16} className="text-accent" /> Track me
+            </button>
           )}
           {!useGoogle && (
             <p className="pointer-events-none absolute bottom-3 left-3 z-[1000] max-w-xs rounded-md bg-ink/75 px-2 py-1 text-[10px] text-white/90">

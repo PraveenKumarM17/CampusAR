@@ -1,6 +1,16 @@
 import type { GraphNode } from '@campusar/shared';
+import { CAMPUS_CENTER } from './campus';
 
 const R = 6371000;
+
+/** Max accuracy (m) to trust for routing snap and auto-follow. */
+export const GPS_MAX_ACCURACY_M = 65;
+/** Max distance (m) from GPS fix to snap onto a walk node. */
+export const CAMPUS_MAX_SNAP_DISTANCE_M = 35;
+/** Search radius (m) for nearest walk node. */
+export const CAMPUS_SNAP_RADIUS_M = 45;
+/** Must be within this distance (m) of campus center to auto-track. */
+export const CAMPUS_PROXIMITY_M = 1200;
 
 export function haversineMeters(
   lat1: number,
@@ -23,6 +33,63 @@ export interface UserPose {
   accuracy: number | null;
   heading: number | null;
   timestamp: number;
+}
+
+export function distanceFromCampusM(pose: { latitude: number; longitude: number }): number {
+  return haversineMeters(pose.latitude, pose.longitude, CAMPUS_CENTER.lat, CAMPUS_CENTER.lon);
+}
+
+/** True when the browser-reported accuracy is good enough to follow on the map. */
+export function isReliableGpsFix(pose: UserPose): boolean {
+  return pose.accuracy == null || pose.accuracy <= GPS_MAX_ACCURACY_M;
+}
+
+/** Auto-follow only when the fix is reliable and plausibly on campus. */
+export function shouldFollowGps(pose: UserPose): boolean {
+  return isReliableGpsFix(pose) && distanceFromCampusM(pose) <= CAMPUS_PROXIMITY_M;
+}
+
+export type GpsSnapResult =
+  | { ok: true; node: GraphNode; distanceM: number; message: string }
+  | { ok: false; message: string };
+
+/** Snap raw GPS to the walk graph for routing — never moves the map marker. */
+export function snapGpsForRouting(pose: UserPose, nodes: GraphNode[]): GpsSnapResult {
+  const campusDist = distanceFromCampusM(pose);
+  if (campusDist > CAMPUS_PROXIMITY_M) {
+    return {
+      ok: false,
+      message: `You are ${(campusDist / 1000).toFixed(1)} km from RNSIT — pick a start point on the map.`,
+    };
+  }
+  if (pose.accuracy != null && pose.accuracy > GPS_MAX_ACCURACY_M) {
+    return {
+      ok: false,
+      message: `Low GPS accuracy (±${Math.round(pose.accuracy)} m) — move outdoors for a clearer sky view.`,
+    };
+  }
+  const snap = nearestNode(pose, nodes, CAMPUS_SNAP_RADIUS_M);
+  if (!snap) {
+    return {
+      ok: false,
+      message: 'No campus path nearby — tap the map to set your start.',
+    };
+  }
+  if (snap.distanceM > CAMPUS_MAX_SNAP_DISTANCE_M) {
+    return {
+      ok: false,
+      message: `GPS uncertain (nearest path ${Math.round(snap.distanceM)} m away) — wait for a better fix.`,
+    };
+  }
+  return {
+    ok: true,
+    node: snap.node,
+    distanceM: snap.distanceM,
+    message:
+      snap.distanceM < 12
+        ? `Tracking near ${snap.node.name ?? 'path'}`
+        : `Near ${snap.node.name ?? 'path'} (${Math.round(snap.distanceM)} m)`,
+  };
 }
 
 /** Snap GPS to nearest walkable graph node within maxDistanceM. */

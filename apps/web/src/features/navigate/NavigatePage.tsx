@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { MapContainer, Polyline, CircleMarker, Circle, Tooltip } from 'react-leaflet';
-import { RefreshCw, Accessibility, Mic, MicOff } from 'lucide-react';
+import { MapContainer, Polyline, CircleMarker } from 'react-leaflet';
+import { RefreshCw, Accessibility, Mic, MicOff, LocateFixed } from 'lucide-react';
 import type { GraphNode, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -8,13 +8,18 @@ import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
 import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAP_CENTER, CAMPUS_MAX_ZOOM } from '../../lib/campus';
 import { useGeolocation } from '../../hooks/useGeolocation';
-import { nearestNode } from '../../lib/geo';
+import { snapGpsForRouting } from '../../lib/geo';
 import {
   BasemapModeSwitcher,
   RealBasemapTiles,
   type BasemapMode,
 } from '../../components/maps/RealBasemap';
 import { GoogleCampusMap, hasGoogleMapsKey } from '../../components/maps/GoogleCampusMap';
+import {
+  BreakFollowOnInteract,
+  FollowUser,
+  UserLocationMarker,
+} from '../../components/maps/GpsTracker';
 
 export function NavigatePage() {
   const token = useAuthStore((s) => s.accessToken);
@@ -26,8 +31,11 @@ export function NavigatePage() {
   const [loading, setLoading] = useState(false);
   const [usePrediction, setUsePrediction] = useState(true);
   const [basemapMode, setBasemapMode] = useState<BasemapMode>('hybrid');
+  const [followGps, setFollowGps] = useState(true);
+  const [recenterAt, setRecenterAt] = useState(0);
+  const [gpsNote, setGpsNote] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { pose, error: gpsError } = useGeolocation(true);
+  const { pose, error: gpsError, requestCompassPermission, refreshLocation } = useGeolocation(true);
   const useGoogle = hasGoogleMapsKey();
 
   useEffect(() => {
@@ -36,9 +44,19 @@ export function NavigatePage() {
 
   useEffect(() => {
     if (!pose || nodes.length === 0) return;
-    const snap = nearestNode(pose, nodes, 120);
-    if (snap && snap.node.id !== sourceNodeId) setSource(snap.node.id);
+    const snap = snapGpsForRouting(pose, nodes);
+    setGpsNote(snap.message);
+    if (snap.ok && snap.node.id !== sourceNodeId) setSource(snap.node.id);
   }, [pose, nodes, sourceNodeId, setSource]);
+
+  const trackOnMap = followGps && pose != null;
+
+  function handleTrackMe() {
+    setFollowGps(true);
+    setRecenterAt(Date.now());
+    void requestCompassPermission();
+    refreshLocation();
+  }
 
   async function compute(recalc = false) {
     if (!sourceNodeId || !destinationNodeId) {
@@ -116,7 +134,11 @@ export function NavigatePage() {
         </div>
       </div>
 
-      {gpsError && <p className="text-sm text-accent-warn">{gpsError}</p>}
+      {(gpsError || gpsNote) && (
+        <p className={`text-sm ${gpsError ? 'text-accent-warn' : 'text-ink-mute'}`}>
+          {gpsError ?? gpsNote}
+        </p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
         <div className="space-y-3">
@@ -229,6 +251,9 @@ export function NavigatePage() {
               destinationNodeId={destinationNodeId}
               routePoints={points}
               pose={pose}
+              followGps={trackOnMap}
+              recenterAt={recenterAt}
+              onFollowBreak={() => setFollowGps(false)}
               onPlaceClick={(id) => setDestination(id)}
             />
           ) : (
@@ -239,6 +264,8 @@ export function NavigatePage() {
               maxZoom={CAMPUS_MAX_ZOOM}
             >
               <RealBasemapTiles mode={basemapMode} />
+              <BreakFollowOnInteract onBreak={() => setFollowGps(false)} />
+              <FollowUser pose={pose} enabled={trackOnMap} recenterAt={recenterAt} />
               {points.length > 1 && (
                 <Polyline positions={points} pathOptions={{ color: '#0f6b63', weight: 6 }} />
               )}
@@ -252,28 +279,20 @@ export function NavigatePage() {
                   pathOptions={{ color: '#c47a12' }}
                 />
               )}
-              {pose && (
-                <>
-                  <Circle
-                    center={[pose.latitude, pose.longitude]}
-                    radius={Math.min(pose.accuracy ?? 20, 40)}
-                    pathOptions={{
-                      color: '#2166a8',
-                      fillColor: '#2166a8',
-                      fillOpacity: 0.12,
-                      weight: 1,
-                    }}
-                  />
-                  <CircleMarker
-                    center={[pose.latitude, pose.longitude]}
-                    radius={8}
-                    pathOptions={{ color: '#fff', fillColor: '#2166a8', fillOpacity: 1, weight: 3 }}
-                  >
-                    <Tooltip permanent>You</Tooltip>
-                  </CircleMarker>
-                </>
-              )}
+              {pose && <UserLocationMarker pose={pose} />}
             </MapContainer>
+          )}
+          {pose && (
+            <button
+              type="button"
+              className={`absolute bottom-4 right-4 z-[1000] inline-flex items-center gap-2 rounded-md border border-line bg-paper-raised px-3 py-2 text-sm font-semibold shadow-sm hover:border-accent ${
+                followGps ? 'border-accent text-accent' : ''
+              }`}
+              onClick={handleTrackMe}
+            >
+              <LocateFixed size={16} className="text-accent" />
+              {followGps ? 'Tracking' : 'Track me'}
+            </button>
           )}
         </div>
       </div>
