@@ -2,6 +2,7 @@ import type {
   AccessibilityPrefs,
   Building,
   CampusEvent,
+  CampusPlace,
   CrowdLevel,
   DangerZone,
   EmergencyContact,
@@ -187,7 +188,8 @@ export const campusRepository = {
 
     const { rows: places } = await query(
       `SELECT id, name, latitude, longitude, kind FROM nodes
-       WHERE name IS NOT NULL AND trim(name) <> '' AND name ILIKE $1
+       WHERE active = TRUE
+         AND name IS NOT NULL AND trim(name) <> '' AND name ILIKE $1
        LIMIT 20`,
       [pattern],
     );
@@ -207,8 +209,49 @@ export const campusRepository = {
   },
 
   async listNodes(): Promise<GraphNode[]> {
-    const { rows } = await query(`SELECT * FROM nodes`);
-    return (rows as Array<Record<string, unknown>>).map((r) => ({
+    const { rows } = await query(`SELECT * FROM nodes ORDER BY name NULLS LAST, id`);
+    return (rows as Array<Record<string, unknown>>).map((r) => this.mapNodeRow(r));
+  },
+
+  async listActiveNodes(): Promise<GraphNode[]> {
+    const { rows } = await query(
+      `SELECT * FROM nodes WHERE active = TRUE ORDER BY name NULLS LAST, id`,
+    );
+    return (rows as Array<Record<string, unknown>>).map((r) => this.mapNodeRow(r));
+  },
+
+  async listNamedPlaces(): Promise<CampusPlace[]> {
+    const { rows } = await query(
+      `SELECT DISTINCT ON (lower(trim(name)))
+         id, name, latitude, longitude, floor_id, building_id, kind, active
+       FROM nodes
+       WHERE active = TRUE
+         AND name IS NOT NULL
+         AND trim(name) <> ''
+       ORDER BY lower(trim(name)), name ASC, id ASC`,
+    );
+    return (rows as Array<Record<string, unknown>>).map((r) => {
+      const node = this.mapNodeRow(r);
+      return {
+        id: node.id,
+        name: node.name!.trim(),
+        latitude: node.latitude,
+        longitude: node.longitude,
+        floorId: node.floorId,
+        buildingId: node.buildingId,
+        kind: node.kind,
+      };
+    });
+  },
+
+  async getNodeById(id: string): Promise<GraphNode | null> {
+    const { rows } = await query(`SELECT * FROM nodes WHERE id = $1`, [id]);
+    if (!rows[0]) return null;
+    return this.mapNodeRow(rows[0] as Record<string, unknown>);
+  },
+
+  mapNodeRow(r: Record<string, unknown>): GraphNode {
+    return {
       id: r.id as string,
       name: r.name as string | null,
       latitude: r.latitude as number,
@@ -216,7 +259,8 @@ export const campusRepository = {
       floorId: r.floor_id as string | null,
       buildingId: r.building_id as string | null,
       kind: r.kind as GraphNode['kind'],
-    }));
+      active: (r.active as boolean | undefined) ?? true,
+    };
   },
 
   async listEdges(): Promise<GraphEdge[]> {
@@ -239,8 +283,11 @@ export const campusRepository = {
     nodes: Map<string, RoutingNode>;
     edges: RoutingEdge[];
   }> {
-    const nodesList = await this.listNodes();
-    const edgesList = await this.listEdges();
+    const nodesList = await this.listActiveNodes();
+    const activeIds = new Set(nodesList.map((n) => n.id));
+    const edgesList = (await this.listEdges()).filter(
+      (e) => activeIds.has(e.fromNodeId) && activeIds.has(e.toNodeId),
+    );
     const nodes = new Map(
       nodesList.map((n) => [
         n.id,
@@ -416,7 +463,7 @@ export const campusRepository = {
   },
 
   async deleteNode(id: string) {
-    await query(`DELETE FROM nodes WHERE id = $1`, [id]);
+    await query(`UPDATE nodes SET active = FALSE WHERE id = $1`, [id]);
   },
 
   async listDangerZones(): Promise<DangerZone[]> {

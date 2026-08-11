@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS nodes (
   floor_id UUID REFERENCES floors(id) ON DELETE SET NULL,
   building_id UUID REFERENCES buildings(id) ON DELETE SET NULL,
   kind TEXT NOT NULL CHECK (kind IN ('outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit')),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
   geom GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (
     ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
   ) STORED
@@ -199,6 +200,7 @@ CREATE TABLE IF NOT EXISTS sos_events (
 );
 
 CREATE INDEX IF NOT EXISTS nodes_geom_idx ON nodes USING GIST (geom);
+CREATE INDEX IF NOT EXISTS nodes_active_named_idx ON nodes (active) WHERE name IS NOT NULL AND trim(name) <> '';
 CREATE INDEX IF NOT EXISTS danger_zones_geom_idx ON danger_zones USING GIST (geom);
 CREATE INDEX IF NOT EXISTS analytics_searches_query_idx ON analytics_searches (query);
 CREATE INDEX IF NOT EXISTS analytics_nav_created_idx ON analytics_navigations (created_at);

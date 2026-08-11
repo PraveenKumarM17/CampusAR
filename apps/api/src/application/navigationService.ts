@@ -15,8 +15,20 @@ import {
   turnInstruction,
 } from '../domain/routing/astar';
 import { defaultCrowdPredictor } from '../domain/prediction/crowdPredictor';
+import { validateRouteEndpoints } from './navigationValidation';
 import { analyticsRepository } from '../infrastructure/repositories/analyticsRepository';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
+
+function normalizeAccessibility(
+  input?: Partial<AccessibilityPrefs>,
+): AccessibilityPrefs {
+  return {
+    wheelchairMode: input?.wheelchairMode ?? DEFAULT_ACCESSIBILITY.wheelchairMode,
+    preferLift: input?.preferLift ?? DEFAULT_ACCESSIBILITY.preferLift,
+    preferRamp: input?.preferRamp ?? DEFAULT_ACCESSIBILITY.preferRamp,
+    avoidStairs: input?.avoidStairs ?? DEFAULT_ACCESSIBILITY.avoidStairs,
+  };
+}
 
 export const navigationService = {
   async computeRoute(input: {
@@ -26,15 +38,25 @@ export const navigationService = {
     userId?: string | null;
     usePrediction?: boolean;
   }): Promise<RouteResponse> {
-    const prefs: AccessibilityPrefs = {
-      ...DEFAULT_ACCESSIBILITY,
-      ...input.accessibility,
-    };
+    const { source, destination } = await validateRouteEndpoints(
+      input.sourceNodeId,
+      input.destinationNodeId,
+    );
+    const prefs = normalizeAccessibility(input.accessibility);
     const usePrediction = input.usePrediction !== false;
     const weights = await campusRepository.getWeights();
     const { nodes, edges: rawEdges } = await campusRepository.getRoutingGraph();
     const zones = await campusRepository.listActiveDangerZones();
     const events = await campusRepository.listActiveRoutingEvents();
+
+    if (!nodes.has(input.sourceNodeId) || !nodes.has(input.destinationNodeId)) {
+      throw new AppError(
+        'NO_ROUTE',
+        'No route found — one or both places are not connected to the campus path network',
+        404,
+        { sourceNodeId: input.sourceNodeId, destinationNodeId: input.destinationNodeId },
+      );
+    }
 
     let edges = applyHazardsToEdges(rawEdges, nodes, zones, events);
     if (usePrediction) {
@@ -49,7 +71,10 @@ export const navigationService = {
     });
 
     if (!result) {
-      throw new AppError('NO_ROUTE', 'No route found for the given preferences', 404);
+      throw new AppError('NO_ROUTE', 'No route found for the given preferences', 404, {
+        sourceNodeId: input.sourceNodeId,
+        destinationNodeId: input.destinationNodeId,
+      });
     }
 
     const path: RouteStep[] = [];
@@ -90,6 +115,8 @@ export const navigationService = {
       etaMinutes: Math.round(etaMinutes * 10) / 10,
       cost: Math.round(result.cost * 1000) / 1000,
       predictionUsed: usePrediction,
+      source,
+      destination,
     };
 
     await analyticsRepository.recordNavigation({

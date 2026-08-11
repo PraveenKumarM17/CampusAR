@@ -5,6 +5,7 @@ import type {
   AuthResponse,
   Building,
   CampusEvent,
+  CampusPlace,
   CrowdLevel,
   DangerZone,
   EmergencyContact,
@@ -12,6 +13,7 @@ import type {
   GraphEdge,
   GraphNode,
   IotStatus,
+  NavigateResolveResponse,
   Room,
   RouteRequest,
   RouteResponse,
@@ -141,6 +143,7 @@ export const api = {
   rooms: (token?: string | null, category?: string) =>
     request<Room[]>(`/campus/rooms${category ? `?category=${category}` : ''}`, {}, token),
   nodes: (token?: string | null) => request<GraphNode[]>('/campus/nodes', {}, token),
+  places: (token?: string | null) => request<CampusPlace[]>('/campus/places', {}, token),
   edges: (token?: string | null) => request<GraphEdge[]>('/campus/edges', {}, token),
   search: (q: string, token?: string | null) =>
     request<SearchResult[]>(`/campus/search?q=${encodeURIComponent(q)}`, {}, token),
@@ -163,6 +166,17 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) },
       token,
     ),
+  resolveNavigate: (from?: string | null, to?: string | null, token?: string | null) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return request<NavigateResolveResponse>(
+      `/navigation/resolve${qs ? `?${qs}` : ''}`,
+      {},
+      token,
+    );
+  },
   zones: () => request<DangerZone[]>('/safety/zones'),
   exits: () => request<EmergencyExit[]>('/safety/exits'),
   contacts: () => request<EmergencyContact[]>('/safety/contacts'),

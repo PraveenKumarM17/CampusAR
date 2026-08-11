@@ -28,7 +28,7 @@ import {
   CAMPUS_MAP_CENTER,
   CAMPUS_MAX_ZOOM,
 } from '../../lib/campus';
-import { closestNamedPlace, snapGpsForRouting } from '../../lib/geo';
+import { closestNamedPlace, namedPlaceNodes, snapGpsForRouting } from '../../lib/geo';
 import {
   BasemapModeSwitcher,
   RealBasemapTiles,
@@ -183,17 +183,7 @@ export function MapPage() {
   }, [buildings, rooms, category]);
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
-  const placeNodes = useMemo(
-    () =>
-      nodes.filter(
-        (n) =>
-          Boolean(n.name?.trim()) ||
-          n.kind === 'entrance' ||
-          n.kind === 'outdoor' ||
-          n.kind === 'exit',
-      ),
-    [nodes],
-  );
+  const placeNodes = useMemo(() => namedPlaceNodes(nodes), [nodes]);
 
   const crowdPolylines = useMemo(() => {
     return edges

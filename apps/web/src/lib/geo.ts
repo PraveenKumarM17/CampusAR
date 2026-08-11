@@ -49,36 +49,72 @@ export function shouldFollowGps(pose: UserPose): boolean {
   return isReliableGpsFix(pose) && distanceFromCampusM(pose) <= CAMPUS_PROXIMITY_M;
 }
 
+/** Human-readable label for dropdowns and map tooltips. */
+export function formatNodeLabel(node: GraphNode): string {
+  const name = node.name?.trim();
+  if (name) return name;
+  switch (node.kind) {
+    case 'entrance':
+      return 'Building entrance';
+    case 'exit':
+      return 'Exit';
+    case 'elevator':
+      return 'Elevator';
+    case 'stairs':
+      return 'Stairs';
+    case 'ramp':
+      return 'Ramp';
+    default:
+      return 'Path point';
+  }
+}
+
+/** Named campus destinations for pickers (deduped, sorted). */
+export function namedPlaceNodes(nodes: GraphNode[]): GraphNode[] {
+  const seen = new Set<string>();
+  return nodes
+    .filter((n) => {
+      const name = n.name?.trim();
+      if (!name) return false;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+}
+
 export type GpsSnapResult =
   | { ok: true; node: GraphNode; distanceM: number; message: string }
   | { ok: false; message: string };
 
-/** Snap raw GPS to the walk graph for routing — never moves the map marker. */
+/** Snap raw GPS to a named campus place for routing — never moves the map marker. */
 export function snapGpsForRouting(pose: UserPose, nodes: GraphNode[]): GpsSnapResult {
   const campusDist = distanceFromCampusM(pose);
   if (campusDist > CAMPUS_PROXIMITY_M) {
     return {
       ok: false,
-      message: `You are ${(campusDist / 1000).toFixed(1)} km from RNSIT — pick a start point on the map.`,
+      message: `You are ${(campusDist / 1000).toFixed(1)} km from RNSIT — pick a start point manually.`,
     };
   }
   if (pose.accuracy != null && pose.accuracy > GPS_MAX_ACCURACY_M) {
     return {
       ok: false,
-      message: `Low GPS accuracy (±${Math.round(pose.accuracy)} m) — move outdoors for a clearer sky view.`,
+      message: `Low GPS accuracy (±${Math.round(pose.accuracy)} m) — move outdoors, then tap Track me.`,
     };
   }
-  const snap = nearestNode(pose, nodes, CAMPUS_SNAP_RADIUS_M);
+  const places = namedPlaceNodes(nodes);
+  const snap = nearestNode(pose, places, CAMPUS_SNAP_RADIUS_M);
   if (!snap) {
     return {
       ok: false,
-      message: 'No campus path nearby — tap the map to set your start.',
+      message: 'No named place nearby — pick your start from the list or map.',
     };
   }
   if (snap.distanceM > CAMPUS_MAX_SNAP_DISTANCE_M) {
     return {
       ok: false,
-      message: `GPS uncertain (nearest path ${Math.round(snap.distanceM)} m away) — wait for a better fix.`,
+      message: `GPS uncertain (${Math.round(snap.distanceM)} m from ${snap.node.name}) — tap Track me again outdoors.`,
     };
   }
   return {
@@ -87,8 +123,8 @@ export function snapGpsForRouting(pose: UserPose, nodes: GraphNode[]): GpsSnapRe
     distanceM: snap.distanceM,
     message:
       snap.distanceM < 12
-        ? `Tracking near ${snap.node.name ?? 'path'}`
-        : `Near ${snap.node.name ?? 'path'} (${Math.round(snap.distanceM)} m)`,
+        ? `At ${snap.node.name}`
+        : `Near ${snap.node.name} (${Math.round(snap.distanceM)} m)`,
   };
 }
 

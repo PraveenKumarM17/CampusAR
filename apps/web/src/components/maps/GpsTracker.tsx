@@ -75,6 +75,22 @@ export function FollowUser({
   return null;
 }
 
+/** Fit map to route bounds when not auto-tracking the user. */
+export function FitMapBounds({
+  points,
+  enabled,
+}: {
+  points: [number, number][];
+  enabled: boolean;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (!enabled || points.length <= 1) return;
+    map.fitBounds(points, { padding: [48, 48] });
+  }, [map, points, enabled]);
+  return null;
+}
+
 /** Disable follow when the user pans/zooms the map by hand. */
 export function BreakFollowOnInteract({ onBreak }: { onBreak: () => void }) {
   useMapEvents({

@@ -71,6 +71,27 @@ export interface GraphNode {
   floorId: string | null;
   buildingId: string | null;
   kind: 'outdoor' | 'indoor' | 'entrance' | 'elevator' | 'stairs' | 'ramp' | 'exit';
+  /** Present on admin listings; defaults to true when omitted. */
+  active?: boolean;
+}
+
+/** Named, navigable campus place for user-facing pickers. */
+export interface CampusPlace {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  floorId: string | null;
+  buildingId: string | null;
+  kind: GraphNode['kind'];
+}
+
+export interface RoutePlaceSummary {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  kind: GraphNode['kind'];
 }
 
 export interface GraphEdge {
@@ -125,6 +146,22 @@ export interface RouteResponse {
   etaMinutes: number;
   cost: number;
   predictionUsed?: boolean;
+  source?: RoutePlaceSummary;
+  destination?: RoutePlaceSummary;
+}
+
+export interface NavigateResolveError {
+  field: 'from' | 'to';
+  code: string;
+  message: string;
+  nodeId?: string;
+}
+
+export interface NavigateResolveResponse {
+  valid: boolean;
+  source: RoutePlaceSummary | null;
+  destination: RoutePlaceSummary | null;
+  errors: NavigateResolveError[];
 }
 
 export type DangerZoneType = 'unsafe' | 'poor_lighting' | 'construction' | 'fire';

@@ -35,7 +35,15 @@ campusRouter.get('/rooms', async (req, res, next) => {
 
 campusRouter.get('/nodes', async (_req, res, next) => {
   try {
-    res.json(await campusRepository.listNodes());
+    res.json(await campusRepository.listActiveNodes());
+  } catch (err) {
+    next(err);
+  }
+});
+
+campusRouter.get('/places', async (_req, res, next) => {
+  try {
+    res.json(await campusRepository.listNamedPlaces());
   } catch (err) {
     next(err);
   }
