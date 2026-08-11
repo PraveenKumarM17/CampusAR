@@ -55,7 +55,8 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-atlas text-ink">
-      <header className="sticky top-0 z-40 border-b border-line bg-paper-raised/95 backdrop-blur-sm">
+      {/* z-[2000]: above Leaflet panes/controls (≤1000) and map overlays so the bell panel stays on top */}
+      <header className="sticky top-0 z-[2000] border-b border-line bg-paper-raised/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
           <button
             type="button"
@@ -81,7 +82,7 @@ export function AppShell() {
             ))}
           </nav>
           <div className="flex items-center gap-2">
-            <div className="relative">
+            <div className="relative z-[2001]">
               <button
                 type="button"
                 className="btn-ghost !px-2.5 !py-2"
@@ -94,7 +95,7 @@ export function AppShell() {
                 )}
               </button>
               {openNotes && (
-                <div className="absolute right-0 mt-2 max-h-96 w-80 overflow-auto border border-line bg-paper-raised p-3 shadow-sm">
+                <div className="absolute right-0 z-[2002] mt-2 max-h-96 w-80 overflow-auto border border-line bg-paper-raised p-3 shadow-lg">
                   <p className="mb-2 text-xs font-semibold text-ink-mute">Alerts</p>
                   {notes.length === 0 && <p className="text-sm text-ink-faint">No notifications</p>}
                   {notes.map((n) => (
