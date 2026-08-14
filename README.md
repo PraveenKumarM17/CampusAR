@@ -12,6 +12,78 @@ Production-quality platform for campus search, composite-cost A* routing, IoT-si
 
 ## Quick start (local)
 
+### One-command setup (for teammates)
+
+#### Windows (recommended — auto-installs Git, Node.js, Docker if missing)
+
+Open **PowerShell** (normal user is fine) and paste:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/PraveenKumarM17/CampusAR/main/scripts/bootstrap.ps1 | iex"
+```
+
+Custom install folder:
+
+```powershell
+$env:CAMPUSAR_INSTALL_DIR = "D:\CampusAR"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/PraveenKumarM17/CampusAR/main/scripts/bootstrap.ps1 | iex"
+```
+
+The script will automatically:
+
+1. Install **winget** (App Installer) if needed  
+2. Install **Git**, **Node.js LTS (20+)**, and **Docker Desktop** via winget if missing  
+3. Start Docker Desktop and wait until it is running  
+4. Clone the repo to `%USERPROFILE%\CampusAR`  
+5. Run `npm install`, start PostgreSQL, migrate, and seed  
+
+**After setup**, open two PowerShell windows:
+
+```powershell
+cd $env:USERPROFILE\CampusAR
+npm run dev:api    # http://localhost:4000
+
+cd $env:USERPROFILE\CampusAR
+npm run dev:web    # http://localhost:5173
+```
+
+**Notes for Windows:**
+
+- First Docker install may require **sign-out or reboot** — if setup stops at Docker, restart PC, open Docker Desktop, then run `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` again inside the clone.  
+- Allow **UAC prompts** when winget installs software.  
+- **WSL2** is recommended for Docker Desktop (installer usually enables it).
+
+**Already cloned?** Setup only:
+
+```powershell
+cd CampusAR
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+```
+
+#### Linux / macOS / WSL
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/PraveenKumarM17/CampusAR/main/scripts/bootstrap.sh | bash
+```
+
+Custom install folder:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/PraveenKumarM17/CampusAR/main/scripts/bootstrap.sh | bash -s -- ~/projects/CampusAR
+```
+
+**Requirements (Linux/macOS):** Git, Node.js 20+, npm, Docker — install manually if missing.
+
+**Already cloned?**
+
+```bash
+bash scripts/setup.sh
+```
+
+---
+
+### Manual setup
+
 ```bash
 cp .env.example .env
 npm install

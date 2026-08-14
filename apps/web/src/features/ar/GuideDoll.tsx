@@ -19,10 +19,13 @@ const MARI = {
 const TARGET_HEIGHT = 0.6;
 /** Ground line the feet are pinned to. */
 const FOOT_Y = -0.34;
-/** Model forward is +Z, so yaw 0 looks straight at the camera (wave / dance). */
-const FACE_FRONT = 0;
-/** Half turn puts her back to the user so she leads down the road (walk). */
-const FACE_DOWN_ROAD = Math.PI;
+/** Idle/wave/celebrate: yaw 0 faces the camera (+Z). */
+const YAW_FACE_CAMERA = 0;
+/**
+ * Walk GLB locomotion advances along +Z while idle faces +Z toward camera.
+ * A π rad child offset makes the walk cycle advance away from the user (−Z).
+ */
+export const WALK_VISUAL_YAW_OFFSET_RAD = Math.PI;
 /** How far she drifts across the lane when turning. */
 const LANE_SHIFT = 0.28;
 
@@ -98,7 +101,7 @@ function MariGuide({ pose, pathYawDeg }: { pose: AvatarPose; pathYawDeg: number 
   const inner = useRef<THREE.Group>(null);
   const stage = useRef<THREE.Group>(null);
   const fitted = useRef(false);
-  const yaw = useRef(FACE_DOWN_ROAD);
+  const yaw = useRef(0);
   const lateral = useRef(0);
 
   const idleGltf = useGLTF(MARI.idle);
@@ -148,8 +151,8 @@ function MariGuide({ pose, pathYawDeg }: { pose: AvatarPose; pathYawDeg: number 
   useFrame((_, delta) => {
     const clampedYaw = THREE.MathUtils.clamp(pathYawDeg, -85, 85);
     const onRoad = pose === 'walk';
-    // Facing away, a right turn (+yaw) must swing her forward toward screen right.
-    const targetYaw = onRoad ? FACE_DOWN_ROAD - THREE.MathUtils.degToRad(clampedYaw) : FACE_FRONT;
+    // Steering only — walk clip forward axis is corrected by WALK_VISUAL_YAW_OFFSET_RAD on the model child.
+    const targetYaw = onRoad ? -THREE.MathUtils.degToRad(clampedYaw) : YAW_FACE_CAMERA;
     const targetLateral = onRoad
       ? Math.sin(THREE.MathUtils.degToRad(clampedYaw)) * LANE_SHIFT
       : 0;
@@ -201,7 +204,9 @@ function MariGuide({ pose, pathYawDeg }: { pose: AvatarPose; pathYawDeg: number 
       <RoadStrip />
       <group ref={fit as never}>
         <group ref={inner as never}>
-          <primitive object={model} />
+          <group rotation={[0, pose === 'walk' ? WALK_VISUAL_YAW_OFFSET_RAD : 0, 0]}>
+            <primitive object={model} />
+          </group>
         </group>
       </group>
     </group>
@@ -255,6 +260,18 @@ export function GuideDollViewport({
       </Canvas>
     </div>
   );
+}
+
+export function dollSteeringYawRad(pose: AvatarPose, pathYawDeg: number): number {
+  const clamped = THREE.MathUtils.clamp(pathYawDeg, -85, 85);
+  if (pose !== 'walk') return YAW_FACE_CAMERA;
+  return -THREE.MathUtils.degToRad(clamped);
+}
+
+/** Combined steering + walk-clip forward correction (visual only). */
+export function dollEffectiveYawRad(pose: AvatarPose, pathYawDeg: number): number {
+  const steering = dollSteeringYawRad(pose, pathYawDeg);
+  return pose === 'walk' ? steering + WALK_VISUAL_YAW_OFFSET_RAD : steering;
 }
 
 /**
