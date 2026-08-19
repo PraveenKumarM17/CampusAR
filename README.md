@@ -12,97 +12,63 @@ Production-quality platform for campus search, composite-cost A* routing, IoT-si
 
 ## Quick start (local)
 
-### One-command setup (for teammates)
+### Prerequisites
 
-#### Windows (recommended — auto-installs Git, Node.js, Docker if missing)
+| Tool | Version |
+|------|---------|
+| **Node.js** | 20 or newer |
+| **npm** | Comes with Node |
+| **Docker** | Docker Desktop (must be **running**) |
+| **Git** | To clone the repo |
 
-Open **PowerShell** (normal user is fine) and paste:
+### 1. Clone and configure
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/PraveenKumarM17/CampusAR/main/scripts/bootstrap.ps1 | iex"
-```
-
-Custom install folder:
-
-```powershell
-$env:CAMPUSAR_INSTALL_DIR = "D:\CampusAR"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/PraveenKumarM17/CampusAR/main/scripts/bootstrap.ps1 | iex"
-```
-
-The script will automatically:
-
-1. Install **winget** (App Installer) if needed  
-2. Install **Git**, **Node.js LTS (20+)**, and **Docker Desktop** via winget if missing  
-3. Start Docker Desktop and wait until it is running  
-4. Clone the repo to `%USERPROFILE%\CampusAR`  
-5. Run `npm install`, start PostgreSQL, migrate, and seed  
-
-**After setup**, open two PowerShell windows:
-
-```powershell
-cd $env:USERPROFILE\CampusAR
-npm run dev:api    # http://localhost:4000
-
-cd $env:USERPROFILE\CampusAR
-npm run dev:web    # http://localhost:5173
-```
-
-**Notes for Windows:**
-
-- First Docker install may require **sign-out or reboot** — if setup stops at Docker, restart PC, open Docker Desktop, then run `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` again inside the clone.  
-- Allow **UAC prompts** when winget installs software.  
-- **WSL2** is recommended for Docker Desktop (installer usually enables it).
-
-**Already cloned?** Setup only:
-
-```powershell
+```bash
+git clone https://github.com/PraveenKumarM17/CampusAR.git
 cd CampusAR
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
-```
-
-#### Linux / macOS / WSL
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/PraveenKumarM17/CampusAR/main/scripts/bootstrap.sh | bash
-```
-
-Custom install folder:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/PraveenKumarM17/CampusAR/main/scripts/bootstrap.sh | bash -s -- ~/projects/CampusAR
-```
-
-**Requirements (Linux/macOS):** Git, Node.js 20+, npm, Docker — install manually if missing.
-
-**Already cloned?**
-
-```bash
-bash scripts/setup.sh
-```
-
----
-
-### Manual setup
-
-```bash
 cp .env.example .env
 npm install
+```
 
+On Windows (PowerShell): `copy .env.example .env`
+
+### 2. Start the database
+
+```bash
 docker compose up -d db
+```
 
-# Apply schema + Smart Campus seed (DB published on host port 5433)
-npm run db:migrate -w @campusar/api
-npm run db:seed -w @campusar/api
+PostgreSQL listens on host port **5433**.
 
-# Run API + web
+### 3. Migrate and seed
+
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+### 4. Run the app
+
+Use **two terminals** from the project root:
+
+**Terminal 1 — API:**
+```bash
 npm run dev:api
+```
+
+**Terminal 2 — Web:**
+```bash
 npm run dev:web
 ```
 
-- Web: http://localhost:5173
-- API: http://localhost:4000
-- Swagger: http://localhost:4000/api/docs
-- WebSocket: `ws://localhost:4000/ws`
+### 5. Open in browser
+
+| Service | URL |
+|---------|-----|
+| Web app | http://localhost:5173 |
+| API | http://localhost:4000 |
+| Swagger | http://localhost:4000/api/docs |
+| WebSocket | `ws://localhost:4000/ws` |
 
 ### Demo accounts
 
@@ -111,6 +77,16 @@ npm run dev:web
 | Admin   | admin@smartcampus.edu   | admin123                |
 | Student | student@smartcampus.edu | student123              |
 | Guest   | —                       | Use “Continue as guest” |
+
+### Optional: Google Maps
+
+Add to `.env`:
+
+```env
+VITE_GOOGLE_MAPS_API_KEY=your_key_here
+```
+
+Without it, maps use Esri satellite + roads.
 
 ## Docker (full stack)
 
