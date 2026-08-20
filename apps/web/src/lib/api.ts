@@ -27,9 +27,10 @@ import type {
 } from '@campusar/shared';
 
 import { useAuthStore } from '../stores/authStore';
+import { joinApiUrl, resolveApiBaseUrl } from './clientUrls';
 
-/** Prefer same-origin `/api` (Vite proxy in dev) so LAN hosts avoid CORS issues. */
-const API_URL = import.meta.env.VITE_API_URL ?? '/api';
+/** Same-origin `/api` by default (Vite proxy in dev, nginx in Docker). */
+const API_URL = resolveApiBaseUrl(import.meta.env.VITE_API_URL);
 
 export class ApiError extends Error {
   constructor(
@@ -53,7 +54,7 @@ async function refreshAccessToken(): Promise<string | null> {
       return null;
     }
     try {
-      const res = await fetch(`${API_URL}/auth/refresh`, {
+      const res = await fetch(joinApiUrl(API_URL, '/auth/refresh'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -89,7 +90,7 @@ async function request<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+    res = await fetch(joinApiUrl(API_URL, path), { ...options, headers });
   } catch {
     throw new ApiError(
       'NETWORK_ERROR',
@@ -117,12 +118,7 @@ async function request<T>(
         : res.status === 401
           ? 'Session expired — sign in again as organization admin.'
           : 'Request failed';
-    throw new ApiError(
-      data.code ?? 'ERROR',
-      data.message ?? fallback,
-      res.status,
-      data.details,
-    );
+    throw new ApiError(data.code ?? 'ERROR', data.message ?? fallback, res.status, data.details);
   }
   return data as T;
 }
@@ -175,22 +171,14 @@ export const api = {
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     const qs = params.toString();
-    return request<NavigateResolveResponse>(
-      `/navigation/resolve${qs ? `?${qs}` : ''}`,
-      {},
-      token,
-    );
+    return request<NavigateResolveResponse>(`/navigation/resolve${qs ? `?${qs}` : ''}`, {}, token);
   },
   indoorSearchPlaces: (q: string, buildingId?: string, token?: string | null) => {
     const params = new URLSearchParams({ q });
     if (buildingId) params.set('buildingId', buildingId);
     return request<IndoorPlace[]>(`/indoor/places/search?${params.toString()}`, {}, token);
   },
-  indoorResolveAnchor: (
-    code: string,
-    token?: string | null,
-    expectedBuildingId?: string,
-  ) => {
+  indoorResolveAnchor: (code: string, token?: string | null, expectedBuildingId?: string) => {
     const params = new URLSearchParams();
     if (expectedBuildingId) params.set('buildingId', expectedBuildingId);
     const qs = params.toString();
@@ -213,11 +201,19 @@ export const api = {
       sourceAnchorCode?: string;
       destinationPlaceId: string;
       expectedBuildingId?: string;
-      preferences?: { avoidStairs?: boolean; preferElevator?: boolean; wheelchairAccessible?: boolean };
+      preferences?: {
+        avoidStairs?: boolean;
+        preferElevator?: boolean;
+        wheelchairAccessible?: boolean;
+      };
     },
     token?: string | null,
   ) =>
-    request<IndoorRouteResponse>('/indoor/route', { method: 'POST', body: JSON.stringify(body) }, token),
+    request<IndoorRouteResponse>(
+      '/indoor/route',
+      { method: 'POST', body: JSON.stringify(body) },
+      token,
+    ),
   indoorHandoff: (outdoorNodeId: string, token?: string | null) =>
     request<IndoorHandoff | null>(
       `/indoor/handoffs?outdoorNodeId=${encodeURIComponent(outdoorNodeId)}`,
@@ -225,7 +221,11 @@ export const api = {
       token,
     ),
   indoorBuildingContext: (buildingId: string, token?: string | null) =>
-    request<IndoorBuildingContext>(`/indoor/buildings/${encodeURIComponent(buildingId)}/context`, {}, token),
+    request<IndoorBuildingContext>(
+      `/indoor/buildings/${encodeURIComponent(buildingId)}/context`,
+      {},
+      token,
+    ),
   indoorPlaces: (buildingId: string, token?: string | null) =>
     request<IndoorPlace[]>(
       `/indoor/places?buildingId=${encodeURIComponent(buildingId)}`,
@@ -236,7 +236,11 @@ export const api = {
     const params = new URLSearchParams();
     if (buildingId) params.set('buildingId', buildingId);
     const qs = params.toString();
-    return request<IndoorPlace>(`/indoor/places/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`, {}, token);
+    return request<IndoorPlace>(
+      `/indoor/places/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`,
+      {},
+      token,
+    );
   },
   zones: () => request<DangerZone[]>('/safety/zones'),
   exits: () => request<EmergencyExit[]>('/safety/exits'),

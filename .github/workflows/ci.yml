@@ -67,5 +67,8 @@ jobs:
     needs: quality
     steps:
       - uses: actions/checkout@v4
-      - name: Build images
-        run: docker compose build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Docker nginx /api and /ws proxy
+        run: node scripts/test-docker-proxy.mjs

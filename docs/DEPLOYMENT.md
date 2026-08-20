@@ -23,6 +23,22 @@ Services:
 | api          | 4000        |
 | db (PostGIS) | 5433 → 5432 |
 
+The web container nginx reverse-proxies `/api` and `/ws` to Compose service `api:4000`. The SPA is built with `VITE_API_URL=/api` so browsers on the LAN (`http://<SERVER-IP>:5173`) do not call `localhost:4000`.
+
+Direct `api:4000` on the host is optional (debug/Swagger). The web app does not require it.
+
+Verify proxying:
+
+```bash
+npm run test:docker
+curl -i http://localhost:5173/health
+curl -i http://localhost:5173/api/campus/buildings
+```
+
+WebSocket: `ws://localhost:5173/ws` (or `wss://` when the page is HTTPS).
+
+Host port overrides: `WEB_HOST_PORT`, `API_HOST_PORT`, `POSTGRES_HOST_PORT`.
+
 After first DB init, if login passwords are wrong (raw SQL seed), run:
 
 ```bash

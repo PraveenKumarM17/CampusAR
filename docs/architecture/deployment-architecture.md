@@ -2,11 +2,11 @@
 
 ## Environments
 
-| Env | Purpose | Data | IoT sim |
-|-----|---------|------|---------|
-| **Development** | Local eng | Local PostGIS; seed | On by default optional |
-| **Staging** | QA / demos | Anonymized/seed clone | On |
-| **Production** | Pilot campus | Real campus graph | Off or parallel MQTT |
+| Env             | Purpose      | Data                  | IoT sim                |
+| --------------- | ------------ | --------------------- | ---------------------- |
+| **Development** | Local eng    | Local PostGIS; seed   | On by default optional |
+| **Staging**     | QA / demos   | Anonymized/seed clone | On                     |
+| **Production**  | Pilot campus | Real campus graph     | Off or parallel MQTT   |
 
 Promotion: main → staging deploy → prod approve.
 
@@ -30,14 +30,14 @@ flowchart TB
 
 ## Docker
 
-| Image | Contains |
-|-------|----------|
-| `web` | Built SPA + nginx |
-| `api` | Node API |
-| `db` | Postgres+PostGIS (dev/stage compose; prod often managed) |
+| Image | Contains                                                 |
+| ----- | -------------------------------------------------------- |
+| `web` | Built SPA + nginx                                        |
+| `api` | Node API                                                 |
+| `db`  | Postgres+PostGIS (dev/stage compose; prod often managed) |
 
-Compose for local: web, api, db, network, volumes.  
-Prod: orchestrate containers (Compose on VM, ECS, or K8s later) without changing app contracts.
+Compose for local: web nginx proxies `/api` and `/ws` to service `api:4000`; SPA is built with `VITE_API_URL=/api`.  
+Prod: orchestrate containers (Compose on VM, ECS, or K8s later) without changing app contracts. Same-origin `/api` and `/ws` remain the browser-facing paths.
 
 ---
 
@@ -63,14 +63,14 @@ Responsibilities:
 
 ## Environment variables (categories)
 
-| Category | Examples (names only) |
-|----------|----------------------|
-| Server | `PORT`, `NODE_ENV` |
-| DB | `DATABASE_URL` |
-| Auth | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `ACCESS_TTL`, `REFRESH_TTL` |
-| CORS | `WEB_ORIGIN` |
-| Features | `IOT_SIMULATOR`, `PREDICTION_DEFAULT` |
-| Observability | `LOG_LEVEL` |
+| Category      | Examples (names only)                                                  |
+| ------------- | ---------------------------------------------------------------------- |
+| Server        | `PORT`, `NODE_ENV`                                                     |
+| DB            | `DATABASE_URL`                                                         |
+| Auth          | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `ACCESS_TTL`, `REFRESH_TTL` |
+| CORS          | `WEB_ORIGIN`                                                           |
+| Features      | `IOT_SIMULATOR`, `PREDICTION_DEFAULT`                                  |
+| Observability | `LOG_LEVEL`                                                            |
 
 Secrets never committed. Document in `.env.example`.
 
@@ -101,9 +101,9 @@ CD: deploy images/artifacts; run migrations as explicit release step (ops-owned)
 
 ## Health & readiness
 
-| Probe | Meaning |
-|-------|---------|
-| `/health/live` | Process up |
+| Probe           | Meaning      |
+| --------------- | ------------ |
+| `/health/live`  | Process up   |
 | `/health/ready` | DB reachable |
 
 Orchestrators use ready before sending traffic.

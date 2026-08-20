@@ -14,12 +14,12 @@ Production-quality platform for campus search, composite-cost A* routing, IoT-si
 
 ### Prerequisites
 
-| Tool | Version |
-|------|---------|
-| **Node.js** | 20 or newer |
-| **npm** | Comes with Node |
-| **Docker** | Docker Desktop (must be **running**) |
-| **Git** | To clone the repo |
+| Tool        | Version                              |
+| ----------- | ------------------------------------ |
+| **Node.js** | 20 or newer                          |
+| **npm**     | Comes with Node                      |
+| **Docker**  | Docker Desktop (must be **running**) |
+| **Git**     | To clone the repo                    |
 
 ### 1. Clone and configure
 
@@ -52,23 +52,25 @@ npm run db:seed
 Use **two terminals** from the project root:
 
 **Terminal 1 — API:**
+
 ```bash
 npm run dev:api
 ```
 
 **Terminal 2 — Web:**
+
 ```bash
 npm run dev:web
 ```
 
 ### 5. Open in browser
 
-| Service | URL |
-|---------|-----|
-| Web app | http://localhost:5173 |
-| API | http://localhost:4000 |
-| Swagger | http://localhost:4000/api/docs |
-| WebSocket | `ws://localhost:4000/ws` |
+| Service   | URL                            |
+| --------- | ------------------------------ |
+| Web app   | http://localhost:5173          |
+| API       | http://localhost:4000          |
+| Swagger   | http://localhost:4000/api/docs |
+| WebSocket | `ws://localhost:4000/ws`       |
 
 ### Demo accounts
 
@@ -108,6 +110,19 @@ docker compose up --build
 
 Web on `:5173`, API on `:4000`, DB on host `:5433`.
 
+Nginx in the web container proxies **same-origin** `/api` and `/ws` to the API service (`api:4000` on the Docker network). Open `http://<SERVER-LAN-IP>:5173` from another device — the browser must not call `localhost:4000`.
+
+| Browser request | nginx   | API container  |
+| --------------- | ------- | -------------- |
+| `GET /`         | SPA     | —              |
+| `GET /api/...`  | proxy   | `GET /api/...` |
+| `GET /health`   | proxy   | `GET /health`  |
+| `WS /ws`        | upgrade | `/ws`          |
+
+Production build default: `VITE_API_URL=/api`. Leave `VITE_WS_URL` unset (or `/ws`) so the client uses `ws://` or `wss://` from the current page origin.
+
+Verify the proxy: `npm run test:docker` (builds Compose, checks HTTP + WebSocket through nginx, then tears down a throwaway project).
+
 ## Monorepo layout
 
 ```
@@ -127,12 +142,13 @@ docs/             Architecture, API, database, deployment
 
 ## Scripts
 
-| Command             | Description                  |
-| ------------------- | ---------------------------- |
-| `npm run lint`      | ESLint                       |
-| `npm run format`    | Prettier                     |
-| `npm run typecheck` | TS check all workspaces      |
-| `npm test`          | Unit + API integration tests |
+| Command               | Description                             |
+| --------------------- | --------------------------------------- |
+| `npm run lint`        | ESLint                                  |
+| `npm run format`      | Prettier                                |
+| `npm run typecheck`   | TS check all workspaces                 |
+| `npm test`            | Unit + API integration tests            |
+| `npm run test:docker` | Docker nginx `/api` + `/ws` proxy check |
 
 ## Documentation
 

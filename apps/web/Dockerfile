@@ -6,8 +6,11 @@ COPY apps/web/package.json ./apps/web/
 COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 RUN npm install --workspace=@campusar/web --workspace=@campusar/shared
-ARG VITE_API_URL=http://localhost:4000/api
+# Same-origin /api so the browser talks to nginx, not localhost:4000.
+ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_WS_URL=
+ENV VITE_WS_URL=$VITE_WS_URL
 WORKDIR /app/apps/web
 RUN npm run build
 

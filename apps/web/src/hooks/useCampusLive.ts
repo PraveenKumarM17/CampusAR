@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CrowdLevel, DangerZone, IotStatus, SensorReading, WsMessage } from '@campusar/shared';
-
-function defaultWsUrl(): string {
-  if (typeof window === 'undefined') return 'ws://127.0.0.1:4000/ws';
-  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${window.location.host}/ws`;
-}
-
-const WS_URL = import.meta.env.VITE_WS_URL ?? defaultWsUrl();
+import { resolveWebSocketUrl } from '../lib/clientUrls';
 
 export interface CampusLiveState {
   connected: boolean;
@@ -33,7 +26,7 @@ export function useCampusLive(): CampusLiveState {
 
     function connect() {
       if (closed) return;
-      ws = new WebSocket(WS_URL);
+      ws = new WebSocket(resolveWebSocketUrl(import.meta.env.VITE_WS_URL, window.location));
       ws.onopen = () => setConnected(true);
       ws.onclose = () => {
         setConnected(false);
