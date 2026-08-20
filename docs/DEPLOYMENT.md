@@ -37,6 +37,8 @@ curl -i http://localhost:5173/api/campus/buildings
 
 WebSocket: `ws://localhost:5173/ws` (or `wss://` when the page is HTTPS).
 
+Digital Twin: `http://localhost:5173/digital-twin` (legacy `/twin` redirects here). No Cesium Ion token. Building GLB files go in `apps/web/public/models/buildings/` and are registered in `buildingModels.ts`. Optional footprints/dimensions: `apps/web/src/features/digitalTwin/models/buildingGeometry.ts`. Production still uses `/api` and `/ws` (F-002).
+
 Host port overrides: `WEB_HOST_PORT`, `API_HOST_PORT`, `POSTGRES_HOST_PORT`.
 
 After first DB init, if login passwords are wrong (raw SQL seed), run:

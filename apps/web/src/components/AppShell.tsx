@@ -15,6 +15,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import type { AppNotification } from '@campusar/shared';
+import { DIGITAL_TWIN_PATH } from '../features/digitalTwin/types/digitalTwin';
 
 const navLinks = [
   { to: '/map', label: 'Map', icon: Map },
@@ -22,9 +23,8 @@ const navLinks = [
   { to: '/ar', label: 'AR', icon: Scan },
   { to: '/indoor', label: 'Indoor', icon: QrCode },
   { to: '/safety', label: 'Safety', icon: ShieldAlert },
+  { to: DIGITAL_TWIN_PATH, label: 'Twin', icon: Box },
 ];
-
-const twinLink = { to: '/twin', label: 'Twin', icon: Box };
 
 export function AppShell() {
   const user = useAuthStore((s) => s.user);
@@ -44,7 +44,7 @@ export function AppShell() {
   const isAdmin = user?.role === 'admin';
   const isGuest = user?.role === 'guest';
 
-  const links = isAdmin ? [...navLinks, twinLink] : navLinks;
+  const links = navLinks;
 
   const adminLinks = isAdmin
     ? [

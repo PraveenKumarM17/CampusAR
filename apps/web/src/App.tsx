@@ -10,6 +10,10 @@ import { AdminPage } from './features/admin/AdminPage';
 import { AnalyticsPage } from './features/analytics/AnalyticsPage';
 import { TwinPage } from './features/twin/TwinPage';
 import { IndoorPage } from './features/indoor/IndoorPage';
+import {
+  DIGITAL_TWIN_LEGACY_PATH,
+  DIGITAL_TWIN_PATH,
+} from './features/digitalTwin/types/digitalTwin';
 
 function Protected({ children, admin }: { children: React.ReactNode; admin?: boolean }) {
   const user = useAuthStore((s) => s.user);
@@ -33,13 +37,10 @@ export default function App() {
         <Route path="/navigate" element={<NavigatePage />} />
         <Route path="/ar" element={<ArPage />} />
         <Route path="/indoor" element={<IndoorPage />} />
+        <Route path={DIGITAL_TWIN_PATH} element={<TwinPage />} />
         <Route
-          path="/twin"
-          element={
-            <Protected admin>
-              <TwinPage />
-            </Protected>
-          }
+          path={DIGITAL_TWIN_LEGACY_PATH}
+          element={<Navigate to={DIGITAL_TWIN_PATH} replace />}
         />
         <Route path="/safety" element={<SafetyPage />} />
         <Route

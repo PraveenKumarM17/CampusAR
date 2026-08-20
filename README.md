@@ -4,7 +4,7 @@ Production-quality platform for campus search, composite-cost A* routing, IoT-si
 
 ## Stack
 
-- **Web**: React + TypeScript + Tailwind + Three.js Digital Twin
+- **Web**: React + TypeScript + Tailwind + **CesiumJS** Digital Twin (`/digital-twin`) + Leaflet maps
 - **API**: Node.js + Express + Zod + JWT + WebSocket (clean architecture)
 - **DB**: PostgreSQL 16 + PostGIS
 - **AR**: Web AR in the browser + Unity AR Foundation scaffold
@@ -65,12 +65,13 @@ npm run dev:web
 
 ### 5. Open in browser
 
-| Service   | URL                            |
-| --------- | ------------------------------ |
-| Web app   | http://localhost:5173          |
-| API       | http://localhost:4000          |
-| Swagger   | http://localhost:4000/api/docs |
-| WebSocket | `ws://localhost:4000/ws`       |
+| Service      | URL                                |
+| ------------ | ---------------------------------- |
+| Web app      | http://localhost:5173              |
+| Digital Twin | http://localhost:5173/digital-twin |
+| API          | http://localhost:4000              |
+| Swagger      | http://localhost:4000/api/docs     |
+| WebSocket    | `ws://localhost:4000/ws`           |
 
 ### Demo accounts
 
@@ -123,6 +124,8 @@ Production build default: `VITE_API_URL=/api`. Leave `VITE_WS_URL` unset (or `/w
 
 Verify the proxy: `npm run test:docker` (builds Compose, checks HTTP + WebSocket through nginx, then tears down a throwaway project).
 
+Digital Twin (after login): `http://localhost:5173/digital-twin` or `http://<LAN-IP>:5173/digital-twin`. Cesium static assets are part of the Vite build; nginx serves them as normal files. No Cesium Ion token is required.
+
 ## Monorepo layout
 
 ```
@@ -137,7 +140,7 @@ docs/             Architecture, API, database, deployment
 
 1. **L1 IoT simulation** – 10s crowd/sensor ticks writing into `crowd_levels` / `sensor_readings`
 2. **L2 AI routing** – A* with distance + crowd + traffic + safety + accessibility; schedule/EWMA crowd forecast
-3. **L3 Digital Twin** – Three.js campus twin with live WebSocket heatmaps
+3. **L3 Digital Twin** – CesiumJS campus view (`/digital-twin`) with buildings, walkways, entrances/POIs from real campus data, and live WebSocket crowd/hazards
 4. **L4 Web AR** – Camera overlay with compass-aligned guidance
 
 ## Scripts

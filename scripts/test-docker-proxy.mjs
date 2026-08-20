@@ -179,6 +179,14 @@ async function main() {
     );
     console.log('PASS  GET / → SPA');
 
+    const twin = await get(`${BASE}/digital-twin`);
+    assert(twin.status === 200, `GET /digital-twin HTTP ${twin.status}`);
+    assert(
+      twin.text.includes('<div id="root"') && twin.text.toLowerCase().includes('<html'),
+      'GET /digital-twin did not look like the SPA — nginx SPA fallback is broken',
+    );
+    console.log('PASS  GET /digital-twin → SPA');
+
     const wsStatus = await testWebSocketUpgrade();
     assert(wsStatus === 101, `WebSocket status ${wsStatus}`);
     console.log('PASS  WS /ws → HTTP 101 upgrade');
