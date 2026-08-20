@@ -169,3 +169,14 @@ body {
 .animate-fade-up-delay-2 {
   animation: fade-up 0.7s ease-out 0.28s both;
 }
+
+.cesium-twin-viewer .cesium-viewer,
+.cesium-twin-viewer .cesium-widget,
+.cesium-twin-viewer .cesium-viewer-cesiumWidgetContainer {
+  width: 100%;
+  height: 100%;
+}
+
+.cesium-twin-viewer .cesium-viewer-bottom {
+  display: none;
+}
