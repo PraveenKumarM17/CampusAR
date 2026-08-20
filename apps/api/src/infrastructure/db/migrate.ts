@@ -41,6 +41,7 @@ async function migrate() {
       ) THEN
         ALTER TABLE buildings ADD COLUMN IF NOT EXISTS site_id UUID;
         ALTER TABLE buildings ADD COLUMN IF NOT EXISTS footprint_geom GEOGRAPHY(POLYGON, 4326);
+        ALTER TABLE buildings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
         ALTER TABLE nodes ADD COLUMN IF NOT EXISTS site_id UUID;
         ALTER TABLE edges ADD COLUMN IF NOT EXISTS site_id UUID;
         ALTER TABLE danger_zones ADD COLUMN IF NOT EXISTS site_id UUID;
@@ -62,6 +63,10 @@ async function migrate() {
   const mapBuilderPath = path.join(__dirname, 'map-builder.sql');
   const mapBuilderSql = fs.readFileSync(mapBuilderPath, 'utf8');
   await pool.query(mapBuilderSql);
+
+  const stabilizationPath = path.join(__dirname, 'map-builder-stabilization.sql');
+  const stabilizationSql = fs.readFileSync(stabilizationPath, 'utf8');
+  await pool.query(stabilizationSql);
 
   console.log('Schema applied');
   await pool.end();

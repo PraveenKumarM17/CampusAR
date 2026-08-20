@@ -390,7 +390,7 @@ export const api = {
       request<MapValidationResult>('/admin/map-builder/validate', {}, token),
     createBuilding: (body: Omit<Building, 'id'>, token?: string | null) =>
       request<Building>('/admin/buildings', { method: 'POST', body: JSON.stringify(body) }, token),
-    updateBuilding: (id: string, body: Partial<Building>, token?: string | null) =>
+    updateBuilding: (id: string, body: Partial<Building> & { expectedUpdatedAt?: string }, token?: string | null) =>
       request<Building>(
         `/admin/buildings/${id}`,
         { method: 'PUT', body: JSON.stringify(body) },

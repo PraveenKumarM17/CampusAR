@@ -47,7 +47,15 @@ Existing RNSIT buildings keep their UUIDs and point coordinates. Footprints are 
 
 - `@geoman-io/leaflet-geoman-free` — polygon drawing and editing on Leaflet
 
-## Future phases
+## Stabilization (Phase 2.5B.1)
+
+- Existing building footprints can be edited in Map Builder via **Edit geometry** (Leaflet-Geoman vertex drag).
+- Geometry edits are local until **Save geometry**; **Cancel** restores the loaded snapshot without an API call.
+- Unsaved geometry prompts **Save / Discard / Stay** when switching sites or features.
+- Building `latitude`/`longitude` are derived server-side from `footprint_geom` via PostGIS `ST_Centroid` and cannot be edited independently when a footprint exists.
+- Optimistic concurrency uses `buildings.updated_at` (`expectedUpdatedAt` on PUT).
+- Legacy **Admin → Map pins** tab removed; use Map Builder only for outdoor authoring.
+
 
 - **2.5C** — Indoor floor editor
 - **2.5D** — Room editor

@@ -1,5 +1,6 @@
 import type { MapValidationIssue, MapValidationResult } from '@campusar/shared';
 import { isValidCoordinate } from './geometry';
+import { centroidDriftMeters } from './footprintValidation';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
 import { siteAreaRepository } from '../infrastructure/repositories/siteAreaRepository';
 
@@ -57,6 +58,17 @@ export async function validateSiteMap(siteId: string): Promise<MapValidationResu
         resourceType: 'building',
         resourceId: b.id,
       });
+    } else {
+      const driftM = centroidDriftMeters(b.footprint, b.latitude, b.longitude);
+      if (driftM > 5) {
+        pushIssue(issues, {
+          level: 'warning',
+          code: 'CENTROID_DRIFT',
+          message: `${b.name} stored coordinates differ from footprint centroid by ${Math.round(driftM)} m.`,
+          resourceType: 'building',
+          resourceId: b.id,
+        });
+      }
     }
 
     const entrances = nodes.filter(

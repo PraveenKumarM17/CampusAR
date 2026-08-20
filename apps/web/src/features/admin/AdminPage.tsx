@@ -9,15 +9,15 @@ import type {
   RouteWeights,
 } from '@campusar/shared';
 import { DEFAULT_ROUTE_WEIGHTS } from '@campusar/shared';
+import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
-import { AdminMapEditor } from './AdminMapEditor';
 
-type Tab = 'map' | 'weights' | 'buildings' | 'paths' | 'zones' | 'crowd' | 'events' | 'iot';
+type Tab = 'weights' | 'buildings' | 'paths' | 'zones' | 'crowd' | 'events' | 'iot';
 
 export function AdminPage() {
   const token = useAuthStore((s) => s.accessToken)!;
-  const [tab, setTab] = useState<Tab>('map');
+  const [tab, setTab] = useState<Tab>('weights');
   const [weights, setWeights] = useState<RouteWeights>(DEFAULT_ROUTE_WEIGHTS);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
@@ -47,7 +47,6 @@ export function AdminPage() {
   }
 
   useEffect(() => {
-    if (tab === 'map') return;
     refresh().catch((err) => setMessage(err instanceof Error ? err.message : 'Load failed'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, tab]);
@@ -79,7 +78,6 @@ export function AdminPage() {
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'map', label: 'Map pins' },
     { id: 'weights', label: 'Weights' },
     { id: 'buildings', label: 'Buildings' },
     { id: 'paths', label: 'Paths' },
@@ -94,10 +92,14 @@ export function AdminPage() {
       <div>
         <h1 className="page-title">Admin dashboard</h1>
         <p className="page-sub">
-          Pin places from live GPS, then tune weights, hazards, and simulation.
+          Tune route weights, hazards, and simulation. Outdoor map editing lives in{' '}
+          <Link to="/admin/map-builder" className="text-accent underline">
+            Map Builder
+          </Link>
+          .
         </p>
       </div>
-      {message && tab !== 'map' && (
+      {message && (
         <p className="rounded-md border border-accent/25 bg-accent/5 text-ink px-3 py-2 text-sm">
           {message}
         </p>
@@ -119,8 +121,6 @@ export function AdminPage() {
           </button>
         ))}
       </div>
-
-      {tab === 'map' && <AdminMapEditor />}
 
       {tab === 'weights' && (
         <form className="panel rounded-md p-4 space-y-4 max-w-xl" onSubmit={saveWeights}>

@@ -22,12 +22,15 @@ import { broadcast } from '../realtime/wsHub';
 import { AppError } from '../../domain/errors';
 import {
   footprintFromGeoJson,
-  ringCentroid,
-  ringToWkt,
 } from '../../application/geometry';
+import {
+  centroidFromFootprintWkt,
+  prepareFootprintWkt,
+} from '../../application/footprintValidation';
+import { haversineMeters } from '../../domain/routing/astar';
 
 const BUILDING_SELECT = `
-  SELECT id, name, code, description, latitude, longitude, floors_count, site_id,
+  SELECT id, name, code, description, latitude, longitude, floors_count, site_id, updated_at,
          CASE WHEN footprint_geom IS NOT NULL
            THEN ST_AsGeoJSON(footprint_geom)::json
            ELSE NULL END AS footprint_geojson
@@ -36,6 +39,7 @@ const BUILDING_SELECT = `
 
 function mapBuildingRow(r: Record<string, unknown>): Building {
   const footprint = footprintFromGeoJson(r.footprint_geojson);
+  const updatedAt = r.updated_at as Date | string | undefined;
   return {
     id: r.id as string,
     name: r.name as string,
@@ -46,6 +50,12 @@ function mapBuildingRow(r: Record<string, unknown>): Building {
     floorsCount: r.floors_count as number,
     siteId: (r.site_id as string | null) ?? undefined,
     footprint,
+    updatedAt:
+      updatedAt instanceof Date
+        ? updatedAt.toISOString()
+        : typeof updatedAt === 'string'
+          ? updatedAt
+          : undefined,
   };
 }
 
@@ -65,23 +75,19 @@ export const campusRepository = {
   },
 
   async createBuilding(input: Omit<Building, 'id'> & { siteId: string }) {
-    const footprintWkt = input.footprint?.length ? ringToWkt(input.footprint) : null;
-    if (footprintWkt) {
-      const { rows: validRows } = await query<{ valid: boolean }>(
-        `SELECT ST_IsValid(ST_GeogFromText($1)::geometry) AS valid`,
-        [footprintWkt],
-      );
-      if (!validRows[0]?.valid) {
-        throw new AppError('INVALID_GEOMETRY', 'Building footprint polygon is invalid', 422);
-      }
+    let footprintWkt: string | null = null;
+    let latitude = input.latitude;
+    let longitude = input.longitude;
+    if (input.footprint?.length) {
+      footprintWkt = await prepareFootprintWkt(input.footprint);
+      const center = await centroidFromFootprintWkt(footprintWkt);
+      latitude = center.latitude;
+      longitude = center.longitude;
     }
-    const center = input.footprint?.length ? ringCentroid(input.footprint) : null;
-    const latitude = center?.latitude ?? input.latitude;
-    const longitude = center?.longitude ?? input.longitude;
     const { rows } = await query(
-      `INSERT INTO buildings (name, code, description, latitude, longitude, floors_count, site_id, footprint_geom)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $8::text IS NULL THEN NULL ELSE ST_GeogFromText($8)::geography END)
-       RETURNING id, name, code, description, latitude, longitude, floors_count, site_id,
+      `INSERT INTO buildings (name, code, description, latitude, longitude, floors_count, site_id, footprint_geom, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $8::text IS NULL THEN NULL ELSE ST_GeogFromText($8)::geography END, NOW())
+       RETURNING id, name, code, description, latitude, longitude, floors_count, site_id, updated_at,
          CASE WHEN footprint_geom IS NOT NULL THEN ST_AsGeoJSON(footprint_geom)::json ELSE NULL END AS footprint_geojson`,
       [
         input.name,
@@ -97,24 +103,47 @@ export const campusRepository = {
     return mapBuildingRow(rows[0] as Record<string, unknown>);
   },
 
-  async updateBuilding(id: string, input: Partial<Omit<Building, 'id'>>) {
-    const footprintWkt =
-      input.footprint === undefined
-        ? undefined
-        : input.footprint === null || input.footprint.length === 0
-          ? null
-          : ringToWkt(input.footprint);
-    if (footprintWkt) {
-      const { rows: validRows } = await query<{ valid: boolean }>(
-        `SELECT ST_IsValid(ST_GeogFromText($1)::geometry) AS valid`,
-        [footprintWkt],
+  async updateBuilding(
+    id: string,
+    input: Partial<Omit<Building, 'id'>> & { expectedUpdatedAt?: string },
+  ) {
+    const existing = await this.getBuildingById(id);
+    if (!existing) return null;
+
+    const hasFootprintNow = Boolean(existing.footprint?.length);
+    const updatingFootprint = input.footprint !== undefined;
+    if (hasFootprintNow && !updatingFootprint && (input.latitude !== undefined || input.longitude !== undefined)) {
+      throw new AppError(
+        'FOOTPRINT_IS_AUTHORITATIVE',
+        'Building coordinates are derived from the footprint and cannot be edited independently',
+        422,
       );
-      if (!validRows[0]?.valid) {
-        throw new AppError('INVALID_GEOMETRY', 'Building footprint polygon is invalid', 422);
-      }
     }
-    const center =
-      input.footprint && input.footprint.length >= 3 ? ringCentroid(input.footprint) : null;
+
+    let footprintWkt: string | null | undefined;
+    if (input.footprint === undefined) {
+      footprintWkt = undefined;
+    } else if (input.footprint === null || input.footprint.length === 0) {
+      footprintWkt = null;
+    } else {
+      footprintWkt = await prepareFootprintWkt(input.footprint);
+    }
+
+    let latitude: number | null = input.latitude ?? null;
+    let longitude: number | null = input.longitude ?? null;
+    if (footprintWkt) {
+      const center = await centroidFromFootprintWkt(footprintWkt);
+      latitude = center.latitude;
+      longitude = center.longitude;
+    } else if (updatingFootprint && footprintWkt === null) {
+      latitude = null;
+      longitude = null;
+    }
+
+    const expectedUpdatedAt = input.expectedUpdatedAt
+      ? new Date(input.expectedUpdatedAt)
+      : null;
+
     const { rows } = await query(
       `UPDATE buildings SET
          name = COALESCE($2, name),
@@ -126,25 +155,38 @@ export const campusRepository = {
          footprint_geom = CASE
            WHEN $8::boolean THEN CASE WHEN $11::text IS NULL THEN NULL ELSE ST_GeogFromText($11)::geography END
            ELSE footprint_geom
-         END
+         END,
+         updated_at = NOW()
        WHERE id = $1
-       RETURNING id, name, code, description, latitude, longitude, floors_count, site_id,
+         AND ($12::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $12::timestamptz))
+       RETURNING id, name, code, description, latitude, longitude, floors_count, site_id, updated_at,
          CASE WHEN footprint_geom IS NOT NULL THEN ST_AsGeoJSON(footprint_geom)::json ELSE NULL END AS footprint_geojson`,
       [
         id,
         input.name ?? null,
         input.code ?? null,
         input.description ?? null,
-        input.latitude ?? null,
-        input.longitude ?? null,
+        latitude,
+        longitude,
         input.floorsCount ?? null,
         input.footprint !== undefined,
-        center?.latitude ?? null,
-        center?.longitude ?? null,
+        latitude,
+        longitude,
         footprintWkt ?? null,
+        expectedUpdatedAt,
       ],
     );
-    if (!rows[0]) return null;
+    if (!rows[0]) {
+      const stillThere = await this.getBuildingById(id);
+      if (stillThere && input.expectedUpdatedAt) {
+        throw new AppError(
+          'STALE_EDIT',
+          'This building was modified elsewhere. Reload and try again.',
+          409,
+        );
+      }
+      return null;
+    }
     return mapBuildingRow(rows[0] as Record<string, unknown>);
   },
 
@@ -616,7 +658,26 @@ export const campusRepository = {
     };
   },
 
+  async recalculateEdgesForNode(nodeId: string): Promise<void> {
+    const node = await this.getNodeById(nodeId);
+    if (!node) return;
+    const { rows } = await query(
+      `SELECT id, from_node_id, to_node_id FROM edges WHERE from_node_id = $1 OR to_node_id = $1`,
+      [nodeId],
+    );
+    for (const row of rows as Array<Record<string, unknown>>) {
+      const fromId = row.from_node_id as string;
+      const toId = row.to_node_id as string;
+      const from = fromId === nodeId ? node : await this.getNodeById(fromId);
+      const to = toId === nodeId ? node : await this.getNodeById(toId);
+      if (!from || !to) continue;
+      const distanceM = haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude);
+      await query(`UPDATE edges SET distance_m = $2 WHERE id = $1`, [row.id as string, distanceM]);
+    }
+  },
+
   async updateNode(id: string, input: Partial<Omit<GraphNode, 'id'>>) {
+    const positionChanging = input.latitude !== undefined || input.longitude !== undefined;
     const { rows } = await query(
       `UPDATE nodes SET
          name = CASE WHEN $2::boolean THEN $3 ELSE name END,
@@ -643,16 +704,11 @@ export const campusRepository = {
       ],
     );
     if (!rows[0]) return null;
+    if (positionChanging) {
+      await this.recalculateEdgesForNode(id);
+    }
     const r = rows[0] as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      name: r.name as string | null,
-      latitude: r.latitude as number,
-      longitude: r.longitude as number,
-      floorId: r.floor_id as string | null,
-      buildingId: r.building_id as string | null,
-      kind: r.kind as GraphNode['kind'],
-    };
+    return this.mapNodeRow(r);
   },
 
   async deleteNode(id: string) {

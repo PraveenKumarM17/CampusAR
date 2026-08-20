@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS buildings (
   longitude DOUBLE PRECISION NOT NULL,
   floors_count INT NOT NULL DEFAULT 1,
   footprint_geom GEOGRAPHY(POLYGON, 4326),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   geom GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (
     ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
   ) STORED

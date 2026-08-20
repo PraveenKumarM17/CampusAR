@@ -79,6 +79,8 @@ export interface Building {
   /** Optional canonical footprint ring (WGS84). Legacy buildings may omit this. */
   footprint?: GeoPoint[];
   siteId?: string;
+  /** Optimistic concurrency token for map builder edits. */
+  updatedAt?: string;
 }
 
 export type SiteAreaType = 'parking' | 'open_area' | 'restricted' | 'assembly';

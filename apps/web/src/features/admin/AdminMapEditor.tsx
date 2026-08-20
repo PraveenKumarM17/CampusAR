@@ -1,3 +1,7 @@
+/**
+ * @deprecated Legacy outdoor map editor (Phase 2.5A). Use /admin/map-builder instead.
+ * Retained temporarily for reference; no longer mounted from AdminPage.
+ */
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   MapContainer,

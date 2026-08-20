@@ -98,11 +98,18 @@ mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
         longitude: z.number().optional(),
         floorsCount: z.number().int().positive().optional(),
         footprint: footprintSchema.nullable().optional(),
+        expectedUpdatedAt: z.string().datetime().optional(),
       })
       .parse(req.body);
     const updated = await campusRepository.updateBuilding(id, {
-      ...body,
+      name: body.name,
+      code: body.code,
+      description: body.description,
+      floorsCount: body.floorsCount,
       footprint: body.footprint === null ? [] : body.footprint,
+      expectedUpdatedAt: body.expectedUpdatedAt,
+      latitude: body.latitude,
+      longitude: body.longitude,
     });
     if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Building not found' });
     res.json(updated);
