@@ -39,7 +39,9 @@ Product source: [`../product/multi-tenancy.md`](../product/multi-tenancy.md).
 
 ## 3. Tenancy strategy (decision)
 
-**Chosen:** Shared application + **shared database**, row-level tenant key (`organization_id` on every tenant-owned table).
+**Chosen:** Shared application + **shared database**, row-level tenant keys (`organization_id` on organizations’ children; **`site_id` on spatial rows**).
+
+Phase 2.5A introduced **Site** under Organization so one customer can operate several campuses. Request isolation uses `X-Site-Id` (also `?siteId=` / body `siteId`) rather than a URL rewrite. Canonical detail: [`site-tenancy.md`](./site-tenancy.md).
 
 | Alternative | Why not (yet) |
 |-------------|----------------|
@@ -198,12 +200,12 @@ No SQL in this pack — see [`organization-domain.md`](./organization-domain.md)
 
 ## 14. Migration path from single campus
 
-1. Introduce `organizations` row for current campus (e.g. slug `rnsit`).  
-2. Backfill `organization_id` on all existing rows.  
-3. Add slug routing; keep temporary redirect from `/map` → `/{slug}/map`.  
-4. Ship map editor behind org_admin.  
-5. Enable QR generation.  
-6. Onboard second org on same deploy to prove isolation.
+1. Introduce Organization + Site for the reference campus (RNSIT / `rnsit-main`).  
+2. Backfill `site_id` on existing spatial rows; **preserve UUIDs**.  
+3. Scope reads/writes and routing to the active site (`X-Site-Id`).  
+4. Keep `/map`, `/navigate`, `/digital-twin` URLs; do not require `/{orgSlug}` yet.  
+5. Phase 2.5B: Map Builder for org/site admins.  
+6. Onboard a second organization on the same deploy to prove isolation.
 
 ---
 
@@ -219,6 +221,7 @@ No SQL in this pack — see [`organization-domain.md`](./organization-domain.md)
 ## 16. Related documents
 
 - [`organization-domain.md`](./organization-domain.md)  
+- [`site-tenancy.md`](./site-tenancy.md)  
 - [`map-editor.md`](./map-editor.md)  
 - [`qr-navigation.md`](./qr-navigation.md)  
 - [`branding-system.md`](./branding-system.md)  

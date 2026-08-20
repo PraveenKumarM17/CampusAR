@@ -30,9 +30,39 @@ async function migrate() {
   `;
   await pool.query(indoorPatch);
 
+  // Existing databases created buildings/nodes before site_id existed.
+  // schema.sql CREATE INDEX on site_id would fail until the columns are added.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'buildings'
+      ) THEN
+        ALTER TABLE buildings ADD COLUMN IF NOT EXISTS site_id UUID;
+        ALTER TABLE buildings ADD COLUMN IF NOT EXISTS footprint_geom GEOGRAPHY(POLYGON, 4326);
+        ALTER TABLE nodes ADD COLUMN IF NOT EXISTS site_id UUID;
+        ALTER TABLE edges ADD COLUMN IF NOT EXISTS site_id UUID;
+        ALTER TABLE danger_zones ADD COLUMN IF NOT EXISTS site_id UUID;
+        ALTER TABLE events ADD COLUMN IF NOT EXISTS site_id UUID;
+        ALTER TABLE emergency_contacts ADD COLUMN IF NOT EXISTS site_id UUID;
+        ALTER TABLE emergency_exits ADD COLUMN IF NOT EXISTS site_id UUID;
+      END IF;
+    END $$;
+  `);
+
   const schemaPath = path.join(__dirname, 'schema.sql');
   const sql = fs.readFileSync(schemaPath, 'utf8');
   await pool.query(sql);
+
+  const tenancyPath = path.join(__dirname, 'tenancy.sql');
+  const tenancySql = fs.readFileSync(tenancyPath, 'utf8');
+  await pool.query(tenancySql);
+
+  const mapBuilderPath = path.join(__dirname, 'map-builder.sql');
+  const mapBuilderSql = fs.readFileSync(mapBuilderPath, 'utf8');
+  await pool.query(mapBuilderSql);
+
   console.log('Schema applied');
   await pool.end();
 }

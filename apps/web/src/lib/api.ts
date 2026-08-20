@@ -17,6 +17,7 @@ import type {
   IndoorPlace,
   IndoorRouteResponse,
   IotStatus,
+  MapValidationResult,
   NavigateResolveResponse,
   Room,
   RouteRequest,
@@ -24,10 +25,14 @@ import type {
   RouteWeights,
   SearchResult,
   SensorReading,
+  SiteArea,
+  MapBuilderSnapshot,
 } from '@campusar/shared';
 
 import { useAuthStore } from '../stores/authStore';
 import { joinApiUrl, resolveApiBaseUrl } from './clientUrls';
+import { useSiteStore } from '../stores/siteStore';
+import type { Site } from '@campusar/shared';
 
 /** Same-origin `/api` by default (Vite proxy in dev, nginx in Docker). */
 const API_URL = resolveApiBaseUrl(import.meta.env.VITE_API_URL);
@@ -87,6 +92,10 @@ async function request<T>(
   headers.set('Content-Type', 'application/json');
   const authToken = token ?? useAuthStore.getState().accessToken;
   if (authToken) headers.set('Authorization', `Bearer ${authToken}`);
+  const siteId = useSiteStore.getState().activeSiteId;
+  if (siteId && !path.startsWith('/sites') && !path.startsWith('/auth/')) {
+    headers.set('X-Site-Id', siteId);
+  }
 
   let res: Response;
   try {
@@ -139,6 +148,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
+  sites: (token?: string | null) => request<Site[]>('/sites', {}, token),
+  site: (id: string, token?: string | null) => request<Site>(`/sites/${encodeURIComponent(id)}`, {}, token),
   buildings: (token?: string | null) => request<Building[]>('/campus/buildings', {}, token),
   rooms: (token?: string | null, category?: string) =>
     request<Room[]>(`/campus/rooms${category ? `?category=${category}` : ''}`, {}, token),
@@ -372,4 +383,85 @@ export const api = {
       request<void>(`/admin/events/${id}`, { method: 'DELETE' }, token),
   },
   analyticsSummary: (token: string) => request<AnalyticsSummary>('/analytics/summary', {}, token),
+  mapBuilder: {
+    snapshot: (token?: string | null) =>
+      request<MapBuilderSnapshot>('/admin/map-builder/snapshot', {}, token),
+    validate: (token?: string | null) =>
+      request<MapValidationResult>('/admin/map-builder/validate', {}, token),
+    createBuilding: (body: Omit<Building, 'id'>, token?: string | null) =>
+      request<Building>('/admin/buildings', { method: 'POST', body: JSON.stringify(body) }, token),
+    updateBuilding: (id: string, body: Partial<Building>, token?: string | null) =>
+      request<Building>(
+        `/admin/buildings/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteBuilding: (id: string, token?: string | null) =>
+      request<void>(`/admin/buildings/${id}`, { method: 'DELETE' }, token),
+    createNode: (
+      body: {
+        name?: string | null;
+        latitude: number;
+        longitude: number;
+        floorId?: string | null;
+        buildingId?: string | null;
+        kind: GraphNode['kind'];
+      },
+      token?: string | null,
+    ) =>
+      request<GraphNode>(
+        '/admin/paths/nodes',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    updateNode: (
+      id: string,
+      body: Partial<{
+        name: string | null;
+        latitude: number;
+        longitude: number;
+        floorId: string | null;
+        buildingId: string | null;
+        kind: GraphNode['kind'];
+      }>,
+      token?: string | null,
+    ) =>
+      request<GraphNode>(
+        `/admin/paths/nodes/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteNode: (id: string, cascade = false, token?: string | null) =>
+      request<void>(
+        `/admin/paths/nodes/${id}${cascade ? '?cascade=true' : ''}`,
+        { method: 'DELETE' },
+        token,
+      ),
+    createEdge: (body: Omit<GraphEdge, 'id'>, token?: string | null) =>
+      request<GraphEdge>(
+        '/admin/paths/edges',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    updateEdge: (id: string, body: Partial<GraphEdge>, token?: string | null) =>
+      request<GraphEdge>(
+        `/admin/paths/edges/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteEdge: (id: string, token?: string | null) =>
+      request<void>(`/admin/paths/edges/${id}`, { method: 'DELETE' }, token),
+    createArea: (
+      body: { name: string; type: SiteArea['type']; footprint: SiteArea['footprint'] },
+      token?: string | null,
+    ) => request<SiteArea>('/admin/areas', { method: 'POST', body: JSON.stringify(body) }, token),
+    updateArea: (id: string, body: Partial<SiteArea>, token?: string | null) =>
+      request<SiteArea>(
+        `/admin/areas/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteArea: (id: string, token?: string | null) =>
+      request<void>(`/admin/areas/${id}`, { method: 'DELETE' }, token),
+  },
 };

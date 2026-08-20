@@ -1,6 +1,8 @@
-# CampusAR – Smart Campus Navigation
+# CampusAR – Spatial navigation platform
 
-Production-quality platform for campus search, composite-cost A* routing, IoT-simulated crowd sensing, predictive re-routing, Digital Twin monitoring, Web AR navigation, safety, accessibility, admin tooling, and analytics.
+Reusable platform for universities, hospitals, corporate campuses, factories, and other large facilities: search, composite-cost A* routing, indoor handoff, IoT-simulated crowd, Digital Twin, Web AR, safety, and admin tooling.
+
+RNSIT is the first **seeded organization/site**, not the application itself. Canonical site map data powers Leaflet, navigation, Cesium, and AR. See [`docs/architecture/site-tenancy.md`](docs/architecture/site-tenancy.md).
 
 ## Stack
 

@@ -37,7 +37,7 @@ apps/web/
       ws/                    # WebSocket client + reconnect
       geo/                   # snap helpers, smoothing (pure)
       position/              # PositionProvider implementations
-    stores/                  # Zustand: auth, theme, prefs, nav session
+    stores/                  # Zustand: auth, theme, prefs, nav session, **active site**
     hooks/                   # cross-feature hooks (useCampusLive)
     routes/                  # route objects / lazy imports
     types/                   # UI-only types (prefer shared package)

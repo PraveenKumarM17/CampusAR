@@ -13,6 +13,7 @@ import { notificationRouter, safetyRouter } from './routes/safetyRoutes';
 import { adminRouter, analyticsRouter } from './routes/adminRoutes';
 import { iotRouter } from './routes/iotRoutes';
 import { indoorRouter } from './routes/indoorRoutes';
+import { sitesRouter } from './routes/siteRoutes';
 
 export function createApp() {
   const app = express();
@@ -48,6 +49,7 @@ export function createApp() {
   app.get('/api/docs.json', (_req, res) => res.json(openApiDocument));
 
   app.use('/api/auth', authRouter);
+  app.use('/api/sites', sitesRouter);
   app.use('/api/campus', campusRouter);
   app.use('/api/navigation', navigationRouter);
   app.use('/api/safety', safetyRouter);

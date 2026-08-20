@@ -171,6 +171,20 @@ async function main() {
     assert(Array.isArray(list), '/api/campus/buildings is not a JSON array');
     console.log(`PASS  GET /api/campus/buildings → ${list.length} buildings`);
 
+    const sites = await get(`${BASE}/api/sites`);
+    assert(sites.status === 200, `/api/sites HTTP ${sites.status}`);
+    assert(
+      !sites.text.includes('<!DOCTYPE') && !sites.text.includes('<html'),
+      '/api/sites returned SPA HTML — nginx is not proxying /api',
+    );
+    const siteList = JSON.parse(sites.text);
+    assert(Array.isArray(siteList) && siteList.length > 0, '/api/sites is empty');
+    assert(
+      typeof siteList[0].latitude === 'number' && typeof siteList[0].id === 'string',
+      '/api/sites missing site metadata',
+    );
+    console.log(`PASS  GET /api/sites → ${siteList.length} site(s)`);
+
     const spa = await get(`${BASE}/`);
     assert(spa.status === 200, `GET / HTTP ${spa.status}`);
     assert(

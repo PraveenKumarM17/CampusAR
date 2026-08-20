@@ -16,7 +16,7 @@ import type { GraphEdge, GraphNode } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useGeolocation } from '../../hooks/useGeolocation';
-import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAP_CENTER, CAMPUS_MAX_ZOOM } from '../../lib/campus';
+import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAX_ZOOM } from '../../lib/campus';
 import { haversineMeters } from '../../lib/geo';
 import { cycleClosedByNewEdge, findRoutePath } from '../../lib/pathCircuit';
 import {
@@ -24,6 +24,8 @@ import {
   RealBasemapTiles,
   type BasemapMode,
 } from '../../components/maps/RealBasemap';
+import { RecenterOnSite } from '../../components/maps/GpsTracker';
+import { useActiveSite } from '../../hooks/useActiveSite';
 
 type Tool = 'pin-live' | 'pin-click' | 'draw' | 'break-segment' | 'break-route';
 
@@ -255,6 +257,7 @@ const emptyDetails = (): PinDetails => ({
 export function AdminMapEditor() {
   const token = useAuthStore((s) => s.accessToken);
   const { pose, error: gpsError } = useGeolocation(true);
+  const { activeSiteId, mapCenter: siteCenter } = useActiveSite();
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [tool, setTool] = useState<Tool>('pin-click');
@@ -298,11 +301,11 @@ export function AdminMapEditor() {
       setMessage(err instanceof Error ? err.message : 'Load failed');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, activeSiteId]);
 
   const mapCenter: [number, number] = pose
     ? [pose.latitude, pose.longitude]
-    : CAMPUS_MAP_CENTER;
+    : siteCenter;
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
@@ -1017,6 +1020,10 @@ export function AdminMapEditor() {
             maxZoom={CAMPUS_MAX_ZOOM}
           >
             <RealBasemapTiles mode={basemapMode} />
+            <RecenterOnSite
+              center={siteCenter}
+              enabled={!(followLive && tool === 'pin-live' && !showDetails)}
+            />
             <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
             {pose && (
               <FollowLiveLocation

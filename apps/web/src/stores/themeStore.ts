@@ -83,6 +83,7 @@ interface NavState {
   startIndoorNavigation: () => void;
   cancelIndoorScan: () => void;
   completeIndoorNavigation: () => void;
+  resetForSiteChange: () => void;
 }
 
 const emptyBuilding = {
@@ -149,6 +150,7 @@ export const useNavStore = create<NavState>()(
       startIndoorNavigation: () => set({ transitionStatus: 'navigating_indoor' }),
       cancelIndoorScan: () => set({ transitionStatus: 'waiting_for_anchor' }),
       completeIndoorNavigation: () => set(afterIndoorCompletePatch()),
+      resetForSiteChange: () => set({ sourceNodeId: null, destinationNodeId: null, ...emptyBuilding }),
     }),
     {
       name: 'campusar-nav',

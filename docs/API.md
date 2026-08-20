@@ -15,6 +15,22 @@ OpenAPI JSON: `/api/docs.json`
 
 Responses include `{ user, tokens: { accessToken, refreshToken } }`.
 
+## Sites
+
+| Method | Path            | Description |
+| ------ | --------------- | ----------- |
+| GET    | `/sites`        | Accessible sites for the caller (guest: default active site) |
+| GET    | `/sites/:id`    | Site metadata (center, timezone, organization) |
+
+Campus, navigation, safety, IoT crowd, and admin map reads/writes are scoped by:
+
+1. Header `X-Site-Id`
+2. Query `siteId`
+3. Body `siteId`
+4. Otherwise the oldest active site
+
+See [`architecture/site-tenancy.md`](./architecture/site-tenancy.md).
+
 ## Campus
 
 | Method | Path                                  | Description            |
@@ -61,7 +77,7 @@ Body:
 | POST   | `/iot/stop`    | Stop simulator (admin)  |
 | POST   | `/iot/tick`    | Force one tick (admin)  |
 
-WebSocket: `ws://host:4000/ws` — messages `{ type, payload, at }` with types `crowd`, `sensors`, `hazard`, `iot_status`, `ping`.
+WebSocket: same-origin `/ws` (F-002). Messages `{ type, payload, at, siteId }`. Types `crowd`, `sensors`, `hazard` are site-tagged; clients ignore other sites. `iot_status` / `ping` may be global.
 
 ## Safety & notifications
 

@@ -84,7 +84,13 @@ export function resolveBuildingGeometry(input: BuildingGeometryInput): ResolvedB
 }
 
 export function toDigitalTwinBuilding(building: Building): DigitalTwinBuilding | null {
-  const geometry = resolveBuildingGeometry(building);
+  const geometry = resolveBuildingGeometry({
+    id: building.id,
+    latitude: building.latitude,
+    longitude: building.longitude,
+    floorsCount: building.floorsCount,
+    footprint: building.footprint,
+  });
   if (!geometry) return null;
   const model = BUILDING_MODEL_URLS[building.id];
   return {

@@ -9,6 +9,7 @@ export function flyToCampus(
   buildings: DigitalTwinBuilding[],
   extraPoints: { latitude: number; longitude: number }[],
   mode: TwinCameraMode,
+  fallbackCenter: { lat: number; lon: number } = CAMPUS_CENTER,
 ) {
   const target = campusCameraTarget(
     buildings.map((b) => ({
@@ -29,6 +30,7 @@ export function flyToCampus(
       buildingId: null,
       kind: 'outdoor' as const,
     })),
+    fallbackCenter,
   );
   const pitch = mode === 'TOP' ? -90 : -45;
   const height = mode === 'BUILDING' ? Math.min(target.heightM, 280) : target.heightM;
@@ -71,11 +73,15 @@ export function flyToPOI(viewer: Viewer, poi: Pick<CampusPOI, 'latitude' | 'long
   });
 }
 
-export function flyToRoute(viewer: Viewer, route: TwinRouteOverlay) {
+export function flyToRoute(
+  viewer: Viewer,
+  route: TwinRouteOverlay,
+  fallbackCenter: { lat: number; lon: number } = CAMPUS_CENTER,
+) {
   const degrees = toCesiumDegreesArray(route.points);
   if (degrees.length < 4) {
     viewer.camera.flyTo({
-      destination: Cartesian3.fromDegrees(CAMPUS_CENTER.lon, CAMPUS_CENTER.lat, 400),
+      destination: Cartesian3.fromDegrees(fallbackCenter.lon, fallbackCenter.lat, 400),
       duration: 1,
     });
     return;

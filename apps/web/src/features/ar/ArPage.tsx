@@ -33,7 +33,7 @@ import {
   type GpsMovementSample,
 } from '../../lib/gpsMovement';
 import { GuideDollViewport, guideFacingBearing, poseFromRouteContext } from './GuideDoll';
-import { CAMPUS_LABEL } from '../../lib/campus';
+import { useActiveSite } from '../../hooks/useActiveSite';
 
 /** Explicit navigation phases — only one primary phase at a time. */
 export type ArNavPhase =
@@ -65,6 +65,7 @@ function campusPlacesToGraphNodes(places: CampusPlace[]): GraphNode[] {
 export function ArPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const token = useAuthStore((s) => s.accessToken);
+  const { activeSiteId, label } = useActiveSite();
   const navigate = useNavigate();
   const {
     sourceNodeId,
@@ -114,7 +115,7 @@ export function ArPage() {
 
   useEffect(() => {
     api.places(token).then(setPlaces).catch(() => setPlaces([]));
-  }, [token]);
+  }, [token, activeSiteId]);
 
   useEffect(() => {
     void requestCompassPermission();
@@ -514,7 +515,7 @@ export function ArPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="page-title">AR Navigation</h1>
-          <p className="page-sub">{CAMPUS_LABEL} — follow the guide on camera.</p>
+          <p className="page-sub">{label} — follow the guide on camera.</p>
           {destLabel && (
             <p className="mt-1 text-sm text-ink-mute">
               To <span className="font-semibold text-ink">{destLabel}</span>

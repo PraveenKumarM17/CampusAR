@@ -19,12 +19,13 @@ export function attachWebsocket(server: HttpServer): WebSocketServer {
   return wss;
 }
 
-export function broadcast<T>(type: WsMessage['type'], payload: T): void {
+export function broadcast<T>(type: WsMessage['type'], payload: T, siteId?: string | null): void {
   if (!wss) return;
   const message: WsMessage<T> = {
     type,
     payload,
     at: new Date().toISOString(),
+    siteId: siteId ?? null,
   };
   const raw = JSON.stringify(message);
   for (const client of wss.clients) {

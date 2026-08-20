@@ -53,8 +53,11 @@ export interface UserPose {
   timestamp: number;
 }
 
-export function distanceFromCampusM(pose: { latitude: number; longitude: number }): number {
-  return haversineMeters(pose.latitude, pose.longitude, CAMPUS_CENTER.lat, CAMPUS_CENTER.lon);
+export function distanceFromCampusM(
+  pose: { latitude: number; longitude: number },
+  center: { lat: number; lon: number } = CAMPUS_CENTER,
+): number {
+  return haversineMeters(pose.latitude, pose.longitude, center.lat, center.lon);
 }
 
 /** True when the browser-reported accuracy is good enough to follow on the map. */

@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CrowdLevel, DangerZone, IotStatus, SensorReading, WsMessage } from '@campusar/shared';
 import { resolveWebSocketUrl } from '../lib/clientUrls';
+import { liveEventBelongsToSite } from '../lib/liveEvents';
+import { useSiteStore } from '../stores/siteStore';
 
 export interface CampusLiveState {
   connected: boolean;
@@ -18,6 +20,9 @@ export function useCampusLive(): CampusLiveState {
   const [zones, setZones] = useState<DangerZone[]>([]);
   const [status, setStatus] = useState<IotStatus | null>(null);
   const [lastEmergency, setLastEmergency] = useState<string | null>(null);
+  const activeSiteId = useSiteStore((s) => s.activeSiteId);
+  const siteIdRef = useRef(activeSiteId);
+  siteIdRef.current = activeSiteId;
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -36,6 +41,9 @@ export function useCampusLive(): CampusLiveState {
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(String(ev.data)) as WsMessage;
+          if (!liveEventBelongsToSite(msg.siteId, siteIdRef.current)) {
+            return;
+          }
           if (msg.type === 'crowd') {
             const levels = (msg.payload as { levels: CrowdLevel[] }).levels ?? [];
             setCrowd(

@@ -12,21 +12,19 @@ Organization
  ├── OrganizationBranding
  ├── OrganizationSettings
  ├── OrganizationMembership[]  → User
- ├── Building[]
- │    └── Floor[]
- ├── Category[]                 (org-defined place types)
- ├── NavigationNode[]           (places / POIs)
- ├── NavigationEdge[]           (walkable links)
- ├── Landmark[]                 (optional overlay; may be node subtype)
- ├── SafetyZone / Hazard[]
- ├── Exit[]
- ├── EmergencyContact[]
- ├── QrCode / QrCampaign[]
- ├── AnalyticsEvent[]
- └── (optional) Sensor / CrowdObservation[]
+ └── Site[]                    (physical campus / hospital / HQ)
+      ├── Building[]
+      │    └── Floor[]
+      ├── NavigationNode[]
+      ├── NavigationEdge[]
+      ├── SafetyZone / Hazard[]
+      ├── Exit[] / EmergencyContact[]
+      └── (optional) Sensor / CrowdObservation[]
 ```
 
-**Invariant:** Every child aggregate root or entity references exactly one `Organization`. Cross-org foreign keys are forbidden.
+**Invariant:** Spatial data belongs to a **Site**. A Site belongs to exactly one Organization. Cross-org and cross-site foreign keys are forbidden.
+
+See [`site-tenancy.md`](./site-tenancy.md) for Phase 2.5A (active site, APIs, RNSIT as seed).
 
 ---
 

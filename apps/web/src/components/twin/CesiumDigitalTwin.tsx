@@ -75,6 +75,7 @@ export interface CesiumDigitalTwinProps {
   zones: DangerZone[];
   userLatitude?: number | null;
   userLongitude?: number | null;
+  mapCenter?: { lat: number; lon: number };
   selectedBuildingId?: string | null;
   onSelect?: (pick: TwinPick | null) => void;
   layers: TwinLayerFlags;
@@ -133,6 +134,7 @@ export const CesiumDigitalTwin = forwardRef<CesiumDigitalTwinHandle, CesiumDigit
       zones,
       userLatitude,
       userLongitude,
+      mapCenter,
       selectedBuildingId = null,
       onSelect,
       layers,
@@ -158,7 +160,7 @@ export const CesiumDigitalTwin = forwardRef<CesiumDigitalTwinHandle, CesiumDigit
     const flyToCampus = () => {
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed()) return;
-      flyCameraToCampus(viewer, buildings, nodes, cameraMode);
+      flyCameraToCampus(viewer, buildings, nodes, cameraMode, mapCenter);
     };
 
     const flyToBuilding = (buildingId: string) => {
@@ -178,7 +180,7 @@ export const CesiumDigitalTwin = forwardRef<CesiumDigitalTwinHandle, CesiumDigit
     const focusRoute = () => {
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed() || !navigationRoute) return;
-      flyCameraToRoute(viewer, navigationRoute);
+      flyCameraToRoute(viewer, navigationRoute, mapCenter);
     };
 
     useImperativeHandle(ref, () => ({

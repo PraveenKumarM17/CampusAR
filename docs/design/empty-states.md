@@ -55,6 +55,20 @@ Use `error.code` to pick body variant.
 
 ---
 
+## Unpublished site map
+
+| | |
+|--|--|
+| **Where** | Map / Navigate / Digital Twin |
+| **Title** | No map data yet |
+| **Body** | No map data has been published for this site yet. |
+| **Primary** | Switch site (if the user has another) |
+| **Secondary** | Wait for an organization admin to publish a map (Map Builder, Phase 2.5B) |
+
+The UI must not crash when buildings, nodes, and edges are all empty.
+
+---
+
 ## No Permissions (camera / motion)
 
 | | |

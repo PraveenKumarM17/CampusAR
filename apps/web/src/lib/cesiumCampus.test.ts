@@ -55,4 +55,10 @@ describe('cesiumCampus', () => {
     expect(target.longitude).toBeCloseTo(77.518, 3);
     expect(target.heightM).toBeGreaterThan(0);
   });
+
+  it('uses the active site center when no buildings or nodes are published', () => {
+    const target = campusCameraTarget([], [], { lat: 13.05, lon: 77.62 });
+    expect(target.latitude).toBeCloseTo(13.05);
+    expect(target.longitude).toBeCloseTo(77.62);
+  });
 });

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { navigationService } from '../../../application/navigationService';
 import { resolveShareEndpoints } from '../../../application/navigationValidation';
 import { optionalAuth, type AuthedRequest } from '../middleware/auth';
+import { resolveRequestSiteId } from '../../../application/siteContext';
 
 const accessibilitySchema = z
   .object({
@@ -21,6 +22,7 @@ const routeSchema = z
     destinationNodeId: z.string().uuid(),
     accessibility: accessibilitySchema,
     usePrediction: z.boolean().optional(),
+    siteId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -34,8 +36,10 @@ export const navigationRouter = Router();
 async function handleComputeRoute(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const body = routeSchema.parse(req.body);
+    const siteId = await resolveRequestSiteId(req);
     const route = await navigationService.computeRoute({
       ...body,
+      siteId: siteId ?? undefined,
       userId: req.user?.sub ?? null,
     });
     res.json(route);

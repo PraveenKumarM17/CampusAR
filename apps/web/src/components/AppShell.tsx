@@ -12,10 +12,15 @@ import {
   QrCode,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
-import { useEffect, useState } from 'react';
+import { useNavStore } from '../stores/themeStore';
+import { useSiteStore } from '../stores/siteStore';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import type { AppNotification } from '@campusar/shared';
 import { DIGITAL_TWIN_PATH } from '../features/digitalTwin/types/digitalTwin';
+import { useSiteBootstrap } from '../hooks/useSiteBootstrap';
+import { useActiveSite } from '../hooks/useActiveSite';
+import { useMapEditorAccess } from '../hooks/useMapEditorAccess';
 
 const navLinks = [
   { to: '/map', label: 'Map', icon: Map },
@@ -27,12 +32,18 @@ const navLinks = [
 ];
 
 export function AppShell() {
+  useSiteBootstrap();
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.accessToken);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const [notes, setNotes] = useState<AppNotification[]>([]);
   const [openNotes, setOpenNotes] = useState(false);
+  const { site, activeSiteId, label } = useActiveSite();
+  const sites = useSiteStore((s) => s.sites);
+  const setActiveSiteId = useSiteStore((s) => s.setActiveSiteId);
+  const resetForSiteChange = useNavStore((s) => s.resetForSiteChange);
+  const previousSiteId = useRef(activeSiteId);
 
   useEffect(() => {
     api
@@ -41,17 +52,28 @@ export function AppShell() {
       .catch(() => setNotes([]));
   }, [token]);
 
+  useEffect(() => {
+    if (previousSiteId.current && activeSiteId && previousSiteId.current !== activeSiteId) {
+      resetForSiteChange();
+    }
+    previousSiteId.current = activeSiteId;
+  }, [activeSiteId, resetForSiteChange]);
+
   const isAdmin = user?.role === 'admin';
   const isGuest = user?.role === 'guest';
+  const { canEdit: canMapEdit } = useMapEditorAccess();
 
   const links = navLinks;
 
   const adminLinks = isAdmin
     ? [
         { to: '/admin', label: 'Admin', icon: LayoutDashboard },
+        { to: '/admin/map-builder', label: 'Map Builder', icon: Map },
         { to: '/analytics', label: 'Analytics', icon: BarChart3 },
       ]
-    : [];
+    : canMapEdit
+      ? [{ to: '/admin/map-builder', label: 'Map Builder', icon: Map }]
+      : [];
 
   const roleLabel = isAdmin ? 'Admin' : isGuest ? 'Guest' : 'Member';
 
@@ -84,6 +106,23 @@ export function AppShell() {
             ))}
           </nav>
           <div className="flex items-center gap-2">
+            {sites.length > 0 && (
+              <label className="hidden max-w-[14rem] sm:block">
+                <span className="sr-only">Active site</span>
+                <select
+                  className="input !py-1.5 !text-xs"
+                  value={site?.id ?? ''}
+                  onChange={(e) => setActiveSiteId(e.target.value || null)}
+                  aria-label="Active site"
+                >
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.organizationName} · {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="relative z-[2001]">
               <button
                 type="button"
@@ -112,6 +151,7 @@ export function AppShell() {
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold">{user?.name}</p>
               <p className="text-xs text-ink-faint">{roleLabel}</p>
+              {site && <p className="max-w-[10rem] truncate text-xs text-ink-faint">{label}</p>}
             </div>
             <button
               type="button"
@@ -127,6 +167,20 @@ export function AppShell() {
           </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto border-t border-line px-3 py-2 md:hidden">
+          {sites.length > 1 && (
+            <select
+              className="input mr-1 !w-auto !py-1.5 !text-xs"
+              value={site?.id ?? ''}
+              onChange={(e) => setActiveSiteId(e.target.value || null)}
+              aria-label="Active site"
+            >
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
           {[...links, ...adminLinks].map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}

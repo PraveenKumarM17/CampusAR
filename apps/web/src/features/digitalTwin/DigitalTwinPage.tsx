@@ -5,6 +5,8 @@ import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { useGeolocation } from '../../hooks/useGeolocation';
+import { useActiveSite } from '../../hooks/useActiveSite';
+import { EMPTY_SITE_MESSAGE, siteHasPublishedMap } from '../../lib/campus';
 import { buildCrowdByEdge } from '../../lib/cesiumCampus';
 import { buildingContextToNavPatch } from '../../lib/buildingNavigation';
 import type { CesiumDigitalTwinHandle } from '../../components/twin/CesiumDigitalTwin';
@@ -48,6 +50,7 @@ function TwinLoading() {
 
 export function DigitalTwinPage() {
   const token = useAuthStore((s) => s.accessToken);
+  const { activeSiteId, latLon, label } = useActiveSite();
   const navigate = useNavigate();
   const live = useDigitalTwinLiveData();
   const { pose } = useGeolocation(true);
@@ -64,7 +67,7 @@ export function DigitalTwinPage() {
     loading,
     error,
     reload,
-  } = useDigitalTwinSnapshot(token);
+  } = useDigitalTwinSnapshot(token, activeSiteId);
   const sourceNodeId = useNavStore((s) => s.sourceNodeId);
   const destinationNodeId = useNavStore((s) => s.destinationNodeId);
   const applyBuildingContext = useNavStore((s) => s.applyBuildingContext);
@@ -256,7 +259,11 @@ export function DigitalTwinPage() {
           : 'Navigate here';
 
   const showError = error || viewerError;
-  const emptyCoords = !loading && twinBuildings.length === 0;
+  const emptyCoords = !loading && !siteHasPublishedMap({
+    buildings: twinBuildings.length,
+    nodes: nodes.length,
+    edges: edges.length,
+  });
 
   return (
     <div className="flex min-h-[calc(100vh-8.5rem)] flex-col gap-3">
@@ -264,8 +271,8 @@ export function DigitalTwinPage() {
         <div>
           <h1 className="page-title">Digital Twin</h1>
           <p className="page-sub">
-            Cesium campus environment from existing buildings, walkways, entrances, and live crowd —
-            same API as Map and Navigate.
+            {label} — Cesium environment from this site’s buildings, walkways, and live crowd.
+            Same canonical map data as Map and Navigate.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
@@ -324,15 +331,14 @@ export function DigitalTwinPage() {
       )}
 
       {emptyCoords && !showError && (
-        <p className="text-sm text-ink-mute">
-          No buildings with valid coordinates were returned. Check campus seed data.
-        </p>
+        <p className="text-sm text-ink-mute">{EMPTY_SITE_MESSAGE}</p>
       )}
 
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-md border border-line bg-ink-950">
         {loading && !viewerReady && <TwinLoading />}
         <Suspense fallback={<TwinLoading />}>
           <CesiumDigitalTwin
+            key={activeSiteId ?? 'none'}
             ref={viewerRef}
             buildings={twinBuildings}
             walkways={walkways}
@@ -347,6 +353,7 @@ export function DigitalTwinPage() {
             zones={zones}
             userLatitude={pose?.latitude}
             userLongitude={pose?.longitude}
+            mapCenter={latLon}
             selectedBuildingId={selectedBuilding?.id ?? null}
             onSelect={(pick) => applyPick(pick, false)}
             layers={layers}

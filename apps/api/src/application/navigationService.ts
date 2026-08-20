@@ -37,17 +37,19 @@ export const navigationService = {
     accessibility?: Partial<AccessibilityPrefs>;
     userId?: string | null;
     usePrediction?: boolean;
+    siteId?: string;
   }): Promise<RouteResponse> {
     const { source, destination } = await validateRouteEndpoints(
       input.sourceNodeId,
       input.destinationNodeId,
+      input.siteId,
     );
     const prefs = normalizeAccessibility(input.accessibility);
     const usePrediction = input.usePrediction !== false;
     const weights = await campusRepository.getWeights();
-    const { nodes, edges: rawEdges } = await campusRepository.getRoutingGraph();
-    const zones = await campusRepository.listActiveDangerZones();
-    const events = await campusRepository.listActiveRoutingEvents();
+    const { nodes, edges: rawEdges } = await campusRepository.getRoutingGraph(input.siteId);
+    const zones = await campusRepository.listActiveDangerZones(input.siteId);
+    const events = await campusRepository.listActiveRoutingEvents(new Date(), input.siteId);
 
     if (!nodes.has(input.sourceNodeId) || !nodes.has(input.destinationNodeId)) {
       throw new AppError(

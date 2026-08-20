@@ -1,0 +1,916 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  MapContainer,
+  CircleMarker,
+  Marker,
+  Polygon,
+  Polyline,
+  Tooltip,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet';
+import L from 'leaflet';
+import '@geoman-io/leaflet-geoman-free';
+import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
+import {
+  AlertTriangle,
+  Building2,
+  CircleDot,
+  DoorOpen,
+  Layers,
+  MapPin,
+  MousePointer2,
+  Route,
+  Save,
+  Shapes,
+  Trash2,
+} from 'lucide-react';
+import type { Building, GeoPoint, GraphEdge, GraphNode, MapValidationResult, SiteArea } from '@campusar/shared';
+import { api, ApiError } from '../../lib/api';
+import { useAuthStore } from '../../stores/authStore';
+import { useActiveSite } from '../../hooks/useActiveSite';
+import { useMapEditorAccess } from '../../hooks/useMapEditorAccess';
+import { useSiteStore } from '../../stores/siteStore';
+import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAX_ZOOM, siteMapCenter } from '../../lib/campus';
+import { haversineMeters } from '../../lib/geo';
+import { BasemapModeSwitcher, RealBasemapTiles, type BasemapMode } from '../../components/maps/RealBasemap';
+import { RecenterOnSite } from '../../components/maps/GpsTracker';
+import { Navigate } from 'react-router-dom';
+import { EmptySiteNotice } from '../../components/EmptySiteNotice';
+
+type BuilderTool = 'select' | 'building' | 'walkway' | 'node' | 'entrance' | 'poi' | 'area';
+
+type SaveStatus = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error';
+
+type Selection =
+  | { kind: 'building'; id: string }
+  | { kind: 'node'; id: string }
+  | { kind: 'edge'; id: string }
+  | { kind: 'area'; id: string }
+  | { kind: 'draft-building'; footprint: GeoPoint[] }
+  | { kind: 'draft-area'; footprint: GeoPoint[] }
+  | null;
+
+const TOOLS: { id: BuilderTool; label: string; icon: typeof MousePointer2 }[] = [
+  { id: 'select', label: 'Select', icon: MousePointer2 },
+  { id: 'building', label: 'Building', icon: Building2 },
+  { id: 'walkway', label: 'Walkway', icon: Route },
+  { id: 'node', label: 'Node', icon: CircleDot },
+  { id: 'entrance', label: 'Entrance', icon: DoorOpen },
+  { id: 'poi', label: 'POI', icon: MapPin },
+  { id: 'area', label: 'Area', icon: Shapes },
+];
+
+function ringToLatLngs(ring: GeoPoint[]): [number, number][] {
+  return ring.map((p) => [p.latitude, p.longitude]);
+}
+
+function centroid(ring: GeoPoint[]): GeoPoint {
+  const pts =
+    ring.length > 1 &&
+    ring[0].latitude === ring[ring.length - 1].latitude &&
+    ring[0].longitude === ring[ring.length - 1].longitude
+      ? ring.slice(0, -1)
+      : ring;
+  const lat = pts.reduce((s, p) => s + p.latitude, 0) / pts.length;
+  const lon = pts.reduce((s, p) => s + p.longitude, 0) / pts.length;
+  return { latitude: lat, longitude: lon };
+}
+
+function GeomanDrawLayer({
+  tool,
+  onPolygon,
+}: {
+  tool: BuilderTool;
+  onPolygon: (ring: GeoPoint[]) => void;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    map.pm.setGlobalOptions({ snappable: true, snapDistance: 15 });
+    return () => {
+      map.pm.disableDraw();
+    };
+  }, [map]);
+
+  useEffect(() => {
+    map.pm.disableDraw();
+    if (tool === 'building' || tool === 'area') {
+      map.pm.enableDraw('Polygon', { continueDrawing: false });
+    }
+  }, [map, tool]);
+
+  useEffect(() => {
+    const onCreate = (e: { layer: L.Layer }) => {
+      const layer = e.layer as L.Polygon;
+      const latlngs = layer.getLatLngs();
+      const ringRaw = (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs) as L.LatLng[];
+      const ring: GeoPoint[] = ringRaw.map((ll) => ({ latitude: ll.lat, longitude: ll.lng }));
+      if (ring.length >= 3) onPolygon(ring);
+      map.removeLayer(layer);
+      map.pm.disableDraw();
+    };
+    map.on('pm:create', onCreate);
+    return () => {
+      map.off('pm:create', onCreate);
+    };
+  }, [map, onPolygon]);
+
+  return null;
+}
+
+function FitSiteData({
+  center,
+  points,
+}: {
+  center: [number, number];
+  points: [number, number][];
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (points.length > 1) {
+      map.fitBounds(points, { padding: [40, 40] });
+    } else {
+      map.setView(center, CAMPUS_DEFAULT_ZOOM);
+    }
+  }, [map, center, points]);
+  return null;
+}
+
+function MapClickLayer({
+  enabled,
+  onClick,
+}: {
+  enabled: boolean;
+  onClick: (lat: number, lon: number) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      if (!enabled) return;
+      onClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+export function MapBuilderPage() {
+  const token = useAuthStore((s) => s.accessToken);
+  const { canEdit, loading: accessLoading } = useMapEditorAccess();
+  const { site, label } = useActiveSite();
+  const sites = useSiteStore((s) => s.sites);
+  const setActiveSiteId = useSiteStore((s) => s.setActiveSiteId);
+
+  const [tool, setTool] = useState<BuilderTool>('select');
+  const [basemap, setBasemap] = useState<BasemapMode>('streets');
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [edges, setEdges] = useState<GraphEdge[]>([]);
+  const [areas, setAreas] = useState<SiteArea[]>([]);
+  const [selection, setSelection] = useState<Selection>(null);
+  const [walkFrom, setWalkFrom] = useState<string | null>(null);
+  const [entranceBuildingId, setEntranceBuildingId] = useState<string>('');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [validation, setValidation] = useState<MapValidationResult | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const dirtyRef = useRef(false);
+
+  const center = useMemo(() => siteMapCenter(site), [site]);
+
+  const fitPoints = useMemo((): [number, number][] => {
+    const pts: [number, number][] = [];
+    for (const b of buildings) {
+      if (b.footprint?.length) pts.push(...ringToLatLngs(b.footprint));
+      else pts.push([b.latitude, b.longitude]);
+    }
+    for (const n of nodes) pts.push([n.latitude, n.longitude]);
+    for (const a of areas) pts.push(...ringToLatLngs(a.footprint));
+    return pts;
+  }, [buildings, nodes, areas]);
+
+  const markDirty = useCallback(() => {
+    dirtyRef.current = true;
+    setSaveStatus('unsaved');
+  }, []);
+
+  const reload = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const snap = await api.mapBuilder.snapshot(token);
+      setBuildings(snap.buildings);
+      setNodes(snap.nodes);
+      setEdges(snap.edges);
+      setAreas(snap.areas);
+      dirtyRef.current = false;
+      setSaveStatus('idle');
+      const val = await api.mapBuilder.validate(token);
+      setValidation(val);
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : 'Failed to load site map data');
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    setSelection(null);
+    setWalkFrom(null);
+    void reload();
+  }, [site?.id, reload]);
+
+  const handleSiteChange = (siteId: string) => {
+    if (dirtyRef.current && !window.confirm('You have unsaved changes. Switch site anyway?')) return;
+    setActiveSiteId(siteId);
+  };
+
+  const onPolygonDrawn = useCallback(
+    (ring: GeoPoint[]) => {
+      if (tool === 'building') {
+        setSelection({ kind: 'draft-building', footprint: ring });
+        markDirty();
+      } else if (tool === 'area') {
+        setSelection({ kind: 'draft-area', footprint: ring });
+        markDirty();
+      }
+      setTool('select');
+    },
+    [tool, markDirty],
+  );
+
+  const handleMapClick = async (lat: number, lon: number) => {
+    if (!token || tool === 'select' || tool === 'building' || tool === 'area') return;
+    setError(null);
+    try {
+      if (tool === 'node') {
+        const created = await api.mapBuilder.createNode(
+          { latitude: lat, longitude: lon, kind: 'outdoor', name: null },
+          token,
+        );
+        setNodes((prev) => [...prev, created]);
+        setSelection({ kind: 'node', id: created.id });
+        setSaveStatus('saved');
+        dirtyRef.current = false;
+      } else if (tool === 'poi') {
+        const name = window.prompt('POI name');
+        if (!name?.trim()) return;
+        const created = await api.mapBuilder.createNode(
+          { latitude: lat, longitude: lon, kind: 'outdoor', name: name.trim() },
+          token,
+        );
+        setNodes((prev) => [...prev, created]);
+        setSelection({ kind: 'node', id: created.id });
+        setSaveStatus('saved');
+      } else if (tool === 'entrance') {
+        if (!entranceBuildingId) {
+          setError('Select a building before placing an entrance.');
+          return;
+        }
+        const name = window.prompt('Entrance name', 'Main entrance') ?? 'Main entrance';
+        const created = await api.mapBuilder.createNode(
+          {
+            latitude: lat,
+            longitude: lon,
+            kind: 'entrance',
+            name,
+            buildingId: entranceBuildingId,
+          },
+          token,
+        );
+        setNodes((prev) => [...prev, created]);
+        setSelection({ kind: 'node', id: created.id });
+        setSaveStatus('saved');
+      }
+      void api.mapBuilder.validate(token).then(setValidation);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Save failed');
+      setSaveStatus('error');
+    }
+  };
+
+  const handleWalkwayClick = (nodeId: string) => {
+    if (tool !== 'walkway') return;
+    if (!walkFrom) {
+      setWalkFrom(nodeId);
+      return;
+    }
+    if (walkFrom === nodeId) {
+      setWalkFrom(null);
+      return;
+    }
+    void connectWalkway(walkFrom, nodeId);
+    setWalkFrom(null);
+  };
+
+  const connectWalkway = async (fromId: string, toId: string) => {
+    if (!token) return;
+    const from = nodes.find((n) => n.id === fromId);
+    const to = nodes.find((n) => n.id === toId);
+    if (!from || !to) return;
+    setSaveStatus('saving');
+    try {
+      const distanceM = haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude);
+      const edge = await api.mapBuilder.createEdge(
+        {
+          fromNodeId: fromId,
+          toNodeId: toId,
+          distanceM,
+          kind: 'walkway',
+          bidirectional: true,
+          blocked: false,
+          safetyScore: 0.9,
+          crowdScore: 0.2,
+          accessibilityScore: 0.9,
+        },
+        token,
+      );
+      setEdges((prev) => [...prev, edge]);
+      setSelection({ kind: 'edge', id: edge.id });
+      setSaveStatus('saved');
+      void api.mapBuilder.validate(token).then(setValidation);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not create walkway');
+      setSaveStatus('error');
+    }
+  };
+
+  const saveDraftBuilding = async (meta: {
+    name: string;
+    code: string;
+    floorsCount: number;
+    description?: string | null;
+  }) => {
+    if (!token || selection?.kind !== 'draft-building') return;
+    setSaveStatus('saving');
+    setError(null);
+    try {
+      const c = centroid(selection.footprint);
+      const created = await api.mapBuilder.createBuilding(
+        {
+          name: meta.name,
+          code: meta.code,
+          description: meta.description ?? null,
+          latitude: c.latitude,
+          longitude: c.longitude,
+          floorsCount: meta.floorsCount,
+          footprint: selection.footprint,
+        },
+        token,
+      );
+      setBuildings((prev) => [...prev, created]);
+      setSelection({ kind: 'building', id: created.id });
+      setSaveStatus('saved');
+      dirtyRef.current = false;
+      void api.mapBuilder.validate(token).then(setValidation);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save building');
+      setSaveStatus('error');
+    }
+  };
+
+  const saveDraftArea = async (meta: { name: string; type: SiteArea['type'] }) => {
+    if (!token || selection?.kind !== 'draft-area') return;
+    setSaveStatus('saving');
+    try {
+      const created = await api.mapBuilder.createArea(
+        { name: meta.name, type: meta.type, footprint: selection.footprint },
+        token,
+      );
+      setAreas((prev) => [...prev, created]);
+      setSelection({ kind: 'area', id: created.id });
+      setSaveStatus('saved');
+      dirtyRef.current = false;
+      void api.mapBuilder.validate(token).then(setValidation);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save area');
+      setSaveStatus('error');
+    }
+  };
+
+  const deleteSelected = async () => {
+    if (!token || !selection) return;
+    if (!window.confirm('Delete this map feature?')) return;
+    setSaveStatus('saving');
+    try {
+      if (selection.kind === 'building') {
+        await api.mapBuilder.deleteBuilding(selection.id, token);
+        setBuildings((prev) => prev.filter((b) => b.id !== selection.id));
+      } else if (selection.kind === 'node') {
+        try {
+          await api.mapBuilder.deleteNode(selection.id, false, token);
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 409) {
+            if (window.confirm(`${err.message}\n\nDelete connected walkways too?`)) {
+              await api.mapBuilder.deleteNode(selection.id, true, token);
+              setEdges((prev) =>
+                prev.filter((e) => e.fromNodeId !== selection.id && e.toNodeId !== selection.id),
+              );
+            } else return;
+          } else throw err;
+        }
+        setNodes((prev) => prev.filter((n) => n.id !== selection.id));
+      } else if (selection.kind === 'edge') {
+        await api.mapBuilder.deleteEdge(selection.id, token);
+        setEdges((prev) => prev.filter((e) => e.id !== selection.id));
+      } else if (selection.kind === 'area') {
+        await api.mapBuilder.deleteArea(selection.id, token);
+        setAreas((prev) => prev.filter((a) => a.id !== selection.id));
+      }
+      setSelection(null);
+      setSaveStatus('saved');
+      void api.mapBuilder.validate(token).then(setValidation);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Delete failed');
+      setSaveStatus('error');
+    }
+  };
+
+  if (accessLoading) {
+    return <div className="p-6 text-sm text-muted">Checking map editor access…</div>;
+  }
+  if (!canEdit) {
+    return <Navigate to="/map" replace />;
+  }
+
+  const emptySite = buildings.length === 0 && nodes.length === 0 && edges.length === 0;
+
+  return (
+    <div className="flex h-[calc(100vh-4rem)] flex-col">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-paper-raised px-4 py-3">
+        <div>
+          <h1 className="text-lg font-semibold text-ink">Map Builder</h1>
+          <p className="text-xs text-muted">{label}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {sites.length > 1 ? (
+            <select
+              className="rounded-md border border-line bg-paper px-2 py-1.5 text-sm"
+              value={site?.id ?? ''}
+              onChange={(e) => handleSiteChange(e.target.value)}
+            >
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.organizationName} · {s.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <span className="text-xs text-muted">
+            {saveStatus === 'unsaved'
+              ? 'Unsaved changes'
+              : saveStatus === 'saving'
+                ? 'Saving…'
+                : saveStatus === 'saved'
+                  ? 'Saved'
+                  : saveStatus === 'error'
+                    ? 'Error'
+                    : 'Ready'}
+          </span>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        <aside className="w-52 shrink-0 overflow-y-auto border-r border-line bg-paper p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Tools</p>
+          <div className="space-y-1">
+            {TOOLS.map(({ id, label: toolLabel, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm ${
+                  tool === id ? 'bg-accent/15 text-accent font-semibold' : 'hover:bg-paper-raised'
+                }`}
+                onClick={() => {
+                  setTool(id);
+                  setWalkFrom(null);
+                }}
+              >
+                <Icon className="h-4 w-4" />
+                {toolLabel}
+              </button>
+            ))}
+          </div>
+          {tool === 'entrance' ? (
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-muted">Building</label>
+              <select
+                className="mt-1 w-full rounded-md border border-line bg-paper px-2 py-1 text-sm"
+                value={entranceBuildingId}
+                onChange={(e) => setEntranceBuildingId(e.target.value)}
+              >
+                <option value="">Select building…</option>
+                {buildings.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-muted">Layers</p>
+          <div className="space-y-1 text-xs text-muted">
+            <div className="flex items-center gap-2">
+              <Layers className="h-3.5 w-3.5" /> Buildings ({buildings.length})
+            </div>
+            <div>Nodes ({nodes.length})</div>
+            <div>Walkways ({edges.length})</div>
+            <div>Areas ({areas.length})</div>
+          </div>
+        </aside>
+
+        <div className="relative min-w-0 flex-1">
+          {loading ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted">Loading map…</div>
+          ) : loadError ? (
+            <div className="flex h-full items-center justify-center p-6 text-sm text-danger">{loadError}</div>
+          ) : (
+            <MapContainer center={center} zoom={CAMPUS_DEFAULT_ZOOM} maxZoom={CAMPUS_MAX_ZOOM} className="h-full w-full">
+              <RealBasemapTiles mode={basemap} />
+              <BasemapModeSwitcher mode={basemap} onChange={setBasemap} />
+              <RecenterOnSite center={center} />
+              <FitSiteData center={center} points={fitPoints} />
+              <GeomanDrawLayer tool={tool} onPolygon={onPolygonDrawn} />
+              <MapClickLayer
+                enabled={tool === 'node' || tool === 'poi' || tool === 'entrance'}
+                onClick={handleMapClick}
+              />
+
+              {areas.map((a) => (
+                <Polygon
+                  key={a.id}
+                  positions={ringToLatLngs(a.footprint)}
+                  pathOptions={{
+                    color: a.type === 'restricted' ? '#dc2626' : '#2563eb',
+                    fillOpacity: 0.15,
+                    weight: selection?.kind === 'area' && selection.id === a.id ? 3 : 1,
+                  }}
+                  eventHandlers={{ click: () => setSelection({ kind: 'area', id: a.id }) }}
+                />
+              ))}
+
+              {buildings.map((b) =>
+                b.footprint && b.footprint.length >= 3 ? (
+                  <Polygon
+                    key={b.id}
+                    positions={ringToLatLngs(b.footprint)}
+                    pathOptions={{
+                      color: '#0F6B63',
+                      fillOpacity: 0.25,
+                      weight: selection?.kind === 'building' && selection.id === b.id ? 3 : 1,
+                    }}
+                    eventHandlers={{ click: () => setSelection({ kind: 'building', id: b.id }) }}
+                  >
+                    <Tooltip permanent direction="center" className="building-label">
+                      {b.code}
+                    </Tooltip>
+                  </Polygon>
+                ) : (
+                  <CircleMarker
+                    key={b.id}
+                    center={[b.latitude, b.longitude]}
+                    radius={8}
+                    pathOptions={{ color: '#0F6B63', fillColor: '#0F6B63', fillOpacity: 0.8 }}
+                    eventHandlers={{ click: () => setSelection({ kind: 'building', id: b.id }) }}
+                  >
+                    <Tooltip>{b.name}</Tooltip>
+                  </CircleMarker>
+                ),
+              )}
+
+              {selection?.kind === 'draft-building' ? (
+                <Polygon positions={ringToLatLngs(selection.footprint)} pathOptions={{ color: '#f97316', dashArray: '4' }} />
+              ) : null}
+              {selection?.kind === 'draft-area' ? (
+                <Polygon positions={ringToLatLngs(selection.footprint)} pathOptions={{ color: '#7c3aed', dashArray: '4' }} />
+              ) : null}
+
+              {edges.map((e) => {
+                const from = nodes.find((n) => n.id === e.fromNodeId);
+                const to = nodes.find((n) => n.id === e.toNodeId);
+                if (!from || !to) return null;
+                return (
+                  <Polyline
+                    key={e.id}
+                    positions={[
+                      [from.latitude, from.longitude],
+                      [to.latitude, to.longitude],
+                    ]}
+                    pathOptions={{
+                      color: e.blocked ? '#dc2626' : '#64748b',
+                      weight: selection?.kind === 'edge' && selection.id === e.id ? 5 : 3,
+                    }}
+                    eventHandlers={{ click: () => setSelection({ kind: 'edge', id: e.id }) }}
+                  />
+                );
+              })}
+
+              {nodes.map((n) => (
+                <Marker
+                  key={n.id}
+                  position={[n.latitude, n.longitude]}
+                  eventHandlers={{
+                    click: () => {
+                      if (tool === 'walkway') handleWalkwayClick(n.id);
+                      else setSelection({ kind: 'node', id: n.id });
+                    },
+                  }}
+                >
+                  <Tooltip>{n.name ?? n.kind}</Tooltip>
+                </Marker>
+              ))}
+            </MapContainer>
+          )}
+          {emptySite && !loading ? (
+            <div className="pointer-events-none absolute inset-x-0 top-4 z-[1000] mx-auto max-w-lg px-4">
+              <EmptySiteNotice
+                title="Start building your site map"
+                message="This site does not have map data yet. Start by adding a building, navigation point, or POI."
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <aside className="w-80 shrink-0 overflow-y-auto border-l border-line bg-paper p-4">
+          <PropertiesPanel
+            selection={selection}
+            buildings={buildings}
+            nodes={nodes}
+            onSaveBuilding={saveDraftBuilding}
+            onSaveArea={saveDraftArea}
+            onUpdate={async (kind, id, patch) => {
+              if (!token) return;
+              setSaveStatus('saving');
+              try {
+                if (kind === 'building') {
+                  const updated = await api.mapBuilder.updateBuilding(id, patch as Partial<Building>, token);
+                  setBuildings((prev) => prev.map((b) => (b.id === id ? updated : b)));
+                } else if (kind === 'node') {
+                  const updated = await api.mapBuilder.updateNode(id, patch, token);
+                  setNodes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+                }
+                setSaveStatus('saved');
+                void api.mapBuilder.validate(token).then(setValidation);
+              } catch (err) {
+                setError(err instanceof ApiError ? err.message : 'Update failed');
+                setSaveStatus('error');
+              }
+            }}
+            onDelete={deleteSelected}
+          />
+          {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+          <ValidationPanel validation={validation} />
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function PropertiesPanel({
+  selection,
+  buildings,
+  nodes,
+  onSaveBuilding,
+  onSaveArea,
+  onUpdate,
+  onDelete,
+}: {
+  selection: Selection;
+  buildings: Building[];
+  nodes: GraphNode[];
+  onSaveBuilding: (meta: {
+    name: string;
+    code: string;
+    floorsCount: number;
+    description?: string | null;
+  }) => void;
+  onSaveArea: (meta: { name: string; type: SiteArea['type'] }) => void;
+  onUpdate: (
+    kind: 'building' | 'node',
+    id: string,
+    patch: Record<string, unknown>,
+  ) => void;
+  onDelete: () => void;
+}) {
+  if (!selection) {
+    return <p className="text-sm text-muted">Select a feature or use a drawing tool.</p>;
+  }
+
+  if (selection.kind === 'draft-building') {
+    return (
+      <DraftBuildingForm
+        onSave={onSaveBuilding}
+        onCancel={() => window.location.reload()}
+      />
+    );
+  }
+  if (selection.kind === 'draft-area') {
+    return <DraftAreaForm onSave={onSaveArea} />;
+  }
+
+  if (selection.kind === 'building') {
+    const b = buildings.find((x) => x.id === selection.id);
+    if (!b) return null;
+    return (
+      <EntityForm
+        title={`Building · ${b.name}`}
+        fields={[
+          { key: 'name', label: 'Name', value: b.name },
+          { key: 'code', label: 'Code', value: b.code },
+          { key: 'floorsCount', label: 'Floors', value: String(b.floorsCount), type: 'number' },
+        ]}
+        onSave={(values) =>
+          onUpdate('building', b.id, {
+            name: values.name,
+            code: values.code,
+            floorsCount: Number(values.floorsCount),
+          })
+        }
+        onDelete={onDelete}
+        extra={b.footprint?.length ? `${b.footprint.length} footprint vertices` : 'No footprint (legacy point)'}
+      />
+    );
+  }
+
+  if (selection.kind === 'node') {
+    const n = nodes.find((x) => x.id === selection.id);
+    if (!n) return null;
+    return (
+      <EntityForm
+        title={`Node · ${n.name ?? n.kind}`}
+        fields={[
+          { key: 'name', label: 'Name', value: n.name ?? '' },
+          { key: 'kind', label: 'Kind', value: n.kind },
+          { key: 'latitude', label: 'Latitude', value: String(n.latitude), type: 'number' },
+          { key: 'longitude', label: 'Longitude', value: String(n.longitude), type: 'number' },
+        ]}
+        onSave={(values) =>
+          onUpdate('node', n.id, {
+            name: values.name || null,
+            kind: values.kind as GraphNode['kind'],
+            latitude: Number(values.latitude),
+            longitude: Number(values.longitude),
+          })
+        }
+        onDelete={onDelete}
+      />
+    );
+  }
+
+  if (selection.kind === 'edge') {
+    return (
+      <div>
+        <p className="font-semibold text-ink">Walkway</p>
+        <p className="mt-1 text-sm text-muted">Select endpoints on the map. Use delete to remove.</p>
+        <button type="button" className="btn-danger mt-4 inline-flex items-center gap-2" onClick={onDelete}>
+          <Trash2 className="h-4 w-4" /> Delete walkway
+        </button>
+      </div>
+    );
+  }
+
+  if (selection.kind === 'area') {
+    return (
+      <div>
+        <p className="font-semibold text-ink">Area polygon</p>
+        <button type="button" className="btn-danger mt-4 inline-flex items-center gap-2" onClick={onDelete}>
+          <Trash2 className="h-4 w-4" /> Delete area
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function DraftBuildingForm({
+  onSave,
+}: {
+  onSave: (meta: { name: string; code: string; floorsCount: number }) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [floorsCount, setFloorsCount] = useState(1);
+  return (
+    <div className="space-y-3">
+      <p className="font-semibold text-ink">New building footprint</p>
+      <input className="input w-full" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+      <input className="input w-full" placeholder="Code" value={code} onChange={(e) => setCode(e.target.value)} />
+      <input
+        className="input w-full"
+        type="number"
+        min={1}
+        value={floorsCount}
+        onChange={(e) => setFloorsCount(Number(e.target.value))}
+      />
+      <button
+        type="button"
+        className="btn-primary inline-flex w-full items-center justify-center gap-2"
+        disabled={!name.trim() || !code.trim()}
+        onClick={() => onSave({ name: name.trim(), code: code.trim().toUpperCase(), floorsCount })}
+      >
+        <Save className="h-4 w-4" /> Save building
+      </button>
+    </div>
+  );
+}
+
+function DraftAreaForm({
+  onSave,
+}: {
+  onSave: (meta: { name: string; type: SiteArea['type'] }) => void;
+}) {
+  const [name, setName] = useState('');
+  const [type, setType] = useState<SiteArea['type']>('open_area');
+  return (
+    <div className="space-y-3">
+      <p className="font-semibold text-ink">New area</p>
+      <input className="input w-full" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+      <select className="input w-full" value={type} onChange={(e) => setType(e.target.value as SiteArea['type'])}>
+        <option value="parking">Parking</option>
+        <option value="open_area">Open area</option>
+        <option value="restricted">Restricted</option>
+        <option value="assembly">Emergency assembly</option>
+      </select>
+      <button
+        type="button"
+        className="btn-primary inline-flex w-full items-center justify-center gap-2"
+        disabled={!name.trim()}
+        onClick={() => onSave({ name: name.trim(), type })}
+      >
+        <Save className="h-4 w-4" /> Save area
+      </button>
+    </div>
+  );
+}
+
+function EntityForm({
+  title,
+  fields,
+  onSave,
+  onDelete,
+  extra,
+}: {
+  title: string;
+  fields: { key: string; label: string; value: string; type?: string }[];
+  onSave: (values: Record<string, string>) => void;
+  onDelete: () => void;
+  extra?: string;
+}) {
+  const [values, setValues] = useState(() =>
+    Object.fromEntries(fields.map((f) => [f.key, f.value])),
+  );
+  return (
+    <div className="space-y-3">
+      <p className="font-semibold text-ink">{title}</p>
+      {extra ? <p className="text-xs text-muted">{extra}</p> : null}
+      {fields.map((f) => (
+        <label key={f.key} className="block text-xs text-muted">
+          {f.label}
+          <input
+            className="input mt-1 w-full"
+            type={f.type ?? 'text'}
+            value={values[f.key] ?? ''}
+            onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+          />
+        </label>
+      ))}
+      <button
+        type="button"
+        className="btn-primary inline-flex w-full items-center justify-center gap-2"
+        onClick={() => onSave(values)}
+      >
+        <Save className="h-4 w-4" /> Save changes
+      </button>
+      <button type="button" className="btn-danger inline-flex w-full items-center justify-center gap-2" onClick={onDelete}>
+        <Trash2 className="h-4 w-4" /> Delete
+      </button>
+    </div>
+  );
+}
+
+function ValidationPanel({ validation }: { validation: MapValidationResult | null }) {
+  if (!validation) return null;
+  return (
+    <div className="mt-6 border-t border-line pt-4">
+      <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+        <AlertTriangle className="h-4 w-4" />
+        Validation
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        {validation.errorCount} errors · {validation.warningCount} warnings
+      </p>
+      <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto text-xs">
+        {validation.issues.map((issue, i) => (
+          <li
+            key={`${issue.code}-${i}`}
+            className={issue.level === 'error' ? 'text-danger' : 'text-amber-700 dark:text-amber-400'}
+          >
+            <span className="font-semibold uppercase">{issue.level}</span> {issue.message}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

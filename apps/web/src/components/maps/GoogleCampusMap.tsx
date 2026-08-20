@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DangerZone, GraphNode } from '@campusar/shared';
-import { CAMPUS_CENTER, CAMPUS_DEFAULT_ZOOM } from '../../lib/campus';
+import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAP_CENTER } from '../../lib/campus';
 import type { UserPose } from '../../lib/geo';
 
 export type GoogleMapMode = 'hybrid' | 'satellite' | 'roadmap' | 'streets';
@@ -16,6 +16,7 @@ export interface CampusPathLine {
 interface GoogleCampusMapProps {
   className?: string;
   mode?: GoogleMapMode;
+  center?: [number, number];
   placeNodes: GraphNode[];
   sourceNodeId: string | null;
   destinationNodeId: string | null;
@@ -71,6 +72,7 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
 export function GoogleCampusMap({
   className = 'h-[62vh] w-full',
   mode = 'hybrid',
+  center = CAMPUS_MAP_CENTER,
   placeNodes,
   sourceNodeId,
   destinationNodeId,
@@ -103,7 +105,7 @@ export function GoogleCampusMap({
       .then(() => {
         if (cancelled || !containerRef.current || !window.google?.maps) return;
         const map = new google.maps.Map(containerRef.current, {
-          center: { lat: CAMPUS_CENTER.lat, lng: CAMPUS_CENTER.lon },
+          center: { lat: center[0], lng: center[1] },
           zoom: CAMPUS_DEFAULT_ZOOM,
           mapTypeId: toMapTypeId(mode),
           tilt: 67.5,
@@ -137,6 +139,13 @@ export function GoogleCampusMap({
     map.setTilt(toMapTypeId(mode) === 'roadmap' ? 45 : 67.5);
     if (!followGps) map.setHeading(20);
   }, [mode, ready, followGps]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || followGps) return;
+    map.panTo({ lat: center[0], lng: center[1] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center[0], center[1], ready, followGps]);
 
   // Static overlays (paths, places, zones, route) — not pose
   useEffect(() => {

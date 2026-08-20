@@ -17,7 +17,7 @@ import type { Building, CampusPlace, GraphNode, IndoorHandoff, RouteResponse } f
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
-import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAP_CENTER, CAMPUS_MAX_ZOOM } from '../../lib/campus';
+import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAX_ZOOM, siteHasPublishedMap } from '../../lib/campus';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { formatNodeLabel, snapGpsForRouting } from '../../lib/geo';
 import {
@@ -41,10 +41,13 @@ import {
   BreakFollowOnInteract,
   FitMapBounds,
   FollowUser,
+  RecenterOnSite,
   UserLocationMarker,
 } from '../../components/maps/GpsTracker';
 import { PlaceSearchSelect } from '../../components/navigate/PlaceSearchSelect';
 import { IndoorDestinationPicker } from '../../components/indoor/IndoorDestinationPicker';
+import { EmptySiteNotice } from '../../components/EmptySiteNotice';
+import { useActiveSite } from '../../hooks/useActiveSite';
 import {
   buildingContextToNavPatch,
   buildIndoorNavPath,
@@ -58,6 +61,7 @@ type MapPickMode = 'source' | 'destination';
 
 export function NavigatePage() {
   const token = useAuthStore((s) => s.accessToken);
+  const { activeSiteId, mapCenter } = useActiveSite();
   const {
     sourceNodeId,
     destinationNodeId,
@@ -122,6 +126,11 @@ export function NavigatePage() {
       ),
     [places],
   );
+  const hasPublishedMap = siteHasPublishedMap({
+    buildings: buildings.length,
+    nodes: nodes.length,
+    edges: 0,
+  });
   const placeIdSet = useMemo(() => new Set(placeNodes.map((n) => n.id)), [placeNodes]);
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const sourceNode = sourceNodeId ? nodeById.get(sourceNodeId) : null;
@@ -148,7 +157,7 @@ export function NavigatePage() {
         setNodes([]);
         setBuildings([]);
       });
-  }, [token]);
+  }, [token, activeSiteId]);
 
   useEffect(() => {
     if (!destinationNodeId) {
@@ -640,6 +649,8 @@ export function NavigatePage() {
           )}
         </div>
 
+        {!hasPublishedMap && <EmptySiteNotice compact />}
+
         <div className="relative overflow-hidden rounded-md border border-line">
           <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
           {distanceRemainingM != null && route && pose && (
@@ -651,6 +662,7 @@ export function NavigatePage() {
             <GoogleCampusMap
               className="h-[70vh] w-full"
               mode={basemapMode}
+              center={mapCenter}
               placeNodes={placeNodes}
               sourceNodeId={sourceNodeId}
               destinationNodeId={destinationNodeId}
@@ -663,12 +675,13 @@ export function NavigatePage() {
             />
           ) : (
             <MapContainer
-              center={CAMPUS_MAP_CENTER}
+              center={mapCenter}
               zoom={CAMPUS_DEFAULT_ZOOM}
               className="h-[70vh] w-full"
               maxZoom={CAMPUS_MAX_ZOOM}
             >
               <RealBasemapTiles mode={basemapMode} />
+              <RecenterOnSite center={mapCenter} enabled={!trackOnMap} />
               <BreakFollowOnInteract onBreak={() => setFollowGps(false)} />
               <FollowUser pose={pose} enabled={trackOnMap} recenterAt={recenterAt} />
               <FitMapBounds points={points} enabled={!trackOnMap && points.length > 1} />

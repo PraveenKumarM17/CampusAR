@@ -4,28 +4,32 @@ import { campusRepository } from '../../../infrastructure/repositories/campusRep
 import { notificationRepository } from '../../../infrastructure/repositories/analyticsRepository';
 import { safetyRepository } from '../../../infrastructure/repositories/analyticsRepository';
 import { optionalAuth, requireAuth, type AuthedRequest } from '../middleware/auth';
+import { resolveRequestSiteId } from '../../../application/siteContext';
 
 export const safetyRouter = Router();
 
-safetyRouter.get('/zones', async (_req, res, next) => {
+safetyRouter.get('/zones', async (req, res, next) => {
   try {
-    res.json(await campusRepository.listDangerZones());
+    const siteId = await resolveRequestSiteId(req);
+    res.json(await campusRepository.listDangerZones(siteId));
   } catch (err) {
     next(err);
   }
 });
 
-safetyRouter.get('/exits', async (_req, res, next) => {
+safetyRouter.get('/exits', async (req, res, next) => {
   try {
-    res.json(await campusRepository.listEmergencyExits());
+    const siteId = await resolveRequestSiteId(req);
+    res.json(await campusRepository.listEmergencyExits(siteId));
   } catch (err) {
     next(err);
   }
 });
 
-safetyRouter.get('/contacts', async (_req, res, next) => {
+safetyRouter.get('/contacts', async (req, res, next) => {
   try {
-    res.json(await campusRepository.listEmergencyContacts());
+    const siteId = await resolveRequestSiteId(req);
+    res.json(await campusRepository.listEmergencyContacts(siteId));
   } catch (err) {
     next(err);
   }

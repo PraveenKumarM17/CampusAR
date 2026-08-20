@@ -10,7 +10,7 @@ import type {
 } from '@campusar/shared';
 import { api } from '../../../lib/api';
 
-export function useDigitalTwinSnapshot(token: string | null) {
+export function useDigitalTwinSnapshot(token: string | null, siteId?: string | null) {
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
@@ -50,7 +50,7 @@ export function useDigitalTwinSnapshot(token: string | null) {
 
   useEffect(() => {
     reload();
-  }, [reload]);
+  }, [reload, siteId]);
 
   return {
     buildings,

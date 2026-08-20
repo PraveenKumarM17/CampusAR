@@ -1,6 +1,7 @@
 import type { CampusPlace, GraphNode, RoutePlaceSummary } from '@campusar/shared';
 import { AppError } from '../domain/errors';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
+import { assertSameSite } from './siteContext';
 
 export function isNamedPlace(node: Pick<GraphNode, 'name'>): boolean {
   return Boolean(node.name?.trim());
@@ -69,6 +70,7 @@ function assertNavigableEndpoint(
 export async function validateRouteEndpoints(
   sourceNodeId: string,
   destinationNodeId: string,
+  siteId?: string,
 ): Promise<{ source: RoutePlaceSummary; destination: RoutePlaceSummary }> {
   if (sourceNodeId === destinationNodeId) {
     throw new AppError('SAME_NODE', 'Source and destination must be different', 400, {
@@ -88,6 +90,10 @@ export async function validateRouteEndpoints(
     destinationNodeId,
     destinationNode,
   );
+  assertSameSite(sourceNode?.siteId, destinationNode?.siteId);
+  if (siteId && sourceNode?.siteId && sourceNode.siteId !== siteId) {
+    throw new AppError('CROSS_SITE_ROUTE', 'Start and destination must belong to the requested site', 422);
+  }
 
   return { source, destination };
 }
@@ -143,6 +149,21 @@ export async function resolveShareEndpoints(
   }
 
   await Promise.all([check('from', fromId), check('to', toId)]);
+
+  if (source && destination && fromId && toId) {
+    const [fromNode, toNode] = await Promise.all([
+      campusRepository.getNodeById(fromId),
+      campusRepository.getNodeById(toId),
+    ]);
+    if (fromNode?.siteId && toNode?.siteId && fromNode.siteId !== toNode.siteId) {
+      errors.push({
+        field: 'to',
+        code: 'CROSS_SITE_ROUTE',
+        message: 'Start and destination must belong to the same site',
+        nodeId: toId,
+      });
+    }
+  }
 
   return {
     valid: errors.length === 0 && (fromId == null || source != null) && (toId == null || destination != null),

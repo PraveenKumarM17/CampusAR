@@ -26,6 +26,7 @@ function place(overrides: Partial<GraphNode> = {}): GraphNode {
     buildingId: null,
     kind: 'outdoor',
     active: true,
+    siteId: 'c0000001-0000-4000-8000-000000000010',
     ...overrides,
   };
 }
@@ -114,5 +115,41 @@ describe('navigationValidation', () => {
     expect(result.destination).toBeNull();
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0].field).toBe('to');
+  });
+
+  it('validateRouteEndpoints rejects nodes from different sites', async () => {
+    getNodeById.mockImplementation(async (id) => {
+      if (id === 'a1000001-0000-0000-0000-000000000001') return place();
+      return place({
+        id: 'a1000001-0000-0000-0000-000000000014',
+        name: 'Hospital Lobby',
+        siteId: 'aaaaaaaa-0000-4000-8000-000000000098',
+      });
+    });
+
+    await expect(
+      validateRouteEndpoints(
+        'a1000001-0000-0000-0000-000000000001',
+        'a1000001-0000-0000-0000-000000000014',
+      ),
+    ).rejects.toMatchObject({ code: 'CROSS_SITE_ROUTE', status: 422 });
+  });
+
+  it('validateRouteEndpoints rejects endpoints that do not match the requested site', async () => {
+    getNodeById.mockImplementation(async (id) => {
+      if (id === 'a1000001-0000-0000-0000-000000000001') return place();
+      return place({
+        id: 'a1000001-0000-0000-0000-000000000014',
+        name: 'Cyber Block Entrance',
+      });
+    });
+
+    await expect(
+      validateRouteEndpoints(
+        'a1000001-0000-0000-0000-000000000001',
+        'a1000001-0000-0000-0000-000000000014',
+        'aaaaaaaa-0000-4000-8000-000000000098',
+      ),
+    ).rejects.toMatchObject({ code: 'CROSS_SITE_ROUTE', status: 422 });
   });
 });

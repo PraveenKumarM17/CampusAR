@@ -1,11 +1,53 @@
 export type UserRole = 'admin' | 'user' | 'guest';
 
+export type OrganizationType =
+  | 'university'
+  | 'hospital'
+  | 'corporate'
+  | 'factory'
+  | 'government'
+  | 'other';
+
+export type SiteStatus = 'draft' | 'active' | 'archived';
+
+export type MembershipRole = 'org_admin' | 'site_admin' | 'member';
+
 export interface User {
   id: string;
   email: string | null;
   name: string;
   role: UserRole;
   createdAt: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  type: OrganizationType;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Site {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  name: string;
+  slug: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  status: SiteStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationMembership {
+  organizationId: string;
+  siteId: string | null;
+  role: MembershipRole;
 }
 
 export interface AuthTokens {
@@ -21,6 +63,11 @@ export interface AuthResponse {
 export type RoomCategory =
   'classroom' | 'lab' | 'office' | 'library' | 'cafeteria' | 'restroom' | 'auditorium' | 'other';
 
+export interface GeoPoint {
+  latitude: number;
+  longitude: number;
+}
+
 export interface Building {
   id: string;
   name: string;
@@ -29,6 +76,44 @@ export interface Building {
   latitude: number;
   longitude: number;
   floorsCount: number;
+  /** Optional canonical footprint ring (WGS84). Legacy buildings may omit this. */
+  footprint?: GeoPoint[];
+  siteId?: string;
+}
+
+export type SiteAreaType = 'parking' | 'open_area' | 'restricted' | 'assembly';
+
+export interface SiteArea {
+  id: string;
+  siteId: string;
+  name: string;
+  type: SiteAreaType;
+  footprint: GeoPoint[];
+}
+
+export type MapValidationLevel = 'error' | 'warning';
+
+export interface MapValidationIssue {
+  level: MapValidationLevel;
+  code: string;
+  message: string;
+  resourceType?: 'building' | 'node' | 'edge' | 'entrance' | 'area';
+  resourceId?: string;
+}
+
+export interface MapValidationResult {
+  siteId: string;
+  issues: MapValidationIssue[];
+  errorCount: number;
+  warningCount: number;
+}
+
+export interface MapBuilderSnapshot {
+  siteId: string;
+  buildings: Building[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  areas: SiteArea[];
 }
 
 export interface Floor {
@@ -73,6 +158,7 @@ export interface GraphNode {
   kind: 'outdoor' | 'indoor' | 'entrance' | 'elevator' | 'stairs' | 'ramp' | 'exit';
   /** Present on admin listings; defaults to true when omitted. */
   active?: boolean;
+  siteId?: string;
 }
 
 /** Named, navigable campus place for user-facing pickers. */
@@ -105,6 +191,7 @@ export interface GraphEdge {
   safetyScore: number;
   crowdScore: number;
   accessibilityScore: number;
+  siteId?: string;
 }
 
 export interface RouteWeights {
@@ -127,6 +214,7 @@ export interface RouteRequest {
   destinationNodeId: string;
   accessibility?: Partial<AccessibilityPrefs>;
   usePrediction?: boolean;
+  siteId?: string;
 }
 
 export interface RouteStep {
@@ -175,6 +263,7 @@ export interface DangerZone {
   radiusM: number;
   description: string | null;
   active: boolean;
+  siteId?: string;
 }
 
 export interface CrowdLevel {
@@ -272,6 +361,8 @@ export interface WsMessage<T = unknown> {
   type: WsMessageType;
   payload: T;
   at: string;
+  /** When set, clients must ignore events for a different active site. */
+  siteId?: string | null;
 }
 
 export interface CrowdBroadcastPayload {

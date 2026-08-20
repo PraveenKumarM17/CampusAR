@@ -19,64 +19,117 @@ import type {
 import { query } from '../db/pool';
 import type { RoutingEdge, RoutingNode } from '../../domain/routing/astar';
 import { broadcast } from '../realtime/wsHub';
+import { AppError } from '../../domain/errors';
+import {
+  footprintFromGeoJson,
+  ringCentroid,
+  ringToWkt,
+} from '../../application/geometry';
+
+const BUILDING_SELECT = `
+  SELECT id, name, code, description, latitude, longitude, floors_count, site_id,
+         CASE WHEN footprint_geom IS NOT NULL
+           THEN ST_AsGeoJSON(footprint_geom)::json
+           ELSE NULL END AS footprint_geojson
+  FROM buildings
+`;
+
+function mapBuildingRow(r: Record<string, unknown>): Building {
+  const footprint = footprintFromGeoJson(r.footprint_geojson);
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    code: r.code as string,
+    description: r.description as string | null,
+    latitude: r.latitude as number,
+    longitude: r.longitude as number,
+    floorsCount: r.floors_count as number,
+    siteId: (r.site_id as string | null) ?? undefined,
+    footprint,
+  };
+}
 
 export const campusRepository = {
-  async listBuildings(): Promise<Building[]> {
-    const { rows } = await query<{
-      id: string;
-      name: string;
-      code: string;
-      description: string | null;
-      latitude: number;
-      longitude: number;
-      floors_count: number;
-    }>(`SELECT * FROM buildings ORDER BY name`);
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      code: r.code,
-      description: r.description,
-      latitude: r.latitude,
-      longitude: r.longitude,
-      floorsCount: r.floors_count,
-    }));
+  mapBuildingRow,
+
+  async listBuildings(siteId?: string | null): Promise<Building[]> {
+    if (!siteId) return [];
+    const { rows } = await query(`${BUILDING_SELECT} WHERE site_id = $1 ORDER BY name`, [siteId]);
+    return (rows as Array<Record<string, unknown>>).map(mapBuildingRow);
   },
 
-  async createBuilding(input: Omit<Building, 'id'>) {
+  async getBuildingById(id: string): Promise<Building | null> {
+    const { rows } = await query(`${BUILDING_SELECT} WHERE id = $1`, [id]);
+    if (!rows[0]) return null;
+    return mapBuildingRow(rows[0] as Record<string, unknown>);
+  },
+
+  async createBuilding(input: Omit<Building, 'id'> & { siteId: string }) {
+    const footprintWkt = input.footprint?.length ? ringToWkt(input.footprint) : null;
+    if (footprintWkt) {
+      const { rows: validRows } = await query<{ valid: boolean }>(
+        `SELECT ST_IsValid(ST_GeogFromText($1)::geometry) AS valid`,
+        [footprintWkt],
+      );
+      if (!validRows[0]?.valid) {
+        throw new AppError('INVALID_GEOMETRY', 'Building footprint polygon is invalid', 422);
+      }
+    }
+    const center = input.footprint?.length ? ringCentroid(input.footprint) : null;
+    const latitude = center?.latitude ?? input.latitude;
+    const longitude = center?.longitude ?? input.longitude;
     const { rows } = await query(
-      `INSERT INTO buildings (name, code, description, latitude, longitude, floors_count)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      `INSERT INTO buildings (name, code, description, latitude, longitude, floors_count, site_id, footprint_geom)
+       VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $8::text IS NULL THEN NULL ELSE ST_GeogFromText($8)::geography END)
+       RETURNING id, name, code, description, latitude, longitude, floors_count, site_id,
+         CASE WHEN footprint_geom IS NOT NULL THEN ST_AsGeoJSON(footprint_geom)::json ELSE NULL END AS footprint_geojson`,
       [
         input.name,
         input.code,
         input.description,
-        input.latitude,
-        input.longitude,
+        latitude,
+        longitude,
         input.floorsCount,
+        input.siteId,
+        footprintWkt,
       ],
     );
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      name: r.name as string,
-      code: r.code as string,
-      description: r.description as string | null,
-      latitude: r.latitude as number,
-      longitude: r.longitude as number,
-      floorsCount: r.floors_count as number,
-    };
+    return mapBuildingRow(rows[0] as Record<string, unknown>);
   },
 
   async updateBuilding(id: string, input: Partial<Omit<Building, 'id'>>) {
+    const footprintWkt =
+      input.footprint === undefined
+        ? undefined
+        : input.footprint === null || input.footprint.length === 0
+          ? null
+          : ringToWkt(input.footprint);
+    if (footprintWkt) {
+      const { rows: validRows } = await query<{ valid: boolean }>(
+        `SELECT ST_IsValid(ST_GeogFromText($1)::geometry) AS valid`,
+        [footprintWkt],
+      );
+      if (!validRows[0]?.valid) {
+        throw new AppError('INVALID_GEOMETRY', 'Building footprint polygon is invalid', 422);
+      }
+    }
+    const center =
+      input.footprint && input.footprint.length >= 3 ? ringCentroid(input.footprint) : null;
     const { rows } = await query(
       `UPDATE buildings SET
          name = COALESCE($2, name),
          code = COALESCE($3, code),
          description = COALESCE($4, description),
-         latitude = COALESCE($5, latitude),
-         longitude = COALESCE($6, longitude),
-         floors_count = COALESCE($7, floors_count)
-       WHERE id = $1 RETURNING *`,
+         latitude = COALESCE($9, $5, latitude),
+         longitude = COALESCE($10, $6, longitude),
+         floors_count = COALESCE($7, floors_count),
+         footprint_geom = CASE
+           WHEN $8::boolean THEN CASE WHEN $11::text IS NULL THEN NULL ELSE ST_GeogFromText($11)::geography END
+           ELSE footprint_geom
+         END
+       WHERE id = $1
+       RETURNING id, name, code, description, latitude, longitude, floors_count, site_id,
+         CASE WHEN footprint_geom IS NOT NULL THEN ST_AsGeoJSON(footprint_geom)::json ELSE NULL END AS footprint_geojson`,
       [
         id,
         input.name ?? null,
@@ -85,32 +138,83 @@ export const campusRepository = {
         input.latitude ?? null,
         input.longitude ?? null,
         input.floorsCount ?? null,
+        input.footprint !== undefined,
+        center?.latitude ?? null,
+        center?.longitude ?? null,
+        footprintWkt ?? null,
       ],
     );
     if (!rows[0]) return null;
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      name: r.name as string,
-      code: r.code as string,
-      description: r.description as string | null,
-      latitude: r.latitude as number,
-      longitude: r.longitude as number,
-      floorsCount: r.floors_count as number,
-    };
+    return mapBuildingRow(rows[0] as Record<string, unknown>);
   },
 
   async deleteBuilding(id: string) {
     await query(`DELETE FROM buildings WHERE id = $1`, [id]);
   },
 
-  async listFloors(buildingId?: string): Promise<Floor[]> {
+  async countBuildingDependencies(id: string): Promise<{
+    entrances: number;
+    floors: number;
+    rooms: number;
+    nodes: number;
+  }> {
+    const { rows } = await query<{ entrances: string; floors: string; rooms: string; nodes: string }>(
+      `SELECT
+         (SELECT COUNT(*)::text FROM nodes WHERE building_id = $1 AND active = TRUE) AS entrances,
+         (SELECT COUNT(*)::text FROM floors WHERE building_id = $1) AS floors,
+         (SELECT COUNT(*)::text FROM rooms WHERE building_id = $1) AS rooms,
+         (SELECT COUNT(*)::text FROM nodes WHERE building_id = $1) AS nodes`,
+      [id],
+    );
+    const r = rows[0];
+    return {
+      entrances: Number(r?.entrances ?? 0),
+      floors: Number(r?.floors ?? 0),
+      rooms: Number(r?.rooms ?? 0),
+      nodes: Number(r?.nodes ?? 0),
+    };
+  },
+
+  async deleteBuildingSafe(id: string, siteId: string): Promise<void> {
+    const building = await this.getBuildingById(id);
+    if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
+    if (building.siteId !== siteId) {
+      throw new AppError('CROSS_SITE_REFERENCE', 'Building does not belong to the active site', 422);
+    }
+    const deps = await this.countBuildingDependencies(id);
+    if (deps.floors > 0 || deps.rooms > 0) {
+      throw new AppError(
+        'BUILDING_HAS_INDOOR_DATA',
+        'Cannot delete a building that has floors or rooms. Remove indoor data first.',
+        409,
+      );
+    }
+    if (deps.nodes > 0) {
+      throw new AppError(
+        'BUILDING_HAS_NODES',
+        'Cannot delete a building while navigation nodes are still associated. Remove entrances and linked nodes first.',
+        409,
+      );
+    }
+    await this.deleteBuilding(id);
+  },
+
+  async listFloors(buildingId?: string, siteId?: string | null): Promise<Floor[]> {
     const { rows } = buildingId
       ? await query(
           `SELECT id, building_id, level, name FROM floors WHERE building_id = $1 ORDER BY level`,
           [buildingId],
         )
-      : await query(`SELECT id, building_id, level, name FROM floors ORDER BY building_id, level`);
+      : siteId
+        ? await query(
+            `SELECT f.id, f.building_id, f.level, f.name
+             FROM floors f
+             JOIN buildings b ON b.id = f.building_id
+             WHERE b.site_id = $1
+             ORDER BY f.building_id, f.level`,
+            [siteId],
+          )
+        : { rows: [] };
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       buildingId: r.building_id as string,
@@ -119,19 +223,31 @@ export const campusRepository = {
     }));
   },
 
-  async listRooms(filters?: { buildingId?: string; category?: string }): Promise<Room[]> {
+  async listRooms(filters?: {
+    buildingId?: string;
+    category?: string;
+    siteId?: string | null;
+  }): Promise<Room[]> {
     const clauses: string[] = [];
     const params: unknown[] = [];
     if (filters?.buildingId) {
       params.push(filters.buildingId);
-      clauses.push(`building_id = $${params.length}`);
+      clauses.push(`r.building_id = $${params.length}`);
+    } else if (filters?.siteId) {
+      params.push(filters.siteId);
+      clauses.push(`b.site_id = $${params.length}`);
+    } else {
+      return [];
     }
     if (filters?.category) {
       params.push(filters.category);
-      clauses.push(`category = $${params.length}`);
+      clauses.push(`r.category = $${params.length}`);
     }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-    const { rows } = await query(`SELECT * FROM rooms ${where} ORDER BY code`, params);
+    const { rows } = await query(
+      `SELECT r.* FROM rooms r JOIN buildings b ON b.id = r.building_id ${where} ORDER BY r.code`,
+      params,
+    );
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       floorId: r.floor_id as string,
@@ -144,12 +260,13 @@ export const campusRepository = {
     }));
   },
 
-  async search(q: string): Promise<SearchResult[]> {
+  async search(q: string, siteId?: string | null): Promise<SearchResult[]> {
+    if (!siteId) return [];
     const pattern = `%${q}%`;
     const { rows: buildings } = await query(
       `SELECT id, name, code, latitude, longitude FROM buildings
-       WHERE name ILIKE $1 OR code ILIKE $1 LIMIT 20`,
-      [pattern],
+       WHERE site_id = $2 AND (name ILIKE $1 OR code ILIKE $1) LIMIT 20`,
+      [pattern, siteId],
     );
     const { rows: rooms } = await query(
       `SELECT r.id, r.name, r.code, r.category, r.node_id, b.name AS building_name,
@@ -158,9 +275,9 @@ export const campusRepository = {
        FROM rooms r
        JOIN buildings b ON b.id = r.building_id
        LEFT JOIN nodes n ON n.id = r.node_id
-       WHERE r.name ILIKE $1 OR r.code ILIKE $1 OR r.category ILIKE $1
+       WHERE b.site_id = $2 AND (r.name ILIKE $1 OR r.code ILIKE $1 OR r.category ILIKE $1)
        LIMIT 20`,
-      [pattern],
+      [pattern, siteId],
     );
 
     const results: SearchResult[] = [
@@ -189,9 +306,10 @@ export const campusRepository = {
     const { rows: places } = await query(
       `SELECT id, name, latitude, longitude, kind FROM nodes
        WHERE active = TRUE
+         AND site_id = $2
          AND name IS NOT NULL AND trim(name) <> '' AND name ILIKE $1
        LIMIT 20`,
-      [pattern],
+      [pattern, siteId],
     );
     for (const p of places as Array<Record<string, unknown>>) {
       results.push({
@@ -208,27 +326,35 @@ export const campusRepository = {
     return results;
   },
 
-  async listNodes(): Promise<GraphNode[]> {
-    const { rows } = await query(`SELECT * FROM nodes ORDER BY name NULLS LAST, id`);
+  async listNodes(siteId?: string | null): Promise<GraphNode[]> {
+    if (!siteId) return [];
+    const { rows } = await query(`SELECT * FROM nodes WHERE site_id = $1 ORDER BY name NULLS LAST, id`, [
+      siteId,
+    ]);
     return (rows as Array<Record<string, unknown>>).map((r) => this.mapNodeRow(r));
   },
 
-  async listActiveNodes(): Promise<GraphNode[]> {
+  async listActiveNodes(siteId?: string | null): Promise<GraphNode[]> {
+    if (!siteId) return [];
     const { rows } = await query(
-      `SELECT * FROM nodes WHERE active = TRUE ORDER BY name NULLS LAST, id`,
+      `SELECT * FROM nodes WHERE active = TRUE AND site_id = $1 ORDER BY name NULLS LAST, id`,
+      [siteId],
     );
     return (rows as Array<Record<string, unknown>>).map((r) => this.mapNodeRow(r));
   },
 
-  async listNamedPlaces(): Promise<CampusPlace[]> {
+  async listNamedPlaces(siteId?: string | null): Promise<CampusPlace[]> {
+    if (!siteId) return [];
     const { rows } = await query(
       `SELECT DISTINCT ON (lower(trim(name)))
-         id, name, latitude, longitude, floor_id, building_id, kind, active
+         id, name, latitude, longitude, floor_id, building_id, kind, active, site_id
        FROM nodes
        WHERE active = TRUE
+         AND site_id = $1
          AND name IS NOT NULL
          AND trim(name) <> ''
        ORDER BY lower(trim(name)), name ASC, id ASC`,
+      [siteId],
     );
     return (rows as Array<Record<string, unknown>>).map((r) => {
       const node = this.mapNodeRow(r);
@@ -280,11 +406,13 @@ export const campusRepository = {
       buildingId: r.building_id as string | null,
       kind: r.kind as GraphNode['kind'],
       active: (r.active as boolean | undefined) ?? true,
+      siteId: (r.site_id as string | null) ?? undefined,
     };
   },
 
-  async listEdges(): Promise<GraphEdge[]> {
-    const { rows } = await query(`SELECT * FROM edges`);
+  async listEdges(siteId?: string | null): Promise<GraphEdge[]> {
+    if (!siteId) return [];
+    const { rows } = await query(`SELECT * FROM edges WHERE site_id = $1`, [siteId]);
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       fromNodeId: r.from_node_id as string,
@@ -296,16 +424,17 @@ export const campusRepository = {
       safetyScore: Number(r.safety_score),
       crowdScore: Number(r.crowd_score),
       accessibilityScore: Number(r.accessibility_score),
+      siteId: (r.site_id as string | null) ?? undefined,
     }));
   },
 
-  async getRoutingGraph(): Promise<{
+  async getRoutingGraph(siteId?: string | null): Promise<{
     nodes: Map<string, RoutingNode>;
     edges: RoutingEdge[];
   }> {
-    const nodesList = await this.listActiveNodes();
+    const nodesList = await this.listActiveNodes(siteId);
     const activeIds = new Set(nodesList.map((n) => n.id));
-    const edgesList = (await this.listEdges()).filter(
+    const edgesList = (await this.listEdges(siteId)).filter(
       (e) => activeIds.has(e.fromNodeId) && activeIds.has(e.toNodeId),
     );
     const nodes = new Map(
@@ -348,10 +477,18 @@ export const campusRepository = {
   },
 
   async createEdge(input: Omit<GraphEdge, 'id'>) {
+    const from = await this.getNodeById(input.fromNodeId);
+    const to = await this.getNodeById(input.toNodeId);
+    if (!from || !to) {
+      throw new AppError('INVALID_NODE', 'Edge endpoints must be existing nodes', 422);
+    }
+    if (!from.siteId || !to.siteId || from.siteId !== to.siteId) {
+      throw new AppError('CROSS_SITE_EDGE', 'Edges cannot connect nodes from different sites', 422);
+    }
     const { rows } = await query(
       `INSERT INTO edges (from_node_id, to_node_id, distance_m, kind, bidirectional, blocked,
-        safety_score, crowd_score, accessibility_score)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        safety_score, crowd_score, accessibility_score, site_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
         input.fromNodeId,
         input.toNodeId,
@@ -362,6 +499,7 @@ export const campusRepository = {
         input.safetyScore,
         input.crowdScore,
         input.accessibilityScore,
+        from.siteId,
       ],
     );
     const r = rows[0] as Record<string, unknown>;
@@ -421,15 +559,50 @@ export const campusRepository = {
     };
   },
 
+  async getEdgeById(id: string): Promise<GraphEdge | null> {
+    const { rows } = await query(`SELECT * FROM edges WHERE id = $1`, [id]);
+    if (!rows[0]) return null;
+    const r = rows[0] as Record<string, unknown>;
+    return {
+      id: r.id as string,
+      fromNodeId: r.from_node_id as string,
+      toNodeId: r.to_node_id as string,
+      distanceM: Number(r.distance_m),
+      kind: r.kind as GraphEdge['kind'],
+      bidirectional: r.bidirectional as boolean,
+      blocked: r.blocked as boolean,
+      safetyScore: Number(r.safety_score),
+      crowdScore: Number(r.crowd_score),
+      accessibilityScore: Number(r.accessibility_score),
+      siteId: (r.site_id as string | null) ?? undefined,
+    };
+  },
+
+  async countEdgesForNode(nodeId: string): Promise<number> {
+    const { rows } = await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM edges WHERE from_node_id = $1 OR to_node_id = $1`,
+      [nodeId],
+    );
+    return Number(rows[0]?.count ?? 0);
+  },
+
   async deleteEdge(id: string) {
     await query(`DELETE FROM edges WHERE id = $1`, [id]);
   },
 
-  async createNode(input: Omit<GraphNode, 'id'>) {
+  async createNode(input: Omit<GraphNode, 'id'> & { siteId: string }) {
     const { rows } = await query(
-      `INSERT INTO nodes (name, latitude, longitude, floor_id, building_id, kind)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [input.name, input.latitude, input.longitude, input.floorId, input.buildingId, input.kind],
+      `INSERT INTO nodes (name, latitude, longitude, floor_id, building_id, kind, site_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [
+        input.name,
+        input.latitude,
+        input.longitude,
+        input.floorId,
+        input.buildingId,
+        input.kind,
+        input.siteId,
+      ],
     );
     const r = rows[0] as Record<string, unknown>;
     return {
@@ -486,8 +659,29 @@ export const campusRepository = {
     await query(`UPDATE nodes SET active = FALSE WHERE id = $1`, [id]);
   },
 
-  async listDangerZones(): Promise<DangerZone[]> {
-    const { rows } = await query(`SELECT * FROM danger_zones ORDER BY name`);
+  async deleteNodeSafe(id: string, siteId: string, cascadeEdges = false): Promise<void> {
+    const node = await this.getNodeById(id);
+    if (!node) throw new AppError('NOT_FOUND', 'Node not found', 404);
+    if (node.siteId !== siteId) {
+      throw new AppError('CROSS_SITE_REFERENCE', 'Node does not belong to the active site', 422);
+    }
+    const edgeCount = await this.countEdgesForNode(id);
+    if (edgeCount > 0 && !cascadeEdges) {
+      throw new AppError(
+        'NODE_HAS_EDGES',
+        `This navigation point is connected to ${edgeCount} walkway(s). Remove or reassign them first, or confirm cascade delete.`,
+        409,
+      );
+    }
+    if (edgeCount > 0 && cascadeEdges) {
+      await query(`DELETE FROM edges WHERE from_node_id = $1 OR to_node_id = $1`, [id]);
+    }
+    await this.deleteNode(id);
+  },
+
+  async listDangerZones(siteId?: string | null): Promise<DangerZone[]> {
+    if (!siteId) return [];
+    const { rows } = await query(`SELECT * FROM danger_zones WHERE site_id = $1 ORDER BY name`, [siteId]);
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       name: r.name as string,
@@ -497,13 +691,14 @@ export const campusRepository = {
       radiusM: Number(r.radius_m),
       description: r.description as string | null,
       active: r.active as boolean,
+      siteId: (r.site_id as string | null) ?? undefined,
     }));
   },
 
-  async createDangerZone(input: Omit<DangerZone, 'id'>) {
+  async createDangerZone(input: Omit<DangerZone, 'id'> & { siteId: string }) {
     const { rows } = await query(
-      `INSERT INTO danger_zones (name, type, latitude, longitude, radius_m, description, active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      `INSERT INTO danger_zones (name, type, latitude, longitude, radius_m, description, active, site_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [
         input.name,
         input.type,
@@ -512,6 +707,7 @@ export const campusRepository = {
         input.radiusM,
         input.description,
         input.active,
+        input.siteId,
       ],
     );
     const r = rows[0] as Record<string, unknown>;
@@ -524,8 +720,9 @@ export const campusRepository = {
       radiusM: Number(r.radius_m),
       description: r.description as string | null,
       active: r.active as boolean,
+      siteId: input.siteId,
     };
-    broadcast('hazard', { zones: [zone] });
+    broadcast('hazard', { zones: [zone] }, input.siteId);
     return zone;
   },
 
@@ -569,8 +766,16 @@ export const campusRepository = {
     await query(`DELETE FROM danger_zones WHERE id = $1`, [id]);
   },
 
-  async listCrowdLevels(): Promise<CrowdLevel[]> {
-    const { rows } = await query(`SELECT * FROM crowd_levels ORDER BY updated_at DESC`);
+  async listCrowdLevels(siteId?: string | null): Promise<CrowdLevel[]> {
+    if (!siteId) return [];
+    const { rows } = await query(
+      `SELECT c.* FROM crowd_levels c
+       LEFT JOIN edges e ON e.id = c.edge_id
+       LEFT JOIN nodes n ON n.id = c.node_id
+       WHERE e.site_id = $1 OR n.site_id = $1
+       ORDER BY c.updated_at DESC`,
+      [siteId],
+    );
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       edgeId: r.edge_id as string | null,
@@ -690,13 +895,13 @@ export const campusRepository = {
     }));
   },
 
-  async listActiveDangerZones(): Promise<DangerZone[]> {
-    const zones = await this.listDangerZones();
+  async listActiveDangerZones(siteId?: string | null): Promise<DangerZone[]> {
+    const zones = await this.listDangerZones(siteId);
     return zones.filter((z) => z.active);
   },
 
-  async listActiveRoutingEvents(now = new Date()): Promise<CampusEvent[]> {
-    const events = await this.listEvents();
+  async listActiveRoutingEvents(now = new Date(), siteId?: string | null): Promise<CampusEvent[]> {
+    const events = await this.listEvents(siteId);
     const t = now.getTime();
     return events.filter(
       (e) =>
@@ -707,8 +912,11 @@ export const campusRepository = {
     );
   },
 
-  async listEvents(): Promise<CampusEvent[]> {
-    const { rows } = await query(`SELECT * FROM events ORDER BY starts_at DESC`);
+  async listEvents(siteId?: string | null): Promise<CampusEvent[]> {
+    if (!siteId) return [];
+    const { rows } = await query(`SELECT * FROM events WHERE site_id = $1 ORDER BY starts_at DESC`, [
+      siteId,
+    ]);
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       title: r.title as string,
@@ -722,10 +930,10 @@ export const campusRepository = {
     }));
   },
 
-  async createEvent(input: Omit<CampusEvent, 'id'>) {
+  async createEvent(input: Omit<CampusEvent, 'id'> & { siteId?: string }) {
     const { rows } = await query(
-      `INSERT INTO events (title, description, latitude, longitude, starts_at, ends_at, affects_routing, active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO events (title, description, latitude, longitude, starts_at, ends_at, affects_routing, active, site_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
         input.title,
         input.description,
@@ -735,6 +943,7 @@ export const campusRepository = {
         input.endsAt,
         input.affectsRouting,
         input.active,
+        input.siteId ?? null,
       ],
     );
     const r = rows[0] as Record<string, unknown>;
@@ -794,8 +1003,9 @@ export const campusRepository = {
     await query(`DELETE FROM events WHERE id = $1`, [id]);
   },
 
-  async listEmergencyContacts(): Promise<EmergencyContact[]> {
-    const { rows } = await query(`SELECT * FROM emergency_contacts`);
+  async listEmergencyContacts(siteId?: string | null): Promise<EmergencyContact[]> {
+    if (!siteId) return [];
+    const { rows } = await query(`SELECT * FROM emergency_contacts WHERE site_id = $1`, [siteId]);
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       name: r.name as string,
@@ -807,8 +1017,9 @@ export const campusRepository = {
     }));
   },
 
-  async listEmergencyExits(): Promise<EmergencyExit[]> {
-    const { rows } = await query(`SELECT * FROM emergency_exits`);
+  async listEmergencyExits(siteId?: string | null): Promise<EmergencyExit[]> {
+    if (!siteId) return [];
+    const { rows } = await query(`SELECT * FROM emergency_exits WHERE site_id = $1`, [siteId]);
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       name: r.name as string,

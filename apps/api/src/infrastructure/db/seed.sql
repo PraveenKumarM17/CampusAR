@@ -3,17 +3,37 @@
 
 TRUNCATE sos_events, analytics_navigations, analytics_searches, notification_reads,
   notifications, emergency_exits, emergency_contacts, events, crowd_levels,
-  sensor_readings, danger_zones, edges, rooms, nodes, floors, buildings, users, route_weights
+  sensor_readings, danger_zones, edges, rooms, nodes, floors, buildings,
+  organization_memberships, sites, organizations, users, route_weights
 CASCADE;
 
 INSERT INTO route_weights (id, w_distance, w_safety, w_crowd, w_accessibility, w_blocked_penalty)
 VALUES (1, 0.4, 0.25, 0.2, 0.15, 1000000);
+
+INSERT INTO organizations (id, name, slug, type) VALUES
+  ('c0000001-0000-4000-8000-000000000001', 'RNSIT', 'rnsit', 'university');
+
+INSERT INTO sites (id, organization_id, name, slug, latitude, longitude, timezone, status) VALUES
+  ('c0000001-0000-4000-8000-000000000010', 'c0000001-0000-4000-8000-000000000001',
+   'RNSIT Main Campus', 'rnsit-main', 12.9014, 77.5184, 'Asia/Kolkata', 'active');
 
 INSERT INTO users (id, email, password_hash, name, role) VALUES
   ('11111111-1111-1111-1111-111111111111', 'admin@smartcampus.edu',
    '$2a$10$DcaNRmCcZePvopNHBnP1telVljIcPb7Kzs6kJAT52Eug5pnv.w.VW', 'Campus Admin', 'admin'),
   ('22222222-2222-2222-2222-222222222222', 'student@smartcampus.edu',
    '$2a$10$Cil4YWywAo/mr2aAduRuHuQJ/4efdzP02HB8kyM5IDM3KOKJYDnFm', 'Alex Student', 'user');
+
+INSERT INTO organization_memberships (user_id, organization_id, role) VALUES
+  ('11111111-1111-1111-1111-111111111111', 'c0000001-0000-4000-8000-000000000001', 'org_admin'),
+  ('22222222-2222-2222-2222-222222222222', 'c0000001-0000-4000-8000-000000000001', 'member');
+
+ALTER TABLE buildings ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
+ALTER TABLE nodes ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
+ALTER TABLE edges ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
+ALTER TABLE danger_zones ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
+ALTER TABLE events ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
+ALTER TABLE emergency_contacts ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
+ALTER TABLE emergency_exits ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
 
 INSERT INTO buildings (id, name, code, description, latitude, longitude, floors_count) VALUES
   ('b1000001-0000-0000-0000-000000000001', 'Admin Block', 'ADMIN', 'Administration and principal office', 12.90098, 77.51832, 3),
@@ -187,3 +207,20 @@ INSERT INTO analytics_navigations (user_id, source_node_id, destination_node_id,
    ARRAY['e1000001-0000-0000-0000-000000000001','e1000001-0000-0000-0000-000000000003']::uuid[], 80, 1.0, 1.1),
   ('22222222-2222-2222-2222-222222222222', 'a1000001-0000-0000-0000-000000000001', 'a1000001-0000-0000-0000-000000000011',
    ARRAY['e1000001-0000-0000-0000-000000000001','e1000001-0000-0000-0000-000000000004','e1000001-0000-0000-0000-000000000009']::uuid[], 160, 2.0, 2.2);
+
+-- Bind demo spatial rows to the seeded RNSIT Main Campus site (UUIDs unchanged).
+UPDATE buildings SET site_id = 'c0000001-0000-4000-8000-000000000010' WHERE site_id IS NULL;
+UPDATE nodes SET site_id = 'c0000001-0000-4000-8000-000000000010' WHERE site_id IS NULL;
+UPDATE edges SET site_id = 'c0000001-0000-4000-8000-000000000010' WHERE site_id IS NULL;
+UPDATE danger_zones SET site_id = 'c0000001-0000-4000-8000-000000000010' WHERE site_id IS NULL;
+UPDATE events SET site_id = 'c0000001-0000-4000-8000-000000000010' WHERE site_id IS NULL;
+UPDATE emergency_contacts SET site_id = 'c0000001-0000-4000-8000-000000000010' WHERE site_id IS NULL;
+UPDATE emergency_exits SET site_id = 'c0000001-0000-4000-8000-000000000010' WHERE site_id IS NULL;
+
+ALTER TABLE buildings ALTER COLUMN site_id DROP DEFAULT;
+ALTER TABLE nodes ALTER COLUMN site_id DROP DEFAULT;
+ALTER TABLE edges ALTER COLUMN site_id DROP DEFAULT;
+ALTER TABLE danger_zones ALTER COLUMN site_id DROP DEFAULT;
+ALTER TABLE events ALTER COLUMN site_id DROP DEFAULT;
+ALTER TABLE emergency_contacts ALTER COLUMN site_id DROP DEFAULT;
+ALTER TABLE emergency_exits ALTER COLUMN site_id DROP DEFAULT;

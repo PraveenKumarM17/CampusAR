@@ -31,6 +31,7 @@ export function buildCrowdByEdge(
 export function campusCameraTarget(
   buildings: Building[],
   nodes: GraphNode[],
+  fallback: { lat: number; lon: number } = CAMPUS_CENTER,
 ): { latitude: number; longitude: number; heightM: number } {
   const points =
     buildings.length > 0
@@ -39,8 +40,8 @@ export function campusCameraTarget(
 
   if (points.length === 0) {
     return {
-      latitude: CAMPUS_CENTER.lat,
-      longitude: CAMPUS_CENTER.lon,
+      latitude: fallback.lat,
+      longitude: fallback.lon,
       heightM: 800,
     };
   }

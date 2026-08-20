@@ -3,12 +3,368 @@ import { z } from 'zod';
 import { analyticsRepository } from '../../../infrastructure/repositories/analyticsRepository';
 import { campusRepository } from '../../../infrastructure/repositories/campusRepository';
 import { notificationRepository } from '../../../infrastructure/repositories/analyticsRepository';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { siteAreaRepository } from '../../../infrastructure/repositories/siteAreaRepository';
+import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
+import { requireMapEditor } from '../middleware/mapEditorAuth';
+import {
+  assertResourceInSite,
+  resolveEditorSiteId,
+  resolveRequestSiteId,
+} from '../../../application/siteContext';
+import { validateSiteMap } from '../../../application/mapValidation';
+import { AppError } from '../../../domain/errors';
+import { haversineMeters } from '../../../domain/routing/astar';
 
 export const adminRouter = Router();
-adminRouter.use(requireAuth, requireRole('admin'));
+adminRouter.use(requireAuth);
 
-adminRouter.get('/weights', async (_req, res, next) => {
+const geoPointSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+});
+
+const footprintSchema = z.array(geoPointSchema).min(3);
+
+const mapEditorRouter = Router();
+mapEditorRouter.use(requireMapEditor);
+
+async function editorSiteStrict(req: AuthedRequest): Promise<string> {
+  return resolveEditorSiteId(req);
+}
+
+mapEditorRouter.get('/map-builder/snapshot', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const [buildings, nodes, edges, areas] = await Promise.all([
+      campusRepository.listBuildings(siteId),
+      campusRepository.listActiveNodes(siteId),
+      campusRepository.listEdges(siteId),
+      siteAreaRepository.listBySite(siteId),
+    ]);
+    res.json({ siteId, buildings, nodes, edges, areas });
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/map-builder/validate', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    res.json(await validateSiteMap(siteId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/buildings', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = z
+      .object({
+        name: z.string().min(1),
+        code: z.string().min(1),
+        description: z.string().nullable().optional(),
+        latitude: z.number(),
+        longitude: z.number(),
+        floorsCount: z.number().int().positive(),
+        footprint: footprintSchema.optional(),
+      })
+      .parse(req.body);
+    res.status(201).json(
+      await campusRepository.createBuilding({
+        ...body,
+        description: body.description ?? null,
+        siteId,
+      }),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const existing = await campusRepository.getBuildingById(id);
+    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Building not found' });
+    await assertResourceInSite(existing.siteId, siteId, 'Building');
+    const body = z
+      .object({
+        name: z.string().min(1).optional(),
+        code: z.string().min(1).optional(),
+        description: z.string().nullable().optional(),
+        latitude: z.number().optional(),
+        longitude: z.number().optional(),
+        floorsCount: z.number().int().positive().optional(),
+        footprint: footprintSchema.nullable().optional(),
+      })
+      .parse(req.body);
+    const updated = await campusRepository.updateBuilding(id, {
+      ...body,
+      footprint: body.footprint === null ? [] : body.footprint,
+    });
+    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Building not found' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/buildings/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    await campusRepository.deleteBuildingSafe(String(req.params.id), siteId);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/paths/nodes', async (req, res, next) => {
+  try {
+    const siteId = await resolveRequestSiteId(req);
+    res.json(await campusRepository.listNodes(siteId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/paths/nodes', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = z
+      .object({
+        name: z.string().nullable().optional(),
+        latitude: z.number(),
+        longitude: z.number(),
+        floorId: z.string().uuid().nullable().optional(),
+        buildingId: z.string().uuid().nullable().optional(),
+        kind: z.enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit']),
+      })
+      .parse(req.body);
+    if (body.buildingId) {
+      const building = await campusRepository.getBuildingById(body.buildingId);
+      if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
+      await assertResourceInSite(building.siteId, siteId, 'Building');
+    }
+    res.status(201).json(
+      await campusRepository.createNode({
+        name: body.name ?? null,
+        latitude: body.latitude,
+        longitude: body.longitude,
+        floorId: body.floorId ?? null,
+        buildingId: body.buildingId ?? null,
+        kind: body.kind,
+        siteId,
+      }),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.put('/paths/nodes/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const existing = await campusRepository.getNodeById(id);
+    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
+    await assertResourceInSite(existing.siteId, siteId, 'Node');
+    const body = z
+      .object({
+        name: z.string().nullable().optional(),
+        latitude: z.number().optional(),
+        longitude: z.number().optional(),
+        floorId: z.string().uuid().nullable().optional(),
+        buildingId: z.string().uuid().nullable().optional(),
+        kind: z
+          .enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit'])
+          .optional(),
+      })
+      .parse(req.body);
+    if (body.buildingId) {
+      const building = await campusRepository.getBuildingById(body.buildingId);
+      if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
+      await assertResourceInSite(building.siteId, siteId, 'Building');
+    }
+    const updated = await campusRepository.updateNode(id, body);
+    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/paths/nodes/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const cascade = req.query.cascade === 'true';
+    await campusRepository.deleteNodeSafe(String(req.params.id), siteId, cascade);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/paths/edges', async (req, res, next) => {
+  try {
+    const siteId = await resolveRequestSiteId(req);
+    res.json(await campusRepository.listEdges(siteId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/paths/edges', async (req: AuthedRequest, res, next) => {
+  try {
+    await editorSiteStrict(req);
+    const body = z
+      .object({
+        fromNodeId: z.string().uuid(),
+        toNodeId: z.string().uuid(),
+        distanceM: z.number().positive().optional(),
+        kind: z.enum(['walkway', 'stairs', 'elevator', 'ramp', 'corridor']).default('walkway'),
+        bidirectional: z.boolean().default(true),
+        blocked: z.boolean().default(false),
+        safetyScore: z.number().min(0).max(1).default(0.9),
+        crowdScore: z.number().min(0).max(1).default(0.2),
+        accessibilityScore: z.number().min(0).max(1).default(0.9),
+      })
+      .parse(req.body);
+    const from = await campusRepository.getNodeById(body.fromNodeId);
+    const to = await campusRepository.getNodeById(body.toNodeId);
+    if (!from || !to) throw new AppError('INVALID_NODE', 'Edge endpoints must be existing nodes', 422);
+    if (!from.siteId || !to.siteId || from.siteId !== to.siteId) {
+      throw new AppError('CROSS_SITE_EDGE', 'Edges cannot connect nodes from different sites', 422);
+    }
+    const siteId = from.siteId;
+    await assertResourceInSite(from.siteId, siteId, 'Start node');
+    await assertResourceInSite(to.siteId, siteId, 'End node');
+    const distanceM =
+      body.distanceM ??
+      haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude);
+    const edge = await campusRepository.createEdge({ ...body, distanceM });
+    res.status(201).json(edge);
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.put('/paths/edges/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const existing = await campusRepository.getEdgeById(id);
+    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
+    await assertResourceInSite(existing.siteId, siteId, 'Edge');
+    const body = z
+      .object({
+        fromNodeId: z.string().uuid().optional(),
+        toNodeId: z.string().uuid().optional(),
+        distanceM: z.number().positive().optional(),
+        kind: z.enum(['walkway', 'stairs', 'elevator', 'ramp', 'corridor']).optional(),
+        bidirectional: z.boolean().optional(),
+        blocked: z.boolean().optional(),
+        safetyScore: z.number().min(0).max(1).optional(),
+        crowdScore: z.number().min(0).max(1).optional(),
+        accessibilityScore: z.number().min(0).max(1).optional(),
+      })
+      .parse(req.body);
+    const updated = await campusRepository.updateEdge(id, body);
+    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/paths/edges/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const existing = await campusRepository.getEdgeById(String(req.params.id));
+    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
+    await assertResourceInSite(existing.siteId, siteId, 'Edge');
+    await campusRepository.deleteEdge(String(req.params.id));
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/areas', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    res.json(await siteAreaRepository.listBySite(siteId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/areas', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = z
+      .object({
+        name: z.string().min(1),
+        type: z.enum(['parking', 'open_area', 'restricted', 'assembly']),
+        footprint: footprintSchema,
+      })
+      .parse(req.body);
+    res.status(201).json(
+      await siteAreaRepository.create({
+        siteId,
+        name: body.name,
+        type: body.type,
+        footprint: body.footprint,
+      }),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.put('/areas/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const existing = await siteAreaRepository.getById(id);
+    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Area not found' });
+    await assertResourceInSite(existing.siteId, siteId, 'Area');
+    const body = z
+      .object({
+        name: z.string().min(1).optional(),
+        type: z.enum(['parking', 'open_area', 'restricted', 'assembly']).optional(),
+        footprint: footprintSchema.optional(),
+      })
+      .parse(req.body);
+    const updated = await siteAreaRepository.update(id, body);
+    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Area not found' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/areas/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const existing = await siteAreaRepository.getById(String(req.params.id));
+    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Area not found' });
+    await assertResourceInSite(existing.siteId, siteId, 'Area');
+    await siteAreaRepository.delete(String(req.params.id));
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.use(mapEditorRouter);
+
+const platformAdminRouter = Router();
+platformAdminRouter.use(requireRole('admin'));
+
+platformAdminRouter.get('/weights', async (_req, res, next) => {
   try {
     res.json(await campusRepository.getWeights());
   } catch (err) {
@@ -16,7 +372,7 @@ adminRouter.get('/weights', async (_req, res, next) => {
   }
 });
 
-adminRouter.put('/weights', async (req, res, next) => {
+platformAdminRouter.put('/weights', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -33,217 +389,18 @@ adminRouter.put('/weights', async (req, res, next) => {
   }
 });
 
-adminRouter.post('/buildings', async (req, res, next) => {
+platformAdminRouter.get('/danger-zones', async (req, res, next) => {
   try {
-    const body = z
-      .object({
-        name: z.string(),
-        code: z.string(),
-        description: z.string().nullable().optional(),
-        latitude: z.number(),
-        longitude: z.number(),
-        floorsCount: z.number().int().positive(),
-      })
-      .parse(req.body);
-    res.status(201).json(
-      await campusRepository.createBuilding({
-        ...body,
-        description: body.description ?? null,
-      }),
-    );
+    const siteId = await resolveRequestSiteId(req);
+    res.json(await campusRepository.listDangerZones(siteId));
   } catch (err) {
     next(err);
   }
 });
 
-adminRouter.put('/buildings/:id', async (req, res, next) => {
+platformAdminRouter.post('/danger-zones', async (req: AuthedRequest, res, next) => {
   try {
-    const body = z
-      .object({
-        name: z.string().optional(),
-        code: z.string().optional(),
-        description: z.string().nullable().optional(),
-        latitude: z.number().optional(),
-        longitude: z.number().optional(),
-        floorsCount: z.number().int().positive().optional(),
-      })
-      .parse(req.body);
-    const updated = await campusRepository.updateBuilding(String(req.params.id), body);
-    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Building not found' });
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.delete('/buildings/:id', async (req, res, next) => {
-  try {
-    await campusRepository.deleteBuilding(String(req.params.id));
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.get('/paths/nodes', async (_req, res, next) => {
-  try {
-    res.json(await campusRepository.listNodes());
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.post('/paths/nodes', async (req, res, next) => {
-  try {
-    const body = z
-      .object({
-        name: z.string().nullable().optional(),
-        latitude: z.number(),
-        longitude: z.number(),
-        floorId: z.string().uuid().nullable().optional(),
-        buildingId: z.string().uuid().nullable().optional(),
-        kind: z.enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit']),
-      })
-      .parse(req.body);
-    res.status(201).json(
-      await campusRepository.createNode({
-        name: body.name ?? null,
-        latitude: body.latitude,
-        longitude: body.longitude,
-        floorId: body.floorId ?? null,
-        buildingId: body.buildingId ?? null,
-        kind: body.kind,
-      }),
-    );
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.put('/paths/nodes/:id', async (req, res, next) => {
-  try {
-    const body = z
-      .object({
-        name: z.string().nullable().optional(),
-        latitude: z.number().optional(),
-        longitude: z.number().optional(),
-        floorId: z.string().uuid().nullable().optional(),
-        buildingId: z.string().uuid().nullable().optional(),
-        kind: z
-          .enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit'])
-          .optional(),
-      })
-      .parse(req.body);
-    const updated = await campusRepository.updateNode(String(req.params.id), body);
-    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.delete('/paths/nodes/:id', async (req, res, next) => {
-  try {
-    await campusRepository.deleteNode(String(req.params.id));
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.get('/paths/edges', async (_req, res, next) => {
-  try {
-    res.json(await campusRepository.listEdges());
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.post('/paths/edges', async (req, res, next) => {
-  try {
-    const body = z
-      .object({
-        fromNodeId: z.string().uuid(),
-        toNodeId: z.string().uuid(),
-        distanceM: z.number().positive(),
-        kind: z.enum(['walkway', 'stairs', 'elevator', 'ramp', 'corridor']),
-        bidirectional: z.boolean().default(true),
-        blocked: z.boolean().default(false),
-        safetyScore: z.number().min(0).max(1).default(0.9),
-        crowdScore: z.number().min(0).max(1).default(0.2),
-        accessibilityScore: z.number().min(0).max(1).default(0.9),
-      })
-      .parse(req.body);
-    const edge = await campusRepository.createEdge(body);
-    if (body.blocked) {
-      await notificationRepository.create({
-        type: 'road_closed',
-        title: 'Path updated',
-        body: `Edge ${edge.id} created as blocked`,
-      });
-    }
-    res.status(201).json(edge);
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.put('/paths/edges/:id', async (req, res, next) => {
-  try {
-    const body = z
-      .object({
-        fromNodeId: z.string().uuid().optional(),
-        toNodeId: z.string().uuid().optional(),
-        distanceM: z.number().positive().optional(),
-        kind: z.enum(['walkway', 'stairs', 'elevator', 'ramp', 'corridor']).optional(),
-        bidirectional: z.boolean().optional(),
-        blocked: z.boolean().optional(),
-        safetyScore: z.number().min(0).max(1).optional(),
-        crowdScore: z.number().min(0).max(1).optional(),
-        accessibilityScore: z.number().min(0).max(1).optional(),
-      })
-      .parse(req.body);
-    const updated = await campusRepository.updateEdge(String(req.params.id), body);
-    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
-    if (body.blocked === true) {
-      await notificationRepository.create({
-        type: 'road_closed',
-        title: 'Road closed',
-        body: `Path segment ${updated.id} is now blocked`,
-      });
-    }
-    if (body.blocked === false) {
-      await notificationRepository.create({
-        type: 'route_updated',
-        title: 'Route updated',
-        body: `Path segment ${updated.id} is open again`,
-      });
-    }
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.delete('/paths/edges/:id', async (req, res, next) => {
-  try {
-    await campusRepository.deleteEdge(String(req.params.id));
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.get('/danger-zones', async (_req, res, next) => {
-  try {
-    res.json(await campusRepository.listDangerZones());
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.post('/danger-zones', async (req, res, next) => {
-  try {
+    const siteId = await resolveEditorSiteId(req);
     const body = z
       .object({
         name: z.string(),
@@ -259,6 +416,7 @@ adminRouter.post('/danger-zones', async (req, res, next) => {
       await campusRepository.createDangerZone({
         ...body,
         description: body.description ?? null,
+        siteId,
       }),
     );
   } catch (err) {
@@ -266,7 +424,7 @@ adminRouter.post('/danger-zones', async (req, res, next) => {
   }
 });
 
-adminRouter.put('/danger-zones/:id', async (req, res, next) => {
+platformAdminRouter.put('/danger-zones/:id', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -287,7 +445,7 @@ adminRouter.put('/danger-zones/:id', async (req, res, next) => {
   }
 });
 
-adminRouter.delete('/danger-zones/:id', async (req, res, next) => {
+platformAdminRouter.delete('/danger-zones/:id', async (req, res, next) => {
   try {
     await campusRepository.deleteDangerZone(String(req.params.id));
     res.status(204).send();
@@ -296,15 +454,16 @@ adminRouter.delete('/danger-zones/:id', async (req, res, next) => {
   }
 });
 
-adminRouter.get('/crowd', async (_req, res, next) => {
+platformAdminRouter.get('/crowd', async (req, res, next) => {
   try {
-    res.json(await campusRepository.listCrowdLevels());
+    const siteId = await resolveRequestSiteId(req);
+    res.json(await campusRepository.listCrowdLevels(siteId));
   } catch (err) {
     next(err);
   }
 });
 
-adminRouter.post('/crowd', async (req, res, next) => {
+platformAdminRouter.post('/crowd', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -321,7 +480,7 @@ adminRouter.post('/crowd', async (req, res, next) => {
   }
 });
 
-adminRouter.delete('/crowd/:id', async (req, res, next) => {
+platformAdminRouter.delete('/crowd/:id', async (req, res, next) => {
   try {
     await campusRepository.deleteCrowdLevel(String(req.params.id));
     res.status(204).send();
@@ -330,16 +489,18 @@ adminRouter.delete('/crowd/:id', async (req, res, next) => {
   }
 });
 
-adminRouter.get('/events', async (_req, res, next) => {
+platformAdminRouter.get('/events', async (req, res, next) => {
   try {
-    res.json(await campusRepository.listEvents());
+    const siteId = await resolveRequestSiteId(req);
+    res.json(await campusRepository.listEvents(siteId));
   } catch (err) {
     next(err);
   }
 });
 
-adminRouter.post('/events', async (req, res, next) => {
+platformAdminRouter.post('/events', async (req: AuthedRequest, res, next) => {
   try {
+    const siteId = await resolveEditorSiteId(req);
     const body = z
       .object({
         title: z.string(),
@@ -361,6 +522,7 @@ adminRouter.post('/events', async (req, res, next) => {
       endsAt: body.endsAt,
       affectsRouting: body.affectsRouting,
       active: body.active,
+      siteId,
     });
     await notificationRepository.create({
       type: 'event_alert',
@@ -373,7 +535,7 @@ adminRouter.post('/events', async (req, res, next) => {
   }
 });
 
-adminRouter.put('/events/:id', async (req, res, next) => {
+platformAdminRouter.put('/events/:id', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -395,7 +557,7 @@ adminRouter.put('/events/:id', async (req, res, next) => {
   }
 });
 
-adminRouter.delete('/events/:id', async (req, res, next) => {
+platformAdminRouter.delete('/events/:id', async (req, res, next) => {
   try {
     await campusRepository.deleteEvent(String(req.params.id));
     res.status(204).send();
@@ -403,6 +565,8 @@ adminRouter.delete('/events/:id', async (req, res, next) => {
     next(err);
   }
 });
+
+adminRouter.use(platformAdminRouter);
 
 export const analyticsRouter = Router();
 

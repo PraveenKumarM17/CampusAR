@@ -3,10 +3,11 @@ import { AlertTriangle, Phone, Siren } from 'lucide-react';
 import type { DangerZone, EmergencyContact, EmergencyExit } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
-import { CAMPUS_CENTER } from '../../lib/campus';
+import { useActiveSite } from '../../hooks/useActiveSite';
 
 export function SafetyPage() {
   const token = useAuthStore((s) => s.accessToken);
+  const { activeSiteId, latLon } = useActiveSite();
   const [zones, setZones] = useState<DangerZone[]>([]);
   const [exits, setExits] = useState<EmergencyExit[]>([]);
   const [contacts, setContacts] = useState<EmergencyContact[]>([]);
@@ -19,7 +20,7 @@ export function SafetyPage() {
       setExits(e);
       setContacts(c);
     });
-  }, []);
+  }, [activeSiteId]);
 
   async function triggerSos() {
     setSending(true);
@@ -30,8 +31,8 @@ export function SafetyPage() {
       ).catch(() => null);
       const res = await api.sos(
         {
-          latitude: pos?.coords.latitude ?? CAMPUS_CENTER.lat,
-          longitude: pos?.coords.longitude ?? CAMPUS_CENTER.lon,
+          latitude: pos?.coords.latitude ?? latLon.lat,
+          longitude: pos?.coords.longitude ?? latLon.lon,
           message: 'SOS from CampusAR web client',
         },
         token,

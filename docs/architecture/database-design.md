@@ -11,7 +11,7 @@ Aligned to product entities: users, campus graph, routing config, hazards, crowd
 1. **Graph + GIS together** — topology (nodes/edges) and geometry coexist.
 2. **Live crowd is mutable state** — high churn; keep separate from static geometry.
 3. **Hazards are first-class** — time-bounded, typed, geometrically queryable.
-4. **Tenant key `organization_id`** — even if V1 runs one org, stamp every tenant-owned row; see [`organization-domain.md`](./organization-domain.md).
+4. **Tenant keys `organization_id` + `site_id`** — Organization is the customer; Site is the physical campus. Spatial rows (buildings, nodes, edges, hazards) are site-scoped. See [`site-tenancy.md`](./site-tenancy.md).
 5. **Minimize PII** — analytics aggregates; SOS stores only what product requires.
 
 > **NaaS note:** Prefer the name **Organization** over **Campus** as the root entity. Legacy docs may say `campus_id`; treat that as synonymous with `organization_id` during migration.
@@ -33,11 +33,12 @@ Guest may have no User row.
 
 | Entity | Description |
 |--------|-------------|
-| **Organization (Campus)** | Tenant root (id, slug, name, bounds polygon, timezone, status) |
-| **Building** | Named structure, footprint geometry, metadata |
+| **Organization** | Customer (university, hospital, corporate campus, factory, government) |
+| **Site** | Physical location (main campus, HQ, hospital main). Map center/timezone live here. |
+| **Building** | Named structure belonging to a site |
 | **Place / Room** | Searchable destination; category; optional floor; link to node(s) |
-| **Node** | Walkable graph vertex; point geometry; type (entrance, junction, indoor, exit) |
-| **Edge** | Walkable link between nodes; linestring; length; flags (stairs, elevator, ramp, stepFree, indoor); base safety score; blocked flag |
+| **Node** | Walkable graph vertex; belongs to a site |
+| **Edge** | Walkable link; must connect nodes in the same site |
 | **EdgeAttributes** | Optional extension bag for lightingScore etc. (night mode later) |
 
 ### Routing config

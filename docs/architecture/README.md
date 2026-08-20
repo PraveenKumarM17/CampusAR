@@ -38,9 +38,10 @@ This folder contains the **system architecture** for CampusAR: the Phase 2 modul
 | 20 | [coding-standards.md](./coding-standards.md) | All eng | Conventions & quality gates |
 | 21 | [multi-tenant-architecture.md](./multi-tenant-architecture.md) | Leads | **NaaS tenancy**, isolation, API/DB deltas |
 | 22 | [organization-domain.md](./organization-domain.md) | BE / domain | Org hierarchy & entities |
-| 23 | [map-editor.md](./map-editor.md) | FE / BE | Interactive graph editor |
-| 24 | [qr-navigation.md](./qr-navigation.md) | FE / BE | Slug + QR guest entry |
-| 25 | [branding-system.md](./branding-system.md) | FE / BE | Per-org theme tokens |
+| 23 | [site-tenancy.md](./site-tenancy.md) | All eng | **Phase 2.5A** Organization → Site, active context, canonical map data |
+| 24 | [map-editor.md](./map-editor.md) | FE / BE | Interactive graph editor (Phase 2.5B) |
+| 25 | [qr-navigation.md](./qr-navigation.md) | FE / BE | Slug + QR guest entry |
+| 26 | [branding-system.md](./branding-system.md) | FE / BE | Per-org theme tokens |
 
 Product pack: [`../product/README.md`](../product/README.md)  
 Design pack (Phase 3): [`../design/README.md`](../design/README.md)  

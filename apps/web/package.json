@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@campusar/shared": "*",
+    "@geoman-io/leaflet-geoman-free": "^2.20.0",
     "@react-three/drei": "^9.117.3",
     "@react-three/fiber": "^8.17.10",
     "cesium": "^1.144.0",

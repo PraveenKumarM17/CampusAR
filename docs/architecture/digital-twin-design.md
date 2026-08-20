@@ -2,7 +2,11 @@
 
 ## Purpose
 
-Provide a **live operational 3D view** of campus movement and hazards. Twin is a **visualization projection** of the same campus + live data plane as the 2D map — not a separate system of record.
+Provide a **live operational 3D view** of a **site**. Twin is a **visualization projection** of the same canonical site map + live data as the 2D map — not a separate system of record, and not an RNSIT-specific scene.
+
+Camera center comes from site metadata or published building/node extents. Empty sites show an unpublished-map message instead of crashing.
+
+See [`site-tenancy.md`](./site-tenancy.md).
 
 ---
 

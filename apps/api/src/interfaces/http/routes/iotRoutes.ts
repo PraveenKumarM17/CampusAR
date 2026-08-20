@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { iotSimulator } from '../../../infrastructure/iot/simulator';
 import { campusRepository } from '../../../infrastructure/repositories/campusRepository';
 import { optionalAuth, requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
+import { resolveRequestSiteId } from '../../../application/siteContext';
 
 export const iotRouter = Router();
 
@@ -18,9 +19,10 @@ iotRouter.get('/sensors', optionalAuth, async (_req, res, next) => {
   }
 });
 
-iotRouter.get('/crowd', optionalAuth, async (_req, res, next) => {
+iotRouter.get('/crowd', optionalAuth, async (req, res, next) => {
   try {
-    const levels = await campusRepository.listCrowdLevels();
+    const siteId = await resolveRequestSiteId(req);
+    const levels = await campusRepository.listCrowdLevels(siteId);
     res.json(levels);
   } catch (err) {
     next(err);

@@ -183,8 +183,8 @@ async function requireMap(mapId: string, admin = false) {
 
 export const indoorService = {
   async createMap(body: z.infer<typeof createMapSchema>, userId: string | null) {
-    const buildings = await campusRepository.listBuildings();
-    if (!buildings.some((b) => b.id === body.buildingId)) {
+    const building = await campusRepository.getBuildingById(body.buildingId);
+    if (!building) {
       throw new AppError('NOT_FOUND', 'Building not found', 404);
     }
     return indoorRepository.createMap({ ...body, createdBy: userId });
@@ -386,8 +386,7 @@ export const indoorService = {
   },
 
   async getBuildingContext(buildingId: string) {
-    const buildings = await campusRepository.listBuildings();
-    const building = buildings.find((b) => b.id === buildingId);
+    const building = await campusRepository.getBuildingById(buildingId);
     if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
 
     const indoorMap = await indoorRepository.getPublishedMapByBuilding(buildingId);
@@ -445,9 +444,8 @@ export const indoorService = {
       throw new AppError('NOT_FOUND', 'Indoor destination was not found or is no longer available', 404);
     }
     if (expectedBuildingId && place.buildingId !== expectedBuildingId) {
-      const buildings = await campusRepository.listBuildings();
-      const expected = buildings.find((b) => b.id === expectedBuildingId);
-      const actual = buildings.find((b) => b.id === place.buildingId);
+      const expected = await campusRepository.getBuildingById(expectedBuildingId);
+      const actual = await campusRepository.getBuildingById(place.buildingId);
       throw new AppError(
         'PLACE_BUILDING_MISMATCH',
         indoorPlaceBuildingError(expected?.name ?? 'this building', actual?.name ?? 'another building'),
@@ -459,8 +457,8 @@ export const indoorService = {
   },
 
   async listPublicPlaces(buildingId: string) {
-    const buildings = await campusRepository.listBuildings();
-    if (!buildings.some((b) => b.id === buildingId)) {
+    const building = await campusRepository.getBuildingById(buildingId);
+    if (!building) {
       throw new AppError('NOT_FOUND', 'Building not found', 404);
     }
     return indoorRepository.listPlacesByBuilding(buildingId);
@@ -468,8 +466,8 @@ export const indoorService = {
 
   async searchPublicPlaces(q: string, buildingId?: string) {
     if (buildingId) {
-      const buildings = await campusRepository.listBuildings();
-      if (!buildings.some((b) => b.id === buildingId)) {
+      const building = await campusRepository.getBuildingById(buildingId);
+      if (!building) {
         throw new AppError('NOT_FOUND', 'Building not found', 404);
       }
     }
@@ -484,9 +482,8 @@ export const indoorService = {
       throw new AppError('NOT_FOUND', 'Indoor map is not published for this marker', 404);
     }
     if (expectedBuildingId && anchor.buildingId !== expectedBuildingId) {
-      const buildings = await campusRepository.listBuildings();
-      const expected = buildings.find((b) => b.id === expectedBuildingId);
-      const actual = buildings.find((b) => b.id === anchor.buildingId);
+      const expected = await campusRepository.getBuildingById(expectedBuildingId);
+      const actual = await campusRepository.getBuildingById(anchor.buildingId);
       throw new AppError(
         'ANCHOR_BUILDING_MISMATCH',
         indoorAnchorBuildingError(expected?.name ?? 'this building', actual?.name ?? 'another building'),
@@ -521,9 +518,8 @@ export const indoorService = {
       throw new AppError('MAP_MISMATCH', 'Source and destination are not on the same indoor map', 422);
     }
     if (place.buildingId !== source.buildingId) {
-      const buildings = await campusRepository.listBuildings();
-      const expected = buildings.find((b) => b.id === source.buildingId);
-      const actual = buildings.find((b) => b.id === place.buildingId);
+      const expected = await campusRepository.getBuildingById(source.buildingId);
+      const actual = await campusRepository.getBuildingById(place.buildingId);
       throw new AppError(
         'PLACE_BUILDING_MISMATCH',
         indoorPlaceBuildingError(expected?.name ?? 'this building', actual?.name ?? 'another building'),
@@ -532,9 +528,8 @@ export const indoorService = {
       );
     }
     if (body.expectedBuildingId && place.buildingId !== body.expectedBuildingId) {
-      const buildings = await campusRepository.listBuildings();
-      const expected = buildings.find((b) => b.id === body.expectedBuildingId);
-      const actual = buildings.find((b) => b.id === place.buildingId);
+      const expected = await campusRepository.getBuildingById(body.expectedBuildingId);
+      const actual = await campusRepository.getBuildingById(place.buildingId);
       throw new AppError(
         'PLACE_BUILDING_MISMATCH',
         indoorPlaceBuildingError(expected?.name ?? 'this building', actual?.name ?? 'another building'),

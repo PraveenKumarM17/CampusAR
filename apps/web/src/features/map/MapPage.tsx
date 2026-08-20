@@ -6,6 +6,7 @@ import {
   Popup,
   Tooltip,
   Polyline,
+  Polygon,
   useMap,
 } from 'react-leaflet';
 import { Search, Filter, LocateFixed, Navigation } from 'lucide-react';
@@ -24,9 +25,8 @@ import { useCampusLive } from '../../hooks/useCampusLive';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import {
   CAMPUS_DEFAULT_ZOOM,
-  CAMPUS_LABEL,
-  CAMPUS_MAP_CENTER,
   CAMPUS_MAX_ZOOM,
+  siteHasPublishedMap,
 } from '../../lib/campus';
 import { closestNamedPlace, namedPlaceNodes, snapGpsForRouting } from '../../lib/geo';
 import {
@@ -45,8 +45,11 @@ import {
 import {
   BreakFollowOnInteract,
   FollowUser,
+  RecenterOnSite,
   UserLocationMarker,
 } from '../../components/maps/GpsTracker';
+import { EmptySiteNotice } from '../../components/EmptySiteNotice';
+import { useActiveSite } from '../../hooks/useActiveSite';
 
 function FitBounds({ points, enabled }: { points: [number, number][]; enabled: boolean }) {
   const map = useMap();
@@ -85,6 +88,7 @@ export function MapPage() {
   const token = useAuthStore((s) => s.accessToken);
   const { sourceNodeId, destinationNodeId, setSource, setDestination, applyBuildingContext } =
     useNavStore();
+  const { activeSiteId, label, mapCenter } = useActiveSite();
   const navigate = useNavigate();
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [rooms, setRooms] = useState<{ buildingId: string; category: string }[]>([]);
@@ -130,7 +134,7 @@ export function MapPage() {
       setZones(z.filter((x) => x.active));
       setCategories(c);
     });
-  }, [token]);
+  }, [token, activeSiteId]);
 
   useEffect(() => {
     if (!live.crowd.length) return;
@@ -189,6 +193,11 @@ export function MapPage() {
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const placeNodes = useMemo(() => namedPlaceNodes(nodes), [nodes]);
+  const hasPublishedMap = siteHasPublishedMap({
+    buildings: buildings.length,
+    nodes: nodes.length,
+    edges: edges.length,
+  });
 
   const crowdPolylines = useMemo(() => {
     return edges
@@ -273,7 +282,7 @@ export function MapPage() {
         <div>
           <h1 className="page-title">Campus map</h1>
           <p className="page-sub">
-            {CAMPUS_LABEL} — gate to every block, with live GPS tracking.
+            {label} — gate to every block, with live GPS tracking.
             {live.connected ? ' · IoT live' : ' · IoT offline'}
           </p>
         </div>
@@ -381,6 +390,8 @@ export function MapPage() {
         </div>
       )}
 
+      {!hasPublishedMap && <EmptySiteNotice compact />}
+
       <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
         <div className="relative overflow-hidden rounded-md border border-line">
           <BasemapModeSwitcher
@@ -391,6 +402,7 @@ export function MapPage() {
             <GoogleCampusMap
               className="h-[62vh] w-full"
               mode={basemapMode}
+              center={mapCenter}
               placeNodes={placeNodes}
               sourceNodeId={sourceNodeId}
               destinationNodeId={destinationNodeId}
@@ -423,13 +435,14 @@ export function MapPage() {
             />
           ) : (
             <MapContainer
-              center={CAMPUS_MAP_CENTER}
+              center={mapCenter}
               zoom={CAMPUS_DEFAULT_ZOOM}
               className="h-[62vh] w-full"
               scrollWheelZoom
               maxZoom={CAMPUS_MAX_ZOOM}
             >
               <RealBasemapTiles mode={basemapMode} />
+              <RecenterOnSite center={mapCenter} enabled={!trackOnMap} />
               <BreakFollowOnInteract onBreak={() => setFollowGps(false)} />
               <FollowUser pose={pose} enabled={trackOnMap} recenterAt={recenterAt} />
 
@@ -501,24 +514,47 @@ export function MapPage() {
                 );
               })}
 
-              {filteredBuildings.map((b) => (
-                <CircleMarker
-                  key={`b-${b.id}`}
-                  center={[b.latitude, b.longitude]}
-                  radius={3}
-                  pathOptions={{ color: '#ffffff', fillColor: '#0f6b63', fillOpacity: 0.35, weight: 1 }}
-                >
-                  <Popup>
-                    <strong>{b.name}</strong>
-                    <br />
-                    {b.code} · {b.floorsCount} floors
-                    <br />
-                    <button type="button" onClick={() => void startBuildingRoute(b.id)}>
-                      Route to entrance
-                    </button>
-                  </Popup>
-                </CircleMarker>
-              ))}
+              {filteredBuildings.map((b) =>
+                b.footprint && b.footprint.length >= 3 ? (
+                  <Polygon
+                    key={`b-${b.id}`}
+                    positions={b.footprint.map((p) => [p.latitude, p.longitude] as [number, number])}
+                    pathOptions={{
+                      color: '#0f6b63',
+                      fillColor: '#0f6b63',
+                      fillOpacity: 0.25,
+                      weight: 2,
+                    }}
+                  >
+                    <Popup>
+                      <strong>{b.name}</strong>
+                      <br />
+                      {b.code} · {b.floorsCount} floors
+                      <br />
+                      <button type="button" onClick={() => void startBuildingRoute(b.id)}>
+                        Route to entrance
+                      </button>
+                    </Popup>
+                  </Polygon>
+                ) : (
+                  <CircleMarker
+                    key={`b-${b.id}`}
+                    center={[b.latitude, b.longitude]}
+                    radius={3}
+                    pathOptions={{ color: '#ffffff', fillColor: '#0f6b63', fillOpacity: 0.35, weight: 1 }}
+                  >
+                    <Popup>
+                      <strong>{b.name}</strong>
+                      <br />
+                      {b.code} · {b.floorsCount} floors
+                      <br />
+                      <button type="button" onClick={() => void startBuildingRoute(b.id)}>
+                        Route to entrance
+                      </button>
+                    </Popup>
+                  </CircleMarker>
+                ),
+              )}
 
               {zones.map((z) => (
                 <Circle

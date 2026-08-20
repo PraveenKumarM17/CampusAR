@@ -122,8 +122,8 @@ describe('API integration', () => {
   it.skipIf(!canUseDb)('rejects unnamed admin node as route endpoint', async () => {
     const places = await loadPlaces();
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO nodes (name, latitude, longitude, kind)
-       VALUES (NULL, 12.901, 77.518, 'outdoor')
+      `INSERT INTO nodes (name, latitude, longitude, kind, site_id)
+       VALUES (NULL, 12.901, 77.518, 'outdoor', 'c0000001-0000-4000-8000-000000000010')
        RETURNING id`,
     );
     const unnamedId = rows[0].id;

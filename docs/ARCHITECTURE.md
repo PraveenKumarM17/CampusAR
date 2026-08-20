@@ -2,7 +2,9 @@
 
 ## Overview
 
-CampusAR is a monorepo with a React client, Express API, shared types, and a Unity AR client scaffold. The API follows clean architecture so routing, campus data, and future localization sources remain swappable.
+CampusAR is a reusable platform for universities, hospitals, corporate campuses, factories, and other large navigable facilities. RNSIT is the first seeded organization/site. Spatial data is scoped to a **Site** under an **Organization**. Leaflet, navigation, AR, and Cesium share that canonical map. See [`architecture/site-tenancy.md`](./architecture/site-tenancy.md).
+
+The repo is a monorepo with a React client, Express API, shared types, and a Unity AR client scaffold. The API follows clean architecture so routing, campus data, and future localization sources remain swappable.
 
 ```
 Client (Web / Unity)

@@ -11,14 +11,50 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS buildings (
+CREATE TABLE IF NOT EXISTS organizations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
-  code TEXT NOT NULL UNIQUE,
+  slug TEXT NOT NULL UNIQUE,
+  type TEXT NOT NULL DEFAULT 'other' CHECK (type IN (
+    'university', 'hospital', 'corporate', 'factory', 'government', 'other'
+  )),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  latitude DOUBLE PRECISION NOT NULL,
+  longitude DOUBLE PRECISION NOT NULL,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('draft', 'active', 'archived')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (organization_id, slug)
+);
+
+CREATE TABLE IF NOT EXISTS organization_memberships (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('org_admin', 'site_admin', 'member')),
+  site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, organization_id)
+);
+
+CREATE TABLE IF NOT EXISTS buildings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  code TEXT NOT NULL,
   description TEXT,
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
   floors_count INT NOT NULL DEFAULT 1,
+  footprint_geom GEOGRAPHY(POLYGON, 4326),
   geom GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (
     ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
   ) STORED
@@ -34,6 +70,7 @@ CREATE TABLE IF NOT EXISTS floors (
 
 CREATE TABLE IF NOT EXISTS nodes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
   name TEXT,
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
@@ -62,6 +99,7 @@ CREATE TABLE IF NOT EXISTS rooms (
 
 CREATE TABLE IF NOT EXISTS edges (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
   from_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   to_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   distance_m DOUBLE PRECISION NOT NULL CHECK (distance_m > 0),
@@ -78,6 +116,7 @@ CREATE INDEX IF NOT EXISTS edges_to_idx ON edges(to_node_id);
 
 CREATE TABLE IF NOT EXISTS danger_zones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('unsafe', 'poor_lighting', 'construction', 'fire')),
   latitude DOUBLE PRECISION NOT NULL,
@@ -114,6 +153,7 @@ CREATE INDEX IF NOT EXISTS sensor_readings_kind_idx ON sensor_readings (kind);
 
 CREATE TABLE IF NOT EXISTS events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT,
   latitude DOUBLE PRECISION,
@@ -153,6 +193,7 @@ CREATE TABLE IF NOT EXISTS notification_reads (
 
 CREATE TABLE IF NOT EXISTS emergency_contacts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('security', 'medical', 'sos')),
   phone TEXT NOT NULL,
@@ -163,6 +204,7 @@ CREATE TABLE IF NOT EXISTS emergency_contacts (
 
 CREATE TABLE IF NOT EXISTS emergency_exits (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   building_id UUID REFERENCES buildings(id) ON DELETE CASCADE,
   node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
@@ -201,7 +243,26 @@ CREATE TABLE IF NOT EXISTS sos_events (
 
 CREATE INDEX IF NOT EXISTS nodes_geom_idx ON nodes USING GIST (geom);
 CREATE INDEX IF NOT EXISTS nodes_active_named_idx ON nodes (active) WHERE name IS NOT NULL AND trim(name) <> '';
+CREATE INDEX IF NOT EXISTS nodes_site_idx ON nodes (site_id);
+CREATE INDEX IF NOT EXISTS buildings_site_idx ON buildings (site_id);
+CREATE INDEX IF NOT EXISTS buildings_footprint_geom_idx ON buildings USING GIST (footprint_geom)
+  WHERE footprint_geom IS NOT NULL;
+CREATE INDEX IF NOT EXISTS edges_site_idx ON edges (site_id);
 CREATE INDEX IF NOT EXISTS danger_zones_geom_idx ON danger_zones USING GIST (geom);
+CREATE UNIQUE INDEX IF NOT EXISTS buildings_site_code_idx ON buildings (site_id, code);
+
+CREATE TABLE IF NOT EXISTS site_areas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('parking', 'open_area', 'restricted', 'assembly')),
+  footprint_geom GEOGRAPHY(POLYGON, 4326) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS site_areas_site_idx ON site_areas (site_id);
+CREATE INDEX IF NOT EXISTS site_areas_geom_idx ON site_areas USING GIST (footprint_geom);
 CREATE INDEX IF NOT EXISTS analytics_searches_query_idx ON analytics_searches (query);
 CREATE INDEX IF NOT EXISTS analytics_nav_created_idx ON analytics_navigations (created_at);
 

@@ -91,6 +91,26 @@ export function FitMapBounds({
   return null;
 }
 
+/** Pan the map when the active site center changes. */
+export function RecenterOnSite({
+  center,
+  zoom,
+  enabled = true,
+}: {
+  center: [number, number];
+  zoom?: number;
+  enabled?: boolean;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (!enabled) return;
+    map.setView(center, zoom ?? map.getZoom(), { animate: true });
+    // Primitive deps so a new [lat, lon] array each render does not loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, center[0], center[1], zoom, enabled]);
+  return null;
+}
+
 /** Disable follow when the user pans/zooms the map by hand. */
 export function BreakFollowOnInteract({ onBreak }: { onBreak: () => void }) {
   useMapEvents({

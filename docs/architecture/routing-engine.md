@@ -8,7 +8,8 @@ Behavioural design only. Product rules: [`../product/ai-routing-logic.md`](../pr
 
 ## Responsibilities
 
-- Build a routable graph snapshot for a campus
+- Build a routable graph snapshot for **one site**
+- Never combine nodes/edges from two organizations or sites
 - Apply hard constraints then soft costs
 - Compute path source → destination
 - Emit turn instructions, distance, ETA, explainability metadata

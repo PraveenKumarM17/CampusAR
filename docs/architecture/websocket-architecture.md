@@ -51,6 +51,8 @@ stateDiagram-v2
 
 V1 may broadcast all campus live events to all connected clients (single campus).
 
+Phase 2.5A tags `crowd` / `sensors` / `hazard` with `siteId`. Clients filter to the active site. See [`site-tenancy.md`](./site-tenancy.md).
+
 Future:
 
 - Rooms: `campus:{id}`

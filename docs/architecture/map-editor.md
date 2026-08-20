@@ -1,6 +1,7 @@
 # Interactive Map Editor Architecture
 
 **Purpose:** Define the visual navigation-graph editor as a first-class NaaS capability.  
+**Phase 2.5A:** architecture only — do not ship drawing UI yet. Data model and site-scoped APIs are in [`site-tenancy.md`](./site-tenancy.md).  
 **Product intent:** Admins build and maintain graphs without developer involvement or coordinate spreadsheets.
 
 ---
