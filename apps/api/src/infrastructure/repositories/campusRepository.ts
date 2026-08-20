@@ -250,6 +250,26 @@ export const campusRepository = {
     return this.mapNodeRow(rows[0] as Record<string, unknown>);
   },
 
+  async findOutdoorEntrance(buildingId: string): Promise<GraphNode | null> {
+    const { rows } = await query(
+      `SELECT * FROM nodes
+       WHERE building_id = $1
+         AND active = TRUE
+         AND name IS NOT NULL AND trim(name) <> ''
+       ORDER BY
+         CASE kind
+           WHEN 'entrance' THEN 0
+           WHEN 'exit' THEN 1
+           ELSE 2
+         END,
+         name
+       LIMIT 1`,
+      [buildingId],
+    );
+    if (!rows[0]) return null;
+    return this.mapNodeRow(rows[0] as Record<string, unknown>);
+  },
+
   mapNodeRow(r: Record<string, unknown>): GraphNode {
     return {
       id: r.id as string,

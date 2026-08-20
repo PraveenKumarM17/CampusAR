@@ -88,6 +88,17 @@ VITE_GOOGLE_MAPS_API_KEY=your_key_here
 
 Without it, maps use Esri satellite + roads.
 
+### Indoor AR mapping
+
+Outdoor GPS (`/map`, `/navigate`) is unchanged. Indoor graphs use a **local meter frame** and **QR relocalization** — one phone’s AR origin is not valid on another device.
+
+1. Apply migrations (`npm run db:migrate`) so `indoor_*` tables exist.
+2. Admin maps walkable indoor graphs in Unity (`unity/CampusAR/Assets/Scripts/Indoor/`) — Add Point, connect any two nodes, name places, publish.
+3. Print QR codes from `POST /api/indoor/anchors`.
+4. Users open **Indoor** (`/indoor`), scan/enter the marker, search a place, then follow turn-by-turn steps.
+
+See [Indoor AR mapping](docs/architecture/indoor-ar-mapping.md).
+
 ## Docker (full stack)
 
 ```bash

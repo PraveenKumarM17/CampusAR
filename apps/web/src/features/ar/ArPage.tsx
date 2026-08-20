@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowUp, MapPin, Volume2, AlertTriangle, Users, CheckCircle2, LocateFixed } from 'lucide-react';
 import type { CampusPlace, GraphNode, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
@@ -64,7 +65,14 @@ function campusPlacesToGraphNodes(places: CampusPlace[]): GraphNode[] {
 export function ArPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const token = useAuthStore((s) => s.accessToken);
-  const { sourceNodeId, destinationNodeId } = useNavStore();
+  const navigate = useNavigate();
+  const {
+    sourceNodeId,
+    destinationNodeId,
+    hasIndoorMap,
+    selectedBuildingName,
+    markArrivedAtBuilding,
+  } = useNavStore();
   const { accessibility, voiceEnabled, avatarGender, setAvatarGender } = usePrefsStore();
   const live = useCampusLive();
   const {
@@ -397,8 +405,11 @@ export function ArPage() {
     const now = Date.now();
     const next = updateArrivalHold(near, now, arrivalHoldRef.current);
     arrivalHoldRef.current = { since: next.since };
-    if (next.arrived) setArrived(true);
-  }, [gpsReady, pose, route, arrived]);
+    if (next.arrived) {
+      setArrived(true);
+      if (hasIndoorMap) markArrivedAtBuilding();
+    }
+  }, [gpsReady, pose, route, arrived, hasIndoorMap, markArrivedAtBuilding]);
 
   useEffect(() => {
     if (!voiceEnabled) return;
@@ -660,8 +671,21 @@ export function ArPage() {
                 <CheckCircle2 size={20} /> You&apos;ve arrived
               </p>
               <p className="mt-1 text-sm sm:text-base">
-                {destLabel ? `Welcome to ${destLabel}.` : 'You have reached your destination.'}
+                {selectedBuildingName
+                  ? `You have arrived at ${selectedBuildingName}.`
+                  : destLabel
+                    ? `Welcome to ${destLabel}.`
+                    : 'You have reached your destination.'}
               </p>
+              {hasIndoorMap && (
+                <button
+                  type="button"
+                  className="mt-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-accent"
+                  onClick={() => navigate('/navigate')}
+                >
+                  Choose indoor destination
+                </button>
+              )}
             </div>
           ) : (
             <div className="mx-auto max-w-lg rounded-md border border-white/15 bg-ink/70 px-3 py-2.5 text-center text-white backdrop-blur-sm sm:px-4 sm:py-3">

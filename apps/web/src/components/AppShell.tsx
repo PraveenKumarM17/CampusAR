@@ -9,6 +9,7 @@ import {
   LogOut,
   Bell,
   Box,
+  QrCode,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useEffect, useState } from 'react';
@@ -19,6 +20,7 @@ const navLinks = [
   { to: '/map', label: 'Map', icon: Map },
   { to: '/navigate', label: 'Navigate', icon: Navigation },
   { to: '/ar', label: 'AR', icon: Scan },
+  { to: '/indoor', label: 'Indoor', icon: QrCode },
   { to: '/safety', label: 'Safety', icon: ShieldAlert },
 ];
 

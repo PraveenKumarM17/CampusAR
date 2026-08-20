@@ -30,6 +30,10 @@ import {
 } from '../../lib/campus';
 import { closestNamedPlace, namedPlaceNodes, snapGpsForRouting } from '../../lib/geo';
 import {
+  buildingContextToNavPatch,
+  loadBuildingContext,
+} from '../../lib/buildingNavigation';
+import {
   BasemapModeSwitcher,
   RealBasemapTiles,
   type BasemapMode,
@@ -79,7 +83,8 @@ function RecenterButton({
 
 export function MapPage() {
   const token = useAuthStore((s) => s.accessToken);
-  const { sourceNodeId, destinationNodeId, setSource, setDestination } = useNavStore();
+  const { sourceNodeId, destinationNodeId, setSource, setDestination, applyBuildingContext } =
+    useNavStore();
   const navigate = useNavigate();
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [rooms, setRooms] = useState<{ buildingId: string; category: string }[]>([]);
@@ -226,6 +231,21 @@ export function MapPage() {
     await computeRoute(from, destNodeId);
   }
 
+  async function startBuildingRoute(buildingId: string) {
+    try {
+      const ctx = await loadBuildingContext(buildingId, (id) =>
+        api.indoorBuildingContext(id, token),
+      );
+      applyBuildingContext(buildingContextToNavPatch(ctx));
+      const entranceId = ctx.entrance?.outdoorNodeId;
+      if (entranceId && sourceNodeId) {
+        await computeRoute(sourceNodeId, entranceId);
+      }
+    } catch {
+      setGpsNote('Could not load that building for navigation.');
+    }
+  }
+
   // Recalculate when GPS snap changes source while destination set
   useEffect(() => {
     if (!sourceNodeId || !destinationNodeId || !followGps) return;
@@ -343,6 +363,10 @@ export function MapPage() {
                 type="button"
                 className="rounded-md border border-line bg-paper-soft p-3 text-left hover:border-accent/40"
                 onClick={() => {
+                  if (r.type === 'building') {
+                    void startBuildingRoute(r.id);
+                    return;
+                  }
                   if (r.nodeId) void startRoute(r.nodeId);
                 }}
               >
@@ -488,6 +512,10 @@ export function MapPage() {
                     <strong>{b.name}</strong>
                     <br />
                     {b.code} · {b.floorsCount} floors
+                    <br />
+                    <button type="button" onClick={() => void startBuildingRoute(b.id)}>
+                      Route to entrance
+                    </button>
                   </Popup>
                 </CircleMarker>
               ))}
@@ -612,27 +640,20 @@ export function MapPage() {
               {filteredBuildings
                 .slice()
                 .sort((a, b) => a.name.localeCompare(b.name))
-                .map((b) => {
-                  const linked = placeNodes.find(
-                    (n) =>
-                      n.buildingId === b.id ||
-                      n.name?.toLowerCase().includes(b.name.split(' ')[0].toLowerCase()),
-                  );
-                  return (
+                .map((b) => (
                     <li key={b.id}>
                       <button
                         type="button"
                         className="w-full rounded-md border border-line bg-paper-soft px-2 py-1.5 text-left hover:border-accent/40"
                         onClick={() => {
-                          if (linked) void startRoute(linked.id);
+                          void startBuildingRoute(b.id);
                         }}
                       >
                         <p className="font-medium">{b.name}</p>
                         <p className="text-xs text-ink-faint">{b.code}</p>
                       </button>
                     </li>
-                  );
-                })}
+                  ))}
             </ul>
           </div>
         </aside>

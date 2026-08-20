@@ -9,6 +9,7 @@ import { SafetyPage } from './features/safety/SafetyPage';
 import { AdminPage } from './features/admin/AdminPage';
 import { AnalyticsPage } from './features/analytics/AnalyticsPage';
 import { TwinPage } from './features/twin/TwinPage';
+import { IndoorPage } from './features/indoor/IndoorPage';
 
 function Protected({ children, admin }: { children: React.ReactNode; admin?: boolean }) {
   const user = useAuthStore((s) => s.user);
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/map" element={<MapPage />} />
         <Route path="/navigate" element={<NavigatePage />} />
         <Route path="/ar" element={<ArPage />} />
+        <Route path="/indoor" element={<IndoorPage />} />
         <Route
           path="/twin"
           element={

@@ -307,3 +307,202 @@ export const DEFAULT_ACCESSIBILITY: AccessibilityPrefs = {
 export const WALKING_SPEED_MPS = 1.4;
 export const IOT_TICK_MS = 10_000;
 export const PREDICTION_HORIZON_MINUTES = 20;
+
+/** Indoor AR local-frame meters relative to a QR/floor origin (not WGS84). */
+export const INDOOR_COORDINATE_SYSTEM = 'ar-local-meters-v1' as const;
+
+export type IndoorMapStatus = 'draft' | 'published';
+
+export type IndoorNodeKind =
+  | 'entrance'
+  | 'corridor'
+  | 'junction'
+  | 'turn'
+  | 'room_entrance'
+  | 'destination'
+  | 'stairs'
+  | 'elevator'
+  | 'ramp'
+  | 'emergency_exit'
+  | 'qr_anchor'
+  | 'landmark';
+
+export type IndoorEdgeKind = 'walk' | 'stairs' | 'elevator' | 'ramp' | 'escalator';
+
+export type IndoorPlaceCategory =
+  | 'building'
+  | 'floor'
+  | 'room'
+  | 'cabin'
+  | 'person'
+  | 'cubicle'
+  | 'facility'
+  | 'other';
+
+export interface LocalVec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface IndoorMap {
+  id: string;
+  buildingId: string;
+  name: string;
+  status: IndoorMapStatus;
+  originAnchorId: string | null;
+  trackingQuality: string | null;
+  planeCount: number;
+  confidence: number | null;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  active: boolean;
+}
+
+export interface IndoorNode {
+  id: string;
+  mapId: string;
+  buildingId: string;
+  floorId: string;
+  anchorId: string | null;
+  localX: number;
+  localY: number;
+  localZ: number;
+  kind: IndoorNodeKind;
+  name: string | null;
+  category: string | null;
+  accuracyM: number | null;
+  trackingQuality: string | null;
+  active: boolean;
+}
+
+export interface IndoorEdge {
+  id: string;
+  mapId: string;
+  buildingId: string;
+  fromFloorId: string;
+  toFloorId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  distanceM: number;
+  kind: IndoorEdgeKind;
+  bidirectional: boolean;
+  wheelchairAccessible: boolean;
+  waypoints: LocalVec3[];
+  active: boolean;
+}
+
+export interface IndoorPlace {
+  id: string;
+  mapId: string;
+  buildingId: string;
+  floorId: string | null;
+  nodeId: string | null;
+  parentPlaceId: string | null;
+  name: string;
+  category: IndoorPlaceCategory;
+  searchable: boolean;
+  metadata: Record<string, unknown>;
+  active: boolean;
+}
+
+export interface IndoorAnchor {
+  id: string;
+  mapId: string;
+  buildingId: string;
+  floorId: string;
+  nodeId: string;
+  anchorCode: string;
+  physicalMarkerType: string;
+  localX: number;
+  localY: number;
+  localZ: number;
+  active: boolean;
+}
+
+export interface IndoorHandoff {
+  id: string;
+  outdoorNodeId: string;
+  indoorNodeId: string;
+  buildingId: string;
+  mapId: string;
+  prompt: string;
+  active: boolean;
+}
+
+export interface IndoorMapBundle {
+  map: IndoorMap;
+  nodes: IndoorNode[];
+  edges: IndoorEdge[];
+  places: IndoorPlace[];
+  anchors: IndoorAnchor[];
+}
+
+export interface IndoorRoutePreferences {
+  avoidStairs: boolean;
+  preferElevator: boolean;
+  wheelchairAccessible: boolean;
+}
+
+export interface IndoorRouteRequest {
+  sourceNodeId?: string;
+  sourceAnchorCode?: string;
+  destinationPlaceId: string;
+  preferences?: Partial<IndoorRoutePreferences>;
+}
+
+export interface IndoorRouteStep {
+  nodeId: string;
+  name: string | null;
+  floorId: string;
+  localX: number;
+  localY: number;
+  localZ: number;
+  instruction: string;
+  distanceM: number;
+  bearing: number;
+  edgeKind: IndoorEdgeKind | null;
+}
+
+export interface IndoorRouteResponse {
+  mapId: string;
+  buildingId: string;
+  sourceNodeId: string;
+  destinationPlaceId: string;
+  destinationNodeId: string;
+  nodes: IndoorRouteStep[];
+  edges: IndoorEdge[];
+  totalDistanceM: number;
+  estimatedTimeMinutes: number;
+  instructions: string[];
+}
+
+export const DEFAULT_INDOOR_PREFERENCES: IndoorRoutePreferences = {
+  avoidStairs: false,
+  preferElevator: false,
+  wheelchairAccessible: false,
+};
+
+export const INDOOR_SNAP_DISTANCE_M = 0.45;
+export const INDOOR_MIN_NODE_SPACING_M = 0.4;
+export const INDOOR_WAYPOINT_PROXIMITY_M = 1.8;
+
+export type IndoorTransitionStatus =
+  | 'none'
+  | 'navigating_outdoor'
+  | 'arrived_at_building'
+  | 'selecting_indoor_destination'
+  | 'waiting_for_anchor'
+  | 'navigating_indoor';
+
+export interface IndoorBuildingContext {
+  building: { id: string; name: string; code: string };
+  indoorMap: { id: string; name: string; status: IndoorMapStatus } | null;
+  entrance: { outdoorNodeId: string; indoorNodeId: string | null; name: string | null } | null;
+  floors: Floor[];
+  placeCount: number;
+  quickPlaces: IndoorPlace[];
+  anchors: { anchorCode: string; floorId: string; nodeId: string }[];
+}

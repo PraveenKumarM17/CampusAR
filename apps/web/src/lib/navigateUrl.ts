@@ -8,13 +8,16 @@ export function isValidNodeId(id: string | null | undefined): id is string {
 export function parseNavigateParams(search: string): {
   from: string | null;
   to: string | null;
+  building: string | null;
 } {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
   const from = params.get('from');
   const to = params.get('to');
+  const building = params.get('building');
   return {
     from: isValidNodeId(from) ? from : null,
     to: isValidNodeId(to) ? to : null,
+    building: isValidNodeId(building) ? building : null,
   };
 }
 

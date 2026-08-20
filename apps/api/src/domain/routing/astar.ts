@@ -225,7 +225,7 @@ export function aStar(
   goalId: string,
   nodes: Map<string, RoutingNode>,
   adjacency: Map<string, ScoredNeighbor[]>,
-  options?: { maxDistanceM?: number; wDistance?: number },
+  options?: { maxDistanceM?: number; wDistance?: number; distanceFn?: (a: RoutingNode, b: RoutingNode) => number },
 ): AStarResult | null {
   if (startId === goalId) {
     return { nodeIds: [startId], edgeIds: [], totalDistanceM: 0, cost: 0 };
@@ -237,11 +237,15 @@ export function aStar(
   const maxDistanceM = options?.maxDistanceM ?? 200;
   const wDistance = options?.wDistance ?? 0.4;
   const goal = nodes.get(goalId)!;
+  const distanceFn =
+    options?.distanceFn ??
+    ((a: RoutingNode, b: RoutingNode) =>
+      haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude));
 
   const heuristic = (nodeId: string) => {
     const n = nodes.get(nodeId);
     if (!n) return 0;
-    const meters = haversineMeters(n.latitude, n.longitude, goal.latitude, goal.longitude);
+    const meters = distanceFn(n, goal);
     // Admissible under our cost model: underestimate using distance weight only.
     return wDistance * Math.min(meters / maxDistanceM, 1);
   };

@@ -67,10 +67,10 @@ export const openApiDocument = {
         responses: { '200': { description: 'Route' }, '404': { description: 'No route' } },
       },
     },
-    '/navigation/recalculate': {
+    '/indoor/route': {
       post: {
-        summary: 'Recalculate route',
-        responses: { '200': { description: 'Route' } },
+        summary: 'Indoor A* route after QR relocalization',
+        responses: { '200': { description: 'Indoor route' }, '422': { description: 'No route' } },
       },
     },
     '/safety/zones': {

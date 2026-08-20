@@ -13,7 +13,7 @@ import {
   CheckCircle2,
   MapPin,
 } from 'lucide-react';
-import type { CampusPlace, GraphNode, RouteResponse } from '@campusar/shared';
+import type { Building, CampusPlace, GraphNode, IndoorHandoff, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
@@ -44,16 +44,46 @@ import {
   UserLocationMarker,
 } from '../../components/maps/GpsTracker';
 import { PlaceSearchSelect } from '../../components/navigate/PlaceSearchSelect';
+import { IndoorDestinationPicker } from '../../components/indoor/IndoorDestinationPicker';
+import {
+  buildingContextToNavPatch,
+  buildIndoorNavPath,
+  indoorConfirmVisible,
+  indoorPickerVisible,
+  loadBuildingContext,
+  shouldOpenIndoorPicker,
+} from '../../lib/buildingNavigation';
 
 type MapPickMode = 'source' | 'destination';
 
 export function NavigatePage() {
   const token = useAuthStore((s) => s.accessToken);
-  const { sourceNodeId, destinationNodeId, setSource, setDestination } = useNavStore();
+  const {
+    sourceNodeId,
+    destinationNodeId,
+    setSource,
+    setDestination,
+    selectedBuildingId,
+    selectedBuildingName,
+    hasIndoorMap,
+    indoorMapId,
+    indoorDestinationPlaceId,
+    indoorDestinationName,
+    indoorDestinationDetail,
+    arrivalPromptShown,
+    indoorPickerDismissed,
+    transitionStatus,
+    applyBuildingContext,
+    markArrivedAtBuilding,
+    dismissIndoorPicker,
+    setIndoorDestination,
+    changeIndoorDestination,
+  } = useNavStore();
   const { accessibility, setAccessibility, voiceEnabled, setVoiceEnabled } = usePrefsStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [places, setPlaces] = useState<CampusPlace[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>([]);
   const [route, setRoute] = useState<RouteResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,6 +97,7 @@ export function NavigatePage() {
   const [mapPickMode, setMapPickMode] = useState<MapPickMode>('destination');
   const [arrived, setArrived] = useState(false);
   const [shareNote, setShareNote] = useState<string | null>(null);
+  const [indoorHandoff, setIndoorHandoff] = useState<IndoorHandoff | null>(null);
   const navigate = useNavigate();
   const { pose, error: gpsError, requestCompassPermission, refreshLocation, watching } =
     useGeolocation(true);
@@ -106,50 +137,78 @@ export function NavigatePage() {
   const routeNodeKey = route?.nodeIds.join(',') ?? '';
 
   useEffect(() => {
-    Promise.all([api.places(token), api.nodes(token)])
-      .then(([p, n]) => {
+    Promise.all([api.places(token), api.nodes(token), api.buildings(token)])
+      .then(([p, n, b]) => {
         setPlaces(p);
         setNodes(n);
+        setBuildings(b);
       })
       .catch(() => {
         setPlaces([]);
         setNodes([]);
+        setBuildings([]);
       });
   }, [token]);
+
+  useEffect(() => {
+    if (!destinationNodeId) {
+      setIndoorHandoff(null);
+      return;
+    }
+    api
+      .indoorHandoff(destinationNodeId, token)
+      .then((h) => setIndoorHandoff(h))
+      .catch(() => setIndoorHandoff(null));
+  }, [destinationNodeId, token]);
 
   // Restore route from share URL once places are loaded
   useEffect(() => {
     if (urlAppliedRef.current || places.length === 0) return;
-    const { from, to } = parseNavigateParams(searchParams.toString());
-    if (!from && !to) return;
+    const { from, to, building } = parseNavigateParams(searchParams.toString());
+    if (!from && !to && !building) return;
 
-    void api.resolveNavigate(from, to, token).then((result) => {
-      if (urlAppliedRef.current) return;
-      urlAppliedRef.current = true;
-      if (!result.valid) {
-        setError(result.errors.map((e: { message: string }) => e.message).join(' '));
-        return;
+    void (async () => {
+      try {
+        if (from || to) {
+          const result = await api.resolveNavigate(from, to, token);
+          if (urlAppliedRef.current) return;
+          if (!result.valid) {
+            urlAppliedRef.current = true;
+            setError(result.errors.map((e: { message: string }) => e.message).join(' '));
+            return;
+          }
+          if (result.source) {
+            setSource(result.source.id);
+            setSourceManual(true);
+            setFollowGps(false);
+          }
+          if (result.destination) {
+            setDestination(result.destination.id);
+          }
+        }
+        if (building) {
+          const ctx = await loadBuildingContext(building, (id) =>
+            api.indoorBuildingContext(id, token),
+          );
+          if (urlAppliedRef.current && !from && !to) return;
+          applyBuildingContext(buildingContextToNavPatch(ctx));
+        }
+        urlAppliedRef.current = true;
+      } catch {
+        urlAppliedRef.current = true;
+        setError('Could not validate shared route link.');
       }
-      if (result.source) {
-        setSource(result.source.id);
-        setSourceManual(true);
-        setFollowGps(false);
-      }
-      if (result.destination) {
-        setDestination(result.destination.id);
-      }
-    }).catch(() => {
-      urlAppliedRef.current = true;
-      setError('Could not validate shared route link.');
-    });
-  }, [places.length, searchParams, setSource, setDestination, token]);
+    })();
+  }, [places.length, searchParams, setSource, setDestination, applyBuildingContext, token]);
 
   // Keep share URL in sync with selected endpoints
   useEffect(() => {
     if (!sourceNodeId || !destinationNodeId) return;
     if (!placeIdSet.has(sourceNodeId) || !placeIdSet.has(destinationNodeId)) return;
-    setSearchParams({ from: sourceNodeId, to: destinationNodeId }, { replace: true });
-  }, [sourceNodeId, destinationNodeId, placeIdSet, setSearchParams]);
+    const next: Record<string, string> = { from: sourceNodeId, to: destinationNodeId };
+    if (selectedBuildingId) next.building = selectedBuildingId;
+    setSearchParams(next, { replace: true });
+  }, [sourceNodeId, destinationNodeId, selectedBuildingId, placeIdSet, setSearchParams]);
 
   // Reset arrival when destination or route changes
   useEffect(() => {
@@ -181,6 +240,41 @@ export function NavigatePage() {
     arrivalHoldRef.current = { since: next.since };
     if (next.arrived) setArrived(true);
   }, [pose, route, arrived]);
+
+  useEffect(() => {
+    if (
+      !shouldOpenIndoorPicker({
+        arrived,
+        hasIndoorMap,
+        arrivalPromptShown,
+      })
+    ) {
+      return;
+    }
+    markArrivedAtBuilding();
+  }, [arrived, hasIndoorMap, arrivalPromptShown, markArrivedAtBuilding]);
+
+  const showIndoorPicker = indoorPickerVisible({
+    hasIndoorMap,
+    indoorPickerDismissed,
+    indoorDestinationPlaceId,
+    transitionStatus,
+  });
+  const showIndoorConfirm = indoorConfirmVisible({
+    indoorDestinationPlaceId,
+    transitionStatus,
+  });
+
+  async function handleBuildingSelect(buildingId: string) {
+    try {
+      const ctx = await loadBuildingContext(buildingId, (id) =>
+        api.indoorBuildingContext(id, token),
+      );
+      applyBuildingContext(buildingContextToNavPatch(ctx));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load that building.');
+    }
+  }
 
   const trackOnMap = followGps && pose != null;
 
@@ -341,13 +435,14 @@ export function NavigatePage() {
         </div>
       </div>
 
-      {arrived && (
+      {arrived && !showIndoorPicker && !showIndoorConfirm && (
         <div
           className="flex items-center gap-2 rounded-md border border-accent/40 bg-accent/10 px-4 py-3 text-sm font-semibold text-accent"
           role="status"
         >
           <CheckCircle2 size={18} />
-          You&apos;ve arrived at {destNode ? formatNodeLabel(destNode) : 'your destination'}!
+          You&apos;ve arrived at{' '}
+          {selectedBuildingName ?? (destNode ? formatNodeLabel(destNode) : 'your destination')}!
         </div>
       )}
 
@@ -364,6 +459,19 @@ export function NavigatePage() {
       )}
 
       {shareNote && <p className="text-sm text-accent">{shareNote}</p>}
+
+      {indoorHandoff && !(hasIndoorMap && selectedBuildingId) && (
+        <div className="rounded-md border border-accent/40 bg-accent/10 px-4 py-3 text-sm">
+          <p className="font-semibold">{indoorHandoff.prompt}</p>
+          <button
+            type="button"
+            className="mt-2 text-sm font-semibold text-accent underline"
+            onClick={() => navigate('/indoor')}
+          >
+            Continue indoor navigation
+          </button>
+        </div>
+      )}
 
       {error && <p className="text-sm text-accent-danger">{error}</p>}
 
@@ -399,11 +507,18 @@ export function NavigatePage() {
 
             <PlaceSearchSelect
               label="Destination"
-              placeholder="Search destination…"
+              placeholder="Search destination or building…"
               emptyLabel="Clear destination"
               nodes={placeNodes}
               value={destinationNodeId}
               onChange={handleDestinationChange}
+              buildings={buildings}
+              onSelectBuilding={(id) => void handleBuildingSelect(id)}
+              selectedLabel={
+                selectedBuildingName
+                  ? `${selectedBuildingName}${destNode ? ` · ${formatNodeLabel(destNode)}` : ''}`
+                  : null
+              }
             />
             {destNode && (
               <p className="text-xs text-ink-faint">To: {formatNodeLabel(destNode)}</p>
@@ -602,6 +717,55 @@ export function NavigatePage() {
           </button>
         </div>
       </div>
+
+      {showIndoorPicker && selectedBuildingId && selectedBuildingName && (
+        <IndoorDestinationPicker
+          buildingId={selectedBuildingId}
+          buildingName={selectedBuildingName}
+          indoorMapId={indoorMapId}
+          token={token}
+          onSelect={(place, detail) => setIndoorDestination(place.id, place.name, detail)}
+          onDismiss={dismissIndoorPicker}
+        />
+      )}
+
+      {showIndoorConfirm && indoorDestinationPlaceId && selectedBuildingName && (
+        <div
+          className="fixed inset-0 z-[2100] flex items-end justify-center bg-ink/40 p-3 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="indoor-confirm-title"
+        >
+          <div className="w-full max-w-lg rounded-md border border-line bg-paper-raised p-4 shadow-lg">
+            <h2 id="indoor-confirm-title" className="text-lg font-semibold">
+              {indoorDestinationName ?? 'Indoor destination'}
+            </h2>
+            <p className="mt-2 text-sm text-ink-mute">{selectedBuildingName}</p>
+            {indoorDestinationDetail && (
+              <p className="mt-1 text-sm text-ink-mute">{indoorDestinationDetail}</p>
+            )}
+            <p className="mt-3 text-sm font-medium">Ready for indoor navigation</p>
+            <button
+              className="btn-primary mt-4 w-full"
+              type="button"
+              onClick={() =>
+                navigate(
+                  buildIndoorNavPath(selectedBuildingId!, indoorDestinationPlaceId, indoorMapId),
+                )
+              }
+            >
+              Start Indoor Navigation
+            </button>
+            <button
+              className="btn-ghost mt-2 w-full"
+              type="button"
+              onClick={changeIndoorDestination}
+            >
+              Change Destination
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

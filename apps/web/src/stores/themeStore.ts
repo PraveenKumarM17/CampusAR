@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AccessibilityPrefs } from '@campusar/shared';
+import type { AccessibilityPrefs, IndoorTransitionStatus } from '@campusar/shared';
 import { DEFAULT_ACCESSIBILITY } from '@campusar/shared';
+import {
+  afterIndoorCompletePatch,
+  type BuildingNavPatch,
+} from '../lib/buildingNavigation';
 
 interface ThemeState {
   dark: boolean;
@@ -56,11 +60,117 @@ interface NavState {
   destinationNodeId: string | null;
   setSource: (id: string | null) => void;
   setDestination: (id: string | null) => void;
+
+  selectedBuildingId: string | null;
+  selectedBuildingName: string | null;
+  hasIndoorMap: boolean;
+  indoorMapId: string | null;
+  outdoorEntranceNodeId: string | null;
+  indoorDestinationPlaceId: string | null;
+  indoorDestinationName: string | null;
+  indoorDestinationDetail: string | null;
+  arrivalPromptShown: boolean;
+  indoorPickerDismissed: boolean;
+  transitionStatus: IndoorTransitionStatus;
+
+  applyBuildingContext: (patch: BuildingNavPatch) => void;
+  clearBuildingContext: () => void;
+  markArrivedAtBuilding: () => void;
+  dismissIndoorPicker: () => void;
+  setIndoorDestination: (placeId: string, name: string, detail: string | null) => void;
+  changeIndoorDestination: () => void;
+  startWaitingForAnchor: () => void;
+  startIndoorNavigation: () => void;
+  cancelIndoorScan: () => void;
+  completeIndoorNavigation: () => void;
 }
 
-export const useNavStore = create<NavState>((set) => ({
-  sourceNodeId: null,
-  destinationNodeId: null,
-  setSource: (sourceNodeId) => set({ sourceNodeId }),
-  setDestination: (destinationNodeId) => set({ destinationNodeId }),
-}));
+const emptyBuilding = {
+  selectedBuildingId: null as string | null,
+  selectedBuildingName: null as string | null,
+  hasIndoorMap: false,
+  indoorMapId: null as string | null,
+  outdoorEntranceNodeId: null as string | null,
+  indoorDestinationPlaceId: null as string | null,
+  indoorDestinationName: null as string | null,
+  indoorDestinationDetail: null as string | null,
+  arrivalPromptShown: false,
+  indoorPickerDismissed: false,
+  transitionStatus: 'none' as IndoorTransitionStatus,
+};
+
+export const useNavStore = create<NavState>()(
+  persist(
+    (set, get) => ({
+      sourceNodeId: null,
+      destinationNodeId: null,
+      ...emptyBuilding,
+      setSource: (sourceNodeId) => set({ sourceNodeId }),
+      setDestination: (destinationNodeId) => {
+        const s = get();
+        if (destinationNodeId && destinationNodeId === s.outdoorEntranceNodeId) {
+          set({ destinationNodeId });
+          return;
+        }
+        set({ destinationNodeId, ...emptyBuilding });
+      },
+      applyBuildingContext: (patch) =>
+        set({
+          ...patch,
+          destinationNodeId: patch.outdoorEntranceNodeId ?? get().destinationNodeId,
+        }),
+      clearBuildingContext: () => set(emptyBuilding),
+      markArrivedAtBuilding: () =>
+        set({
+          arrivalPromptShown: true,
+          indoorPickerDismissed: false,
+          transitionStatus: 'arrived_at_building',
+        }),
+      dismissIndoorPicker: () =>
+        set({
+          indoorPickerDismissed: true,
+          transitionStatus: 'none',
+        }),
+      setIndoorDestination: (placeId, name, detail) =>
+        set({
+          indoorDestinationPlaceId: placeId,
+          indoorDestinationName: name,
+          indoorDestinationDetail: detail,
+          transitionStatus: 'waiting_for_anchor',
+        }),
+      changeIndoorDestination: () =>
+        set({
+          indoorDestinationPlaceId: null,
+          indoorDestinationName: null,
+          indoorDestinationDetail: null,
+          transitionStatus: 'selecting_indoor_destination',
+        }),
+      startWaitingForAnchor: () => set({ transitionStatus: 'waiting_for_anchor' }),
+      startIndoorNavigation: () => set({ transitionStatus: 'navigating_indoor' }),
+      cancelIndoorScan: () => set({ transitionStatus: 'waiting_for_anchor' }),
+      completeIndoorNavigation: () => set(afterIndoorCompletePatch()),
+    }),
+    {
+      name: 'campusar-nav',
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as object),
+      }),
+      partialize: (s) => ({
+        sourceNodeId: s.sourceNodeId,
+        destinationNodeId: s.destinationNodeId,
+        selectedBuildingId: s.selectedBuildingId,
+        selectedBuildingName: s.selectedBuildingName,
+        hasIndoorMap: s.hasIndoorMap,
+        indoorMapId: s.indoorMapId,
+        outdoorEntranceNodeId: s.outdoorEntranceNodeId,
+        indoorDestinationPlaceId: s.indoorDestinationPlaceId,
+        indoorDestinationName: s.indoorDestinationName,
+        indoorDestinationDetail: s.indoorDestinationDetail,
+        arrivalPromptShown: s.arrivalPromptShown,
+        indoorPickerDismissed: s.indoorPickerDismissed,
+        transitionStatus: s.transitionStatus,
+      }),
+    },
+  ),
+);

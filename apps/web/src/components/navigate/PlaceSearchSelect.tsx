@@ -11,6 +11,9 @@ interface PlaceSearchSelectProps {
   value: string | null;
   onChange: (nodeId: string | null) => void;
   disabled?: boolean;
+  buildings?: { id: string; name: string; code: string }[];
+  onSelectBuilding?: (buildingId: string) => void;
+  selectedLabel?: string | null;
 }
 
 export function PlaceSearchSelect({
@@ -21,6 +24,9 @@ export function PlaceSearchSelect({
   value,
   onChange,
   disabled = false,
+  buildings = [],
+  onSelectBuilding,
+  selectedLabel = null,
 }: PlaceSearchSelectProps) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -39,8 +45,8 @@ export function PlaceSearchSelect({
   }, [nodes, query]);
 
   useEffect(() => {
-    if (!open) setQuery(selected ? formatNodeLabel(selected) : '');
-  }, [open, selected]);
+    if (!open) setQuery(selectedLabel || (selected ? formatNodeLabel(selected) : ''));
+  }, [open, selected, selectedLabel]);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -50,8 +56,25 @@ export function PlaceSearchSelect({
     return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
 
+  const filteredBuildings = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return buildings;
+    return buildings.filter(
+      (b) => b.name.toLowerCase().includes(q) || b.code.toLowerCase().includes(q),
+    );
+  }, [buildings, query]);
+
+  const displayValue = open
+    ? query
+    : selectedLabel || (selected ? formatNodeLabel(selected) : query);
+
   function pick(id: string) {
     onChange(id);
+    setOpen(false);
+  }
+
+  function pickBuilding(id: string) {
+    onSelectBuilding?.(id);
     setOpen(false);
   }
 
@@ -83,7 +106,7 @@ export function PlaceSearchSelect({
           disabled={disabled}
           placeholder={placeholder}
           className="input w-full pl-9 pr-9"
-          value={open ? query : selected ? formatNodeLabel(selected) : query}
+          value={displayValue}
           onChange={(e) => {
             setQuery(e.target.value);
             if (!open) setOpen(true);
@@ -91,7 +114,9 @@ export function PlaceSearchSelect({
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setOpen(false);
-            if (e.key === 'Enter' && filtered[0]) pick(filtered[0].id);
+            if (e.key === 'Enter' && filteredBuildings[0] && onSelectBuilding) {
+              pickBuilding(filteredBuildings[0].id);
+            } else if (e.key === 'Enter' && filtered[0]) pick(filtered[0].id);
           }}
         />
         <button
@@ -120,7 +145,29 @@ export function PlaceSearchSelect({
               {emptyLabel}
             </button>
           </li>
-          {filtered.length === 0 && (
+          {filteredBuildings.length > 0 && onSelectBuilding && (
+            <>
+              <li className="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                Buildings
+              </li>
+              {filteredBuildings.map((b) => (
+                <li key={`b-${b.id}`} role="option">
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-paper-soft"
+                    onClick={() => pickBuilding(b.id)}
+                  >
+                    {b.name}
+                    <span className="ml-2 text-xs text-ink-faint">{b.code}</span>
+                  </button>
+                </li>
+              ))}
+              <li className="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                Places
+              </li>
+            </>
+          )}
+          {filtered.length === 0 && filteredBuildings.length === 0 && (
             <li className="px-3 py-2 text-sm text-ink-faint">No places match your search</li>
           )}
           {filtered.map((n) => (

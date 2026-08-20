@@ -12,6 +12,10 @@ import type {
   EmergencyExit,
   GraphEdge,
   GraphNode,
+  IndoorBuildingContext,
+  IndoorHandoff,
+  IndoorPlace,
+  IndoorRouteResponse,
   IotStatus,
   NavigateResolveResponse,
   Room,
@@ -176,6 +180,63 @@ export const api = {
       {},
       token,
     );
+  },
+  indoorSearchPlaces: (q: string, buildingId?: string, token?: string | null) => {
+    const params = new URLSearchParams({ q });
+    if (buildingId) params.set('buildingId', buildingId);
+    return request<IndoorPlace[]>(`/indoor/places/search?${params.toString()}`, {}, token);
+  },
+  indoorResolveAnchor: (
+    code: string,
+    token?: string | null,
+    expectedBuildingId?: string,
+  ) => {
+    const params = new URLSearchParams();
+    if (expectedBuildingId) params.set('buildingId', expectedBuildingId);
+    const qs = params.toString();
+    return request<{
+      anchor: {
+        id: string;
+        nodeId: string;
+        mapId: string;
+        floorId: string;
+        anchorCode: string;
+        buildingId: string;
+      };
+      map: { id: string; buildingId: string; name: string };
+      node: { id: string; name: string | null; floorId: string };
+    }>(`/indoor/anchors/${encodeURIComponent(code)}${qs ? `?${qs}` : ''}`, {}, token);
+  },
+  indoorRoute: (
+    body: {
+      sourceNodeId?: string;
+      sourceAnchorCode?: string;
+      destinationPlaceId: string;
+      expectedBuildingId?: string;
+      preferences?: { avoidStairs?: boolean; preferElevator?: boolean; wheelchairAccessible?: boolean };
+    },
+    token?: string | null,
+  ) =>
+    request<IndoorRouteResponse>('/indoor/route', { method: 'POST', body: JSON.stringify(body) }, token),
+  indoorHandoff: (outdoorNodeId: string, token?: string | null) =>
+    request<IndoorHandoff | null>(
+      `/indoor/handoffs?outdoorNodeId=${encodeURIComponent(outdoorNodeId)}`,
+      {},
+      token,
+    ),
+  indoorBuildingContext: (buildingId: string, token?: string | null) =>
+    request<IndoorBuildingContext>(`/indoor/buildings/${encodeURIComponent(buildingId)}/context`, {}, token),
+  indoorPlaces: (buildingId: string, token?: string | null) =>
+    request<IndoorPlace[]>(
+      `/indoor/places?buildingId=${encodeURIComponent(buildingId)}`,
+      {},
+      token,
+    ),
+  indoorPlace: (id: string, buildingId?: string, token?: string | null) => {
+    const params = new URLSearchParams();
+    if (buildingId) params.set('buildingId', buildingId);
+    const qs = params.toString();
+    return request<IndoorPlace>(`/indoor/places/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`, {}, token);
   },
   zones: () => request<DangerZone[]>('/safety/zones'),
   exits: () => request<EmergencyExit[]>('/safety/exits'),
