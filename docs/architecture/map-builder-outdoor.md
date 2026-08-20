@@ -57,6 +57,6 @@ Existing RNSIT buildings keep their UUIDs and point coordinates. Footprints are 
 - Legacy **Admin → Map pins** tab removed; use Map Builder only for outdoor authoring.
 
 
-- **2.5C** — Indoor floor editor
-- **2.5D** — Room editor
+- **2.5C** — Indoor floor editor (floors, room/corridor/POI geometry) — see [map-builder-indoor.md](./map-builder-indoor.md)
+- **2.5D** — Indoor navigation graph editor + room/routing linkage
 - **2.5E** — Draft → validate → preview → publish workflow

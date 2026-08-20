@@ -4,6 +4,8 @@ import { analyticsRepository } from '../../../infrastructure/repositories/analyt
 import { campusRepository } from '../../../infrastructure/repositories/campusRepository';
 import { optionalAuth, type AuthedRequest } from '../middleware/auth';
 import { resolveRequestSiteId } from '../../../application/siteContext';
+import { floorLayoutRepository } from '../../../infrastructure/repositories/floorLayoutRepository';
+import { AppError } from '../../../domain/errors';
 
 export const campusRouter = Router();
 
@@ -76,6 +78,28 @@ campusRouter.get('/search', optionalAuth, async (req: AuthedRequest, res, next) 
   }
 });
 
+campusRouter.get('/buildings/:buildingId/indoor-layout', async (req, res, next) => {
+  try {
+    const buildingId = String(req.params.buildingId);
+    const floorId = typeof req.query.floorId === 'string' ? req.query.floorId : undefined;
+    const siteId = await resolveRequestSiteId(req);
+    const building = await campusRepository.getBuildingById(buildingId);
+    if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
+    if (building.siteId !== siteId) {
+      throw new AppError('CROSS_SITE_REFERENCE', 'Building does not belong to the active site', 422);
+    }
+    const [floors, rooms, corridors, pois] = await Promise.all([
+      floorLayoutRepository.listFloors(buildingId),
+      floorLayoutRepository.listRooms(buildingId, floorId),
+      floorLayoutRepository.listCorridors(buildingId, floorId),
+      floorLayoutRepository.listPois(buildingId, floorId),
+    ]);
+    res.json({ buildingId, floors, rooms, corridors, pois });
+  } catch (err) {
+    next(err);
+  }
+});
+
 campusRouter.get('/categories', (_req, res) => {
   res.json([
     'classroom',
@@ -85,6 +109,9 @@ campusRouter.get('/categories', (_req, res) => {
     'cafeteria',
     'restroom',
     'auditorium',
+    'ward',
+    'meeting_room',
+    'storage',
     'other',
   ]);
 });

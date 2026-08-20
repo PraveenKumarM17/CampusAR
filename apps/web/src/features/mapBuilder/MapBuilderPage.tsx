@@ -39,6 +39,7 @@ import { Navigate } from 'react-router-dom';
 import { EmptySiteNotice } from '../../components/EmptySiteNotice';
 import { EditableFootprintLayer } from './EditableFootprintLayer';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
+import { MapBuilderNav } from './MapBuilderNav';
 import {
   cloneGeoRing,
   ringsEqual,
@@ -565,6 +566,7 @@ export function MapBuilderPage() {
           <p className="text-xs text-muted">{label}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <MapBuilderNav mode="outdoor" />
           {sites.length > 1 ? (
             <select
               className="rounded-md border border-line bg-paper px-2 py-1.5 text-sm"

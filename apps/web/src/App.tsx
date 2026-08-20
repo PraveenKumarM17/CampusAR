@@ -8,6 +8,7 @@ import { ArPage } from './features/ar/ArPage';
 import { SafetyPage } from './features/safety/SafetyPage';
 import { AdminPage } from './features/admin/AdminPage';
 import { MapBuilderPage } from './features/mapBuilder/MapBuilderPage';
+import { IndoorMapBuilderPage } from './features/mapBuilder/IndoorMapBuilderPage';
 import { AnalyticsPage } from './features/analytics/AnalyticsPage';
 import { TwinPage } from './features/twin/TwinPage';
 import { IndoorPage } from './features/indoor/IndoorPage';
@@ -44,6 +45,14 @@ export default function App() {
           element={<Navigate to={DIGITAL_TWIN_PATH} replace />}
         />
         <Route path="/safety" element={<SafetyPage />} />
+        <Route
+          path="/admin/map-builder/indoor/:buildingId?"
+          element={
+            <Protected>
+              <IndoorMapBuilderPage />
+            </Protected>
+          }
+        />
         <Route
           path="/admin/map-builder"
           element={

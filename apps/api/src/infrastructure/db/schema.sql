@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS floors (
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
   level INT NOT NULL,
   name TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (building_id, level)
 );
 
@@ -91,12 +92,41 @@ CREATE TABLE IF NOT EXISTS rooms (
   name TEXT NOT NULL,
   code TEXT NOT NULL,
   category TEXT NOT NULL CHECK (category IN (
-    'classroom', 'lab', 'office', 'library', 'cafeteria', 'restroom', 'auditorium', 'other'
+    'classroom', 'lab', 'office', 'library', 'cafeteria', 'restroom', 'auditorium',
+    'ward', 'meeting_room', 'storage', 'other'
   )),
   node_id UUID REFERENCES nodes(id) ON DELETE SET NULL,
   wheelchair_accessible BOOLEAN NOT NULL DEFAULT TRUE,
+  local_geometry JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (building_id, code)
 );
+
+CREATE TABLE IF NOT EXISTS floor_corridors (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  floor_id UUID NOT NULL REFERENCES floors(id) ON DELETE RESTRICT,
+  building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
+  name TEXT,
+  category TEXT NOT NULL DEFAULT 'corridor',
+  local_geometry JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS floor_pois (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  floor_id UUID NOT NULL REFERENCES floors(id) ON DELETE RESTRICT,
+  building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'other',
+  local_x DOUBLE PRECISION NOT NULL,
+  local_y DOUBLE PRECISION NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS floor_corridors_floor_idx ON floor_corridors (floor_id);
+CREATE INDEX IF NOT EXISTS floor_pois_floor_idx ON floor_pois (floor_id);
 
 CREATE TABLE IF NOT EXISTS edges (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -9,6 +9,7 @@ import {
   parseIndoorParams,
   placeBelongsToBuilding,
 } from '../../lib/buildingNavigation';
+import { FloorLayoutViewer } from './FloorLayoutViewer';
 
 export function IndoorPage() {
   const token = useAuthStore((s) => s.accessToken);
@@ -193,6 +194,13 @@ export function IndoorPage() {
             : 'Scan a CampusAR QR marker to relocalize. Indoor routes use the mapped graph, not GPS.'}
         </p>
       </div>
+
+      {buildingId && !restoreError && (
+        <div className="panel rounded-md p-4">
+          <h2 className="mb-2 text-sm font-semibold text-ink">Floor plan</h2>
+          <FloorLayoutViewer buildingId={buildingId} token={token} />
+        </div>
+      )}
 
       {restoreError && (
         <div className="rounded-md border border-accent-danger/40 bg-accent-danger/10 px-4 py-3 text-sm">

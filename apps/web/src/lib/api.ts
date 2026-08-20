@@ -27,6 +27,14 @@ import type {
   SensorReading,
   SiteArea,
   MapBuilderSnapshot,
+  IndoorFloorLayoutSnapshot,
+  IndoorLayoutValidationResult,
+  Floor,
+  FloorCorridor,
+  FloorPoi,
+  LocalVec2,
+  RoomCategory,
+  FloorPoiCategory,
 } from '@campusar/shared';
 
 import { useAuthStore } from '../stores/authStore';
@@ -463,5 +471,151 @@ export const api = {
       ),
     deleteArea: (id: string, token?: string | null) =>
       request<void>(`/admin/areas/${id}`, { method: 'DELETE' }, token),
+    indoorSnapshot: (buildingId: string, token?: string | null) =>
+      request<IndoorFloorLayoutSnapshot>(
+        `/admin/map-builder/indoor/snapshot?buildingId=${encodeURIComponent(buildingId)}`,
+        {},
+        token,
+      ),
+    indoorValidate: (buildingId: string, token?: string | null) =>
+      request<IndoorLayoutValidationResult>(
+        `/admin/map-builder/indoor/validate?buildingId=${encodeURIComponent(buildingId)}`,
+        {},
+        token,
+      ),
+    createFloor: (
+      body: { buildingId: string; level: number; name: string },
+      token?: string | null,
+    ) =>
+      request<Floor>('/admin/map-builder/indoor/floors', { method: 'POST', body: JSON.stringify(body) }, token),
+    updateFloor: (
+      id: string,
+      body: Partial<{ level: number; name: string; expectedUpdatedAt?: string }>,
+      token?: string | null,
+    ) =>
+      request<Floor>(
+        `/admin/map-builder/indoor/floors/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteFloor: (id: string, token?: string | null) =>
+      request<void>(`/admin/map-builder/indoor/floors/${id}`, { method: 'DELETE' }, token),
+    createRoom: (
+      body: {
+        buildingId: string;
+        floorId: string;
+        name: string;
+        code: string;
+        category: RoomCategory;
+        wheelchairAccessible?: boolean;
+        localGeometry: LocalVec2[];
+      },
+      token?: string | null,
+    ) =>
+      request<import('@campusar/shared').Room>(
+        '/admin/map-builder/indoor/rooms',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    updateRoom: (
+      id: string,
+      body: Partial<{
+        name: string;
+        code: string;
+        category: RoomCategory;
+        wheelchairAccessible: boolean;
+        localGeometry: LocalVec2[];
+        floorId: string;
+        expectedUpdatedAt: string;
+      }>,
+      token?: string | null,
+    ) =>
+      request<import('@campusar/shared').Room>(
+        `/admin/map-builder/indoor/rooms/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteRoom: (id: string, token?: string | null) =>
+      request<void>(`/admin/map-builder/indoor/rooms/${id}`, { method: 'DELETE' }, token),
+    createCorridor: (
+      body: {
+        buildingId: string;
+        floorId: string;
+        name?: string | null;
+        category?: string;
+        localGeometry: LocalVec2[];
+      },
+      token?: string | null,
+    ) =>
+      request<FloorCorridor>(
+        '/admin/map-builder/indoor/corridors',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    updateCorridor: (
+      id: string,
+      body: Partial<{
+        name: string | null;
+        category: string;
+        localGeometry: LocalVec2[];
+        floorId: string;
+        expectedUpdatedAt: string;
+      }>,
+      token?: string | null,
+    ) =>
+      request<FloorCorridor>(
+        `/admin/map-builder/indoor/corridors/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteCorridor: (id: string, token?: string | null) =>
+      request<void>(`/admin/map-builder/indoor/corridors/${id}`, { method: 'DELETE' }, token),
+    createPoi: (
+      body: {
+        buildingId: string;
+        floorId: string;
+        name: string;
+        category: FloorPoiCategory;
+        localX: number;
+        localY: number;
+      },
+      token?: string | null,
+    ) =>
+      request<FloorPoi>(
+        '/admin/map-builder/indoor/pois',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    updatePoi: (
+      id: string,
+      body: Partial<{
+        name: string;
+        category: FloorPoiCategory;
+        localX: number;
+        localY: number;
+        floorId: string;
+        expectedUpdatedAt: string;
+      }>,
+      token?: string | null,
+    ) =>
+      request<FloorPoi>(
+        `/admin/map-builder/indoor/pois/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    deletePoi: (id: string, token?: string | null) =>
+      request<void>(`/admin/map-builder/indoor/pois/${id}`, { method: 'DELETE' }, token),
   },
+  indoorLayout: (buildingId: string, floorId?: string, token?: string | null) =>
+    request<{
+      buildingId: string;
+      floors: Floor[];
+      rooms: import('@campusar/shared').Room[];
+      corridors: FloorCorridor[];
+      pois: FloorPoi[];
+    }>(
+      `/campus/buildings/${buildingId}/indoor-layout${floorId ? `?floorId=${encodeURIComponent(floorId)}` : ''}`,
+      {},
+      token,
+    ),
 };

@@ -61,7 +61,17 @@ export interface AuthResponse {
 }
 
 export type RoomCategory =
-  'classroom' | 'lab' | 'office' | 'library' | 'cafeteria' | 'restroom' | 'auditorium' | 'other';
+  | 'classroom'
+  | 'lab'
+  | 'office'
+  | 'library'
+  | 'cafeteria'
+  | 'restroom'
+  | 'auditorium'
+  | 'ward'
+  | 'meeting_room'
+  | 'storage'
+  | 'other';
 
 export interface GeoPoint {
   latitude: number;
@@ -99,7 +109,7 @@ export interface MapValidationIssue {
   level: MapValidationLevel;
   code: string;
   message: string;
-  resourceType?: 'building' | 'node' | 'edge' | 'entrance' | 'area';
+  resourceType?: 'building' | 'node' | 'edge' | 'entrance' | 'area' | 'floor' | 'room' | 'corridor' | 'poi';
   resourceId?: string;
 }
 
@@ -123,7 +133,16 @@ export interface Floor {
   buildingId: string;
   level: number;
   name: string;
+  updatedAt?: string;
 }
+
+export interface LocalVec2 {
+  x: number;
+  y: number;
+}
+
+/** Building-local floor plan coordinates in meters (+X east, +Y north on 2D plan). Not WGS84. */
+export const FLOOR_PLAN_COORDINATE_SYSTEM = 'floor-plan-meters-v1' as const;
 
 export interface Room {
   id: string;
@@ -134,6 +153,55 @@ export interface Room {
   category: RoomCategory;
   nodeId: string | null;
   wheelchairAccessible: boolean;
+  /** Closed or open polygon ring in floor-plan local meters. */
+  localGeometry?: LocalVec2[] | null;
+  updatedAt?: string;
+}
+
+export type FloorPoiCategory =
+  | 'reception'
+  | 'restroom'
+  | 'elevator'
+  | 'stairs'
+  | 'information'
+  | 'waiting'
+  | 'other';
+
+export interface FloorCorridor {
+  id: string;
+  floorId: string;
+  buildingId: string;
+  name: string | null;
+  category: string;
+  localGeometry: LocalVec2[];
+  updatedAt?: string;
+}
+
+export interface FloorPoi {
+  id: string;
+  floorId: string;
+  buildingId: string;
+  name: string;
+  category: FloorPoiCategory;
+  localX: number;
+  localY: number;
+  updatedAt?: string;
+}
+
+export interface IndoorFloorLayoutSnapshot {
+  buildingId: string;
+  siteId: string;
+  floors: Floor[];
+  rooms: Room[];
+  corridors: FloorCorridor[];
+  pois: FloorPoi[];
+}
+
+export interface IndoorLayoutValidationResult {
+  errors: MapValidationIssue[];
+  warnings: MapValidationIssue[];
+  errorCount: number;
+  warningCount: number;
 }
 
 export interface SearchResult {

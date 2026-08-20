@@ -262,6 +262,11 @@ export const campusRepository = {
       buildingId: r.building_id as string,
       level: r.level as number,
       name: r.name as string,
+      updatedAt: r.updated_at
+        ? (r.updated_at as Date) instanceof Date
+          ? (r.updated_at as Date).toISOString()
+          : String(r.updated_at)
+        : undefined,
     }));
   },
 
@@ -299,6 +304,14 @@ export const campusRepository = {
       category: r.category as Room['category'],
       nodeId: r.node_id as string | null,
       wheelchairAccessible: r.wheelchair_accessible as boolean,
+      localGeometry: r.local_geometry
+        ? (r.local_geometry as Array<{ x: number; y: number }>)
+        : null,
+      updatedAt: r.updated_at
+        ? (r.updated_at as Date) instanceof Date
+          ? (r.updated_at as Date).toISOString()
+          : String(r.updated_at)
+        : undefined,
     }));
   },
 

@@ -12,6 +12,8 @@ import {
   resolveRequestSiteId,
 } from '../../../application/siteContext';
 import { validateSiteMap } from '../../../application/mapValidation';
+import { validateIndoorLayout } from '../../../application/indoorLayoutValidation';
+import { floorLayoutRepository } from '../../../infrastructure/repositories/floorLayoutRepository';
 import { AppError } from '../../../domain/errors';
 import { haversineMeters } from '../../../domain/routing/astar';
 
@@ -24,6 +26,40 @@ const geoPointSchema = z.object({
 });
 
 const footprintSchema = z.array(geoPointSchema).min(3);
+
+const localVec2Schema = z.object({ x: z.number(), y: z.number() });
+const localPolygonSchema = z.array(localVec2Schema).min(3);
+
+const roomCategorySchema = z.enum([
+  'classroom',
+  'lab',
+  'office',
+  'library',
+  'cafeteria',
+  'restroom',
+  'auditorium',
+  'ward',
+  'meeting_room',
+  'storage',
+  'other',
+]);
+
+const floorPoiCategorySchema = z.enum([
+  'reception',
+  'restroom',
+  'elevator',
+  'stairs',
+  'information',
+  'waiting',
+  'other',
+]);
+
+async function assertBuildingInEditorSite(buildingId: string, siteId: string) {
+  const building = await campusRepository.getBuildingById(buildingId);
+  if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
+  await assertResourceInSite(building.siteId, siteId, 'Building');
+  return building;
+}
 
 const mapEditorRouter = Router();
 mapEditorRouter.use(requireMapEditor);
@@ -360,6 +396,282 @@ mapEditorRouter.delete('/areas/:id', async (req: AuthedRequest, res, next) => {
     if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Area not found' });
     await assertResourceInSite(existing.siteId, siteId, 'Area');
     await siteAreaRepository.delete(String(req.params.id));
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/map-builder/indoor/snapshot', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const buildingId = z.string().uuid().parse(req.query.buildingId);
+    await assertBuildingInEditorSite(buildingId, siteId);
+    res.json(await floorLayoutRepository.loadSnapshot(buildingId, siteId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/map-builder/indoor/validate', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const buildingId = z.string().uuid().parse(req.query.buildingId);
+    await assertBuildingInEditorSite(buildingId, siteId);
+    res.json(await validateIndoorLayout(buildingId, siteId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/indoor/floors', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = z
+      .object({
+        buildingId: z.string().uuid(),
+        level: z.number().int(),
+        name: z.string().min(1),
+      })
+      .parse(req.body);
+    await assertBuildingInEditorSite(body.buildingId, siteId);
+    try {
+      res.status(201).json(await floorLayoutRepository.createFloor(body));
+    } catch (err: unknown) {
+      const pg = err as { code?: string };
+      if (pg.code === '23505') {
+        throw new AppError(
+          'DUPLICATE_FLOOR',
+          'A floor with this level already exists for the building',
+          422,
+        );
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.put('/map-builder/indoor/floors/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const floor = await floorLayoutRepository.getFloorById(id);
+    if (!floor) return res.status(404).json({ code: 'NOT_FOUND', message: 'Floor not found' });
+    await assertBuildingInEditorSite(floor.buildingId, siteId);
+    const body = z
+      .object({
+        level: z.number().int().optional(),
+        name: z.string().min(1).optional(),
+        expectedUpdatedAt: z.string().datetime().optional(),
+      })
+      .parse(req.body);
+    try {
+      const updated = await floorLayoutRepository.updateFloor(id, body);
+      if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Floor not found' });
+      res.json(updated);
+    } catch (err: unknown) {
+      const pg = err as { code?: string };
+      if (pg.code === '23505') {
+        throw new AppError(
+          'DUPLICATE_FLOOR',
+          'A floor with this level already exists for the building',
+          422,
+        );
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/map-builder/indoor/floors/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const floor = await floorLayoutRepository.getFloorById(id);
+    if (!floor) return res.status(404).json({ code: 'NOT_FOUND', message: 'Floor not found' });
+    await assertBuildingInEditorSite(floor.buildingId, siteId);
+    await floorLayoutRepository.deleteFloor(id);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/indoor/rooms', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = z
+      .object({
+        buildingId: z.string().uuid(),
+        floorId: z.string().uuid(),
+        name: z.string().min(1),
+        code: z.string().min(1),
+        category: roomCategorySchema,
+        wheelchairAccessible: z.boolean().optional(),
+        localGeometry: localPolygonSchema,
+      })
+      .parse(req.body);
+    await assertBuildingInEditorSite(body.buildingId, siteId);
+    res.status(201).json(await floorLayoutRepository.createRoom(body));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.put('/map-builder/indoor/rooms/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const room = await floorLayoutRepository.getRoomById(id);
+    if (!room) return res.status(404).json({ code: 'NOT_FOUND', message: 'Room not found' });
+    await assertBuildingInEditorSite(room.buildingId, siteId);
+    const body = z
+      .object({
+        name: z.string().min(1).optional(),
+        code: z.string().min(1).optional(),
+        category: roomCategorySchema.optional(),
+        wheelchairAccessible: z.boolean().optional(),
+        localGeometry: localPolygonSchema.optional(),
+        floorId: z.string().uuid().optional(),
+        expectedUpdatedAt: z.string().datetime().optional(),
+      })
+      .parse(req.body);
+    const updated = await floorLayoutRepository.updateRoom(id, body);
+    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Room not found' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/map-builder/indoor/rooms/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const room = await floorLayoutRepository.getRoomById(id);
+    if (!room) return res.status(404).json({ code: 'NOT_FOUND', message: 'Room not found' });
+    await assertBuildingInEditorSite(room.buildingId, siteId);
+    await floorLayoutRepository.deleteRoom(id);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/indoor/corridors', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = z
+      .object({
+        buildingId: z.string().uuid(),
+        floorId: z.string().uuid(),
+        name: z.string().nullable().optional(),
+        category: z.string().optional(),
+        localGeometry: localPolygonSchema,
+      })
+      .parse(req.body);
+    await assertBuildingInEditorSite(body.buildingId, siteId);
+    res.status(201).json(await floorLayoutRepository.createCorridor(body));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.put('/map-builder/indoor/corridors/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const corridor = await floorLayoutRepository.getCorridorById(id);
+    if (!corridor) return res.status(404).json({ code: 'NOT_FOUND', message: 'Corridor not found' });
+    await assertBuildingInEditorSite(corridor.buildingId, siteId);
+    const body = z
+      .object({
+        name: z.string().nullable().optional(),
+        category: z.string().optional(),
+        localGeometry: localPolygonSchema.optional(),
+        floorId: z.string().uuid().optional(),
+        expectedUpdatedAt: z.string().datetime().optional(),
+      })
+      .parse(req.body);
+    const updated = await floorLayoutRepository.updateCorridor(id, body);
+    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Corridor not found' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/map-builder/indoor/corridors/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const corridor = await floorLayoutRepository.getCorridorById(id);
+    if (!corridor) return res.status(404).json({ code: 'NOT_FOUND', message: 'Corridor not found' });
+    await assertBuildingInEditorSite(corridor.buildingId, siteId);
+    await floorLayoutRepository.deleteCorridor(id);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/indoor/pois', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = z
+      .object({
+        buildingId: z.string().uuid(),
+        floorId: z.string().uuid(),
+        name: z.string().min(1),
+        category: floorPoiCategorySchema,
+        localX: z.number(),
+        localY: z.number(),
+      })
+      .parse(req.body);
+    await assertBuildingInEditorSite(body.buildingId, siteId);
+    res.status(201).json(await floorLayoutRepository.createPoi(body));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.put('/map-builder/indoor/pois/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const poi = await floorLayoutRepository.getPoiById(id);
+    if (!poi) return res.status(404).json({ code: 'NOT_FOUND', message: 'POI not found' });
+    await assertBuildingInEditorSite(poi.buildingId, siteId);
+    const body = z
+      .object({
+        name: z.string().min(1).optional(),
+        category: floorPoiCategorySchema.optional(),
+        localX: z.number().optional(),
+        localY: z.number().optional(),
+        floorId: z.string().uuid().optional(),
+        expectedUpdatedAt: z.string().datetime().optional(),
+      })
+      .parse(req.body);
+    const updated = await floorLayoutRepository.updatePoi(id, body);
+    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'POI not found' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/map-builder/indoor/pois/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const id = String(req.params.id);
+    const poi = await floorLayoutRepository.getPoiById(id);
+    if (!poi) return res.status(404).json({ code: 'NOT_FOUND', message: 'POI not found' });
+    await assertBuildingInEditorSite(poi.buildingId, siteId);
+    await floorLayoutRepository.deletePoi(id);
     res.status(204).send();
   } catch (err) {
     next(err);

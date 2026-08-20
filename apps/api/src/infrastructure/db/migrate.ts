@@ -68,6 +68,10 @@ async function migrate() {
   const stabilizationSql = fs.readFileSync(stabilizationPath, 'utf8');
   await pool.query(stabilizationSql);
 
+  const indoorBuilderPath = path.join(__dirname, 'map-builder-indoor.sql');
+  const indoorBuilderSql = fs.readFileSync(indoorBuilderPath, 'utf8');
+  await pool.query(indoorBuilderSql);
+
   console.log('Schema applied');
   await pool.end();
 }
