@@ -3,8 +3,9 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Building, DangerZone, GeoPoint, GraphNode, SiteArea } from '@campusar/shared';
 import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAX_ZOOM } from '../../lib/campus';
-import { MAPLIBRE_STYLE_URL } from '../../lib/mapEngine';
 import { ensureMapLibreWorker } from '../../lib/maplibreWorker';
+import { applyMapLibreBasemap, emptyMapLibreStyle } from '../../lib/maplibreBasemap';
+import type { BasemapMode } from './RealBasemap';
 import type { UserPose } from '../../lib/geo';
 
 export type CrowdEdge = {
@@ -17,6 +18,8 @@ export type CrowdEdge = {
 type Props = {
   className?: string;
   center: [number, number];
+  /** Basemap parity with Leaflet RealBasemapTiles (default hybrid). */
+  basemapMode?: BasemapMode;
   buildings?: Building[];
   /** Named/clickable places shown as markers. */
   placeNodes: GraphNode[];
@@ -86,6 +89,7 @@ function setGeoJson(map: maplibregl.Map, id: string, data: GeoJSON.FeatureCollec
 export function CampusMapLibreMap({
   className = 'h-full w-full',
   center,
+  basemapMode = 'hybrid',
   buildings = [],
   placeNodes,
   graphNodes,
@@ -106,6 +110,7 @@ export function CampusMapLibreMap({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const gpsMarkerRef = useRef<maplibregl.Marker | null>(null);
   const followRef = useRef(followGps);
+  const basemapModeRef = useRef(basemapMode);
   const onPlaceClickRef = useRef(onPlaceClick);
   const onBuildingClickRef = useRef(onBuildingClick);
   const onFollowBreakRef = useRef(onFollowBreak);
@@ -113,6 +118,9 @@ export function CampusMapLibreMap({
   useEffect(() => {
     followRef.current = followGps;
   }, [followGps]);
+  useEffect(() => {
+    basemapModeRef.current = basemapMode;
+  }, [basemapMode]);
   useEffect(() => {
     onPlaceClickRef.current = onPlaceClick;
     onBuildingClickRef.current = onBuildingClick;
@@ -275,7 +283,7 @@ export function CampusMapLibreMap({
     ensureMapLibreWorker();
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: MAPLIBRE_STYLE_URL,
+      style: emptyMapLibreStyle(),
       center: [center[1], center[0]],
       zoom: CAMPUS_DEFAULT_ZOOM,
       maxZoom: CAMPUS_MAX_ZOOM,
@@ -288,6 +296,8 @@ export function CampusMapLibreMap({
     }
 
     const onLoad = () => {
+      applyMapLibreBasemap(map, basemapModeRef.current);
+
       map.addSource('campus-areas', { type: 'geojson', data: emptyFc() });
       map.addSource('campus-buildings', { type: 'geojson', data: emptyFc() });
       map.addSource('campus-edges', { type: 'geojson', data: emptyFc() });
@@ -480,6 +490,13 @@ export function CampusMapLibreMap({
     if (!map || followGps || routePoints.length > 1) return;
     map.easeTo({ center: [center[1], center[0]], duration: 400 });
   }, [center, followGps, routePoints.length]);
+
+  // Swap Esri/CARTO basemap without rebuilding campus overlays
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    applyMapLibreBasemap(map, basemapMode);
+  }, [basemapMode]);
 
   return <div ref={containerRef} className={className} />;
 }

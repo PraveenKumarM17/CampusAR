@@ -708,13 +708,7 @@ export function NavigatePage() {
         {!hasPublishedMap && <EmptySiteNotice compact />}
 
         <div className="relative overflow-hidden rounded-md border border-line">
-          {!useMapLibre ? (
-            <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
-          ) : (
-            <span className="absolute left-3 top-3 z-[1000] rounded border border-line bg-paper-raised px-2 py-1 text-[11px] font-semibold uppercase text-ink-mute">
-              Engine: maplibre
-            </span>
-          )}
+          <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
           {distanceRemainingM != null && route && pose && (
             <div className="pointer-events-none absolute left-3 top-14 z-[1000] rounded-md border border-line bg-paper-raised/95 px-3 py-2 text-sm font-semibold shadow-sm">
               {formatDistance(distanceRemainingM)} left
@@ -724,6 +718,7 @@ export function NavigatePage() {
             <CampusMapLibreMap
               className="h-[70vh] w-full"
               center={mapCenter}
+              basemapMode={basemapMode}
               buildings={buildings}
               placeNodes={placeNodes}
               graphNodes={nodes}
