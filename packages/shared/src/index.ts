@@ -101,14 +101,21 @@ export interface GeoPoint {
   longitude: number;
 }
 
+/** Default floor-to-floor height (meters) when building has no override. */
+export const DEFAULT_FLOOR_HEIGHT_M = 3.5;
+
 export interface Building {
   id: string;
+  /** Cross-version identity for map diff/history. */
+  stableId?: string;
   name: string;
   code: string;
   description: string | null;
   latitude: number;
   longitude: number;
   floorsCount: number;
+  /** Per-floor vertical spacing for indoor elevation (level × floorHeightM). */
+  floorHeightM?: number;
   /** Optional canonical footprint ring (WGS84). Legacy buildings may omit this. */
   footprint?: GeoPoint[];
   siteId?: string;
@@ -120,6 +127,8 @@ export type SiteAreaType = 'parking' | 'open_area' | 'restricted' | 'assembly';
 
 export interface SiteArea {
   id: string;
+  /** Cross-version identity for map diff/history. */
+  stableId?: string;
   siteId: string;
   name: string;
   type: SiteAreaType;
@@ -167,6 +176,47 @@ export type MapVersionPublishResponse =
       validation: UnifiedMapValidationResult;
     };
 
+export type MapDiffFeatureType = 'building' | 'node' | 'edge' | 'area';
+
+export interface MapVersionDiffFeature {
+  featureType: MapDiffFeatureType;
+  stableId: string;
+  versionId: string;
+  id: string;
+  name: string | null;
+}
+
+export interface MapVersionDiffModifiedFeature extends MapVersionDiffFeature {
+  changedFields: string[];
+}
+
+export interface MapVersionDiff {
+  versionId: string;
+  baseVersionId: string | null;
+  added: MapVersionDiffFeature[];
+  removed: MapVersionDiffFeature[];
+  modified: MapVersionDiffModifiedFeature[];
+  summary: {
+    added: number;
+    removed: number;
+    modified: number;
+  };
+}
+
+export interface MapVersionPublishLogEntry {
+  id: string;
+  siteId: string;
+  publishedVersionId: string;
+  previousVersionId: string | null;
+  publishedBy: string | null;
+  publishedAt: string;
+  diffSummary: {
+    added: { count: number; examples: string[] };
+    removed: { count: number; examples: string[] };
+    modified: { count: number; examples: string[] };
+  };
+}
+
 export interface MapBuilderSnapshot {
   siteId: string;
   version: SiteMapVersion;
@@ -203,6 +253,12 @@ export interface Room {
   wheelchairAccessible: boolean;
   /** Closed or open polygon ring in floor-plan local meters. */
   localGeometry?: LocalVec2[] | null;
+  /** Measured room extents in meters. Length is the longer horizontal span. */
+  measuredLengthM?: number | null;
+  measuredWidthM?: number | null;
+  measuredHeightM?: number | null;
+  measurementSource?: 'camera_ar' | 'floor_plan' | 'manual' | null;
+  measuredAt?: string | null;
   updatedAt?: string;
 }
 
@@ -292,6 +348,8 @@ export type EdgeKind = 'walkway' | 'stairs' | 'elevator' | 'ramp' | 'corridor';
 
 export interface GraphNode {
   id: string;
+  /** Cross-version identity for map diff/history. */
+  stableId?: string;
   name: string | null;
   latitude: number;
   longitude: number;
@@ -324,6 +382,8 @@ export interface RoutePlaceSummary {
 
 export interface GraphEdge {
   id: string;
+  /** Cross-version identity for map diff/history. */
+  stableId?: string;
   fromNodeId: string;
   toNodeId: string;
   distanceM: number;

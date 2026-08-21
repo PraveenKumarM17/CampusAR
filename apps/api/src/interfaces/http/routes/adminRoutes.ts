@@ -6,6 +6,7 @@ import { notificationRepository } from '../../../infrastructure/repositories/ana
 import { siteAreaRepository } from '../../../infrastructure/repositories/siteAreaRepository';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 import { requireMapEditor } from '../middleware/mapEditorAuth';
+import { idempotencyMiddleware } from '../middleware/idempotency';
 import {
   assertResourceInSite,
   resolveEditorSiteId,
@@ -15,6 +16,7 @@ import { validateSiteMap } from '../../../application/mapValidation';
 import { validateIndoorLayout } from '../../../application/indoorLayoutValidation';
 import { validateMapVersion } from '../../../application/mapVersionValidationService';
 import { mapVersionPublishService } from '../../../application/mapVersionPublishService';
+import { mapVersionDiffService } from '../../../application/mapVersionDiffService';
 import {
   graphEdgeCreateSchema,
   graphHandoffSchema,
@@ -165,6 +167,37 @@ mapEditorRouter.get('/map-builder/versions/:versionId/validate', async (req: Aut
   }
 });
 
+mapEditorRouter.get('/map-builder/versions/:versionId/diff', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const versionId = String(req.params.versionId);
+    const version = await mapVersionService.getVersion(siteId, versionId);
+    const baseVersionId = version.basedOnVersionId;
+    res.json(await mapVersionDiffService.computeDiff(version.id, baseVersionId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/map-builder/history', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    res.json(await mapVersionService.listPublishHistory(siteId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/versions/:versionId/rollback', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const sourceVersionId = String(req.params.versionId);
+    res.status(201).json(await mapVersionService.rollbackToVersion(siteId, sourceVersionId, req.user?.sub ?? null));
+  } catch (err) {
+    next(err);
+  }
+});
+
 mapEditorRouter.post('/map-builder/versions/:versionId/publish', async (req: AuthedRequest, res, next) => {
   try {
     const siteId = await editorSiteStrict(req);
@@ -193,7 +226,7 @@ mapEditorRouter.get('/map-builder/validate', async (req: AuthedRequest, res, nex
   }
 });
 
-mapEditorRouter.post('/buildings', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.post('/buildings', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const body = z
@@ -220,7 +253,7 @@ mapEditorRouter.post('/buildings', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.put('/buildings/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -241,6 +274,7 @@ mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
         latitude: z.number().optional(),
         longitude: z.number().optional(),
         floorsCount: z.number().int().positive().optional(),
+        floorHeightM: z.number().positive().max(20).optional(),
         footprint: footprintSchema.nullable().optional(),
         expectedUpdatedAt: z.string().datetime().optional(),
       })
@@ -250,6 +284,7 @@ mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
       code: body.code,
       description: body.description,
       floorsCount: body.floorsCount,
+      floorHeightM: body.floorHeightM,
       footprint: body.footprint === null ? [] : body.footprint,
       expectedUpdatedAt: body.expectedUpdatedAt,
       latitude: body.latitude,
@@ -262,7 +297,7 @@ mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.delete('/buildings/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.delete('/buildings/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -288,7 +323,7 @@ mapEditorRouter.get('/paths/nodes', async (req, res, next) => {
   }
 });
 
-mapEditorRouter.post('/paths/nodes', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.post('/paths/nodes', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const body = z
@@ -329,7 +364,7 @@ mapEditorRouter.post('/paths/nodes', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.put('/paths/nodes/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.put('/paths/nodes/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -367,7 +402,7 @@ mapEditorRouter.put('/paths/nodes/:id', async (req: AuthedRequest, res, next) =>
   }
 });
 
-mapEditorRouter.delete('/paths/nodes/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.delete('/paths/nodes/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -394,7 +429,7 @@ mapEditorRouter.get('/paths/edges', async (req, res, next) => {
   }
 });
 
-mapEditorRouter.post('/paths/edges', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.post('/paths/edges', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const body = z
@@ -428,7 +463,7 @@ mapEditorRouter.post('/paths/edges', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.put('/paths/edges/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.put('/paths/edges/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -462,7 +497,7 @@ mapEditorRouter.put('/paths/edges/:id', async (req: AuthedRequest, res, next) =>
   }
 });
 
-mapEditorRouter.delete('/paths/edges/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.delete('/paths/edges/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -491,7 +526,7 @@ mapEditorRouter.get('/areas', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.post('/areas', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.post('/areas', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const body = z
@@ -515,7 +550,7 @@ mapEditorRouter.post('/areas', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.put('/areas/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.put('/areas/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -543,7 +578,7 @@ mapEditorRouter.put('/areas/:id', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.delete('/areas/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.delete('/areas/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -682,6 +717,10 @@ mapEditorRouter.post('/map-builder/indoor/rooms', async (req: AuthedRequest, res
         category: roomCategorySchema,
         wheelchairAccessible: z.boolean().optional(),
         localGeometry: localPolygonSchema,
+        measuredLengthM: z.number().positive().max(500).optional(),
+        measuredWidthM: z.number().positive().max(500).optional(),
+        measuredHeightM: z.number().positive().max(50).optional(),
+        measurementSource: z.enum(['camera_ar', 'floor_plan', 'manual']).optional(),
       })
       .parse(req.body);
     await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
@@ -708,6 +747,13 @@ mapEditorRouter.put('/map-builder/indoor/rooms/:id', async (req: AuthedRequest, 
         wheelchairAccessible: z.boolean().optional(),
         localGeometry: localPolygonSchema.optional(),
         floorId: z.string().uuid().optional(),
+        measuredLengthM: z.number().positive().max(500).nullable().optional(),
+        measuredWidthM: z.number().positive().max(500).nullable().optional(),
+        measuredHeightM: z.number().positive().max(50).nullable().optional(),
+        measurementSource: z
+          .enum(['camera_ar', 'floor_plan', 'manual'])
+          .nullable()
+          .optional(),
         expectedUpdatedAt: z.string().datetime().optional(),
       })
       .parse(req.body);

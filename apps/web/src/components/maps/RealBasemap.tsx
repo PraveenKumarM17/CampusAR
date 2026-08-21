@@ -7,6 +7,7 @@ export type BasemapMode = 'hybrid' | 'satellite' | 'streets';
 /**
  * Real-world basemap tiles: satellite imagery + road/place labels
  * (Esri World Imagery + transportation / places overlays — buildings & roads visible).
+ * Used by Leaflet only. MapLibre uses the same tile URLs via `applyMapLibreBasemap`.
  */
 export function RealBasemapTiles({ mode = 'hybrid' }: { mode?: BasemapMode }) {
   if (mode === 'streets') {

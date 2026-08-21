@@ -1,4 +1,10 @@
-import type { SiteMapVersion, SiteMapVersionStatus, UnifiedMapValidationResult } from '@campusar/shared';
+import type {
+  MapVersionDiff,
+  MapVersionPublishLogEntry,
+  SiteMapVersion,
+  SiteMapVersionStatus,
+  UnifiedMapValidationResult,
+} from '@campusar/shared';
 import { AppError } from '../../domain/errors';
 import { pool, query } from '../db/pool';
 import { clonePublishedMapToDraft } from '../../application/mapVersionCloneService';
@@ -17,6 +23,22 @@ type VersionRow = {
   updated_at: Date;
   published_at: Date | null;
   archived_at: Date | null;
+};
+
+type PublishLogRow = {
+  id: string;
+  site_id: string;
+  published_version_id: string;
+  previous_version_id: string | null;
+  published_by: string | null;
+  published_at: Date;
+  diff_summary:
+    | {
+        added?: { count?: number; examples?: string[] };
+        removed?: { count?: number; examples?: string[] };
+        modified?: { count?: number; examples?: string[] };
+      }
+    | null;
 };
 
 function mapVersionRow(r: VersionRow): SiteMapVersion {
@@ -67,6 +89,44 @@ export const mapVersionRepository = {
       [siteId],
     );
     return rows.map(mapVersionRow);
+  },
+
+  async listPublishHistory(siteId: string): Promise<MapVersionPublishLogEntry[]> {
+    const { rows } = await query<PublishLogRow>(
+      `SELECT *
+       FROM map_version_publish_log
+       WHERE site_id = $1
+       ORDER BY published_at DESC`,
+      [siteId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      siteId: r.site_id,
+      publishedVersionId: r.published_version_id,
+      previousVersionId: r.previous_version_id,
+      publishedBy: r.published_by,
+      publishedAt: r.published_at.toISOString(),
+      diffSummary: {
+        added: {
+          count: Number(r.diff_summary?.added?.count ?? 0),
+          examples: Array.isArray(r.diff_summary?.added?.examples)
+            ? (r.diff_summary?.added?.examples as string[])
+            : [],
+        },
+        removed: {
+          count: Number(r.diff_summary?.removed?.count ?? 0),
+          examples: Array.isArray(r.diff_summary?.removed?.examples)
+            ? (r.diff_summary?.removed?.examples as string[])
+            : [],
+        },
+        modified: {
+          count: Number(r.diff_summary?.modified?.count ?? 0),
+          examples: Array.isArray(r.diff_summary?.modified?.examples)
+            ? (r.diff_summary?.modified?.examples as string[])
+            : [],
+        },
+      },
+    }));
   },
 
   async getSitePublishedPointer(siteId: string): Promise<string | null> {
@@ -209,6 +269,11 @@ export const mapVersionRepository = {
     draftVersionId: string,
     userId: string | null,
     validateDraft: (draft: SiteMapVersion) => Promise<UnifiedMapValidationResult>,
+    computeDiff: (
+      draftVersionId: string,
+      baseVersionId: string | null,
+      client: { query: typeof query },
+    ) => Promise<MapVersionDiff>,
     onStep?: (step: 'after-archive' | 'before-pointer-update') => void,
   ): Promise<
     | { published: true; version: SiteMapVersion; previousVersion: SiteMapVersion | null }
@@ -266,6 +331,14 @@ export const mapVersionRepository = {
         [siteId],
       );
       const previousPublished = publishedRows[0] ? mapVersionRow(publishedRows[0]) : null;
+      const diff = await computeDiff(draftVersionId, previousPublished?.id ?? null, client);
+      const summarize = (items: Array<{ name: string | null }>) => ({
+        count: items.length,
+        examples: items
+          .map((x) => x.name)
+          .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+          .slice(0, 10),
+      });
 
       let previousVersion: SiteMapVersion | null = null;
 
@@ -319,6 +392,23 @@ export const mapVersionRepository = {
          SET status = 'published', updated_at = NOW()
          WHERE map_version_id = $1`,
         [draftVersionId],
+      );
+
+      await client.query(
+        `INSERT INTO map_version_publish_log (
+           site_id, published_version_id, previous_version_id, published_by, published_at, diff_summary
+         ) VALUES ($1, $2, $3, $4, NOW(), $5::jsonb)`,
+        [
+          siteId,
+          draftVersionId,
+          previousPublished?.id ?? null,
+          userId,
+          JSON.stringify({
+            added: summarize(diff.added),
+            removed: summarize(diff.removed),
+            modified: summarize(diff.modified),
+          }),
+        ],
       );
 
       await client.query('COMMIT');

@@ -42,6 +42,7 @@ import type {
 import { useAuthStore } from '../stores/authStore';
 import { joinApiUrl, resolveApiBaseUrl } from './clientUrls';
 import { useSiteStore } from '../stores/siteStore';
+import { usePreviewStore } from '../stores/previewStore';
 import type { Site } from '@campusar/shared';
 
 /** Same-origin `/api` by default (Vite proxy in dev, nginx in Docker). */
@@ -92,6 +93,10 @@ async function refreshAccessToken(): Promise<string | null> {
   return refreshInFlight;
 }
 
+export type ApiRequestOpts = {
+  idempotencyKey?: string;
+};
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -137,7 +142,15 @@ async function request<T>(
         : res.status === 401
           ? 'Session expired — sign in again as organization admin.'
           : 'Request failed';
-    throw new ApiError(data.code ?? 'ERROR', data.message ?? fallback, res.status, data.details);
+    const code = data.code ?? 'ERROR';
+    if (
+      path.includes('/map-builder/preview/') &&
+      usePreviewStore.getState().active &&
+      ((res.status === 422 && code === 'PREVIEW_DRAFT_ONLY') || res.status === 404)
+    ) {
+      usePreviewStore.getState().exitPreview();
+    }
+    throw new ApiError(code, data.message ?? fallback, res.status, data.details);
   }
   return data as T;
 }
@@ -398,16 +411,50 @@ export const api = {
       request<MapBuilderSnapshot>('/admin/map-builder/snapshot', {}, token),
     validate: (token?: string | null) =>
       request<MapValidationResult>('/admin/map-builder/validate', {}, token),
-    createBuilding: (body: Omit<Building, 'id'>, token?: string | null) =>
-      request<Building>('/admin/buildings', { method: 'POST', body: JSON.stringify(body) }, token),
-    updateBuilding: (id: string, body: Partial<Building> & { expectedUpdatedAt?: string }, token?: string | null) =>
+    createBuilding: (
+      body: Omit<Building, 'id'>,
+      token?: string | null,
+      opts?: ApiRequestOpts,
+    ) =>
       request<Building>(
-        `/admin/buildings/${id}`,
-        { method: 'PUT', body: JSON.stringify(body) },
+        '/admin/buildings',
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
         token,
       ),
-    deleteBuilding: (id: string, token?: string | null) =>
-      request<void>(`/admin/buildings/${id}`, { method: 'DELETE' }, token),
+    updateBuilding: (
+      id: string,
+      body: Partial<Building> & { expectedUpdatedAt?: string },
+      token?: string | null,
+      opts?: ApiRequestOpts,
+    ) =>
+      request<Building>(
+        `/admin/buildings/${id}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(body),
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
+        token,
+      ),
+    deleteBuilding: (id: string, token?: string | null, opts?: ApiRequestOpts) =>
+      request<void>(
+        `/admin/buildings/${id}`,
+        {
+          method: 'DELETE',
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
+        token,
+      ),
     createNode: (
       body: {
         name?: string | null;
@@ -418,10 +465,17 @@ export const api = {
         kind: GraphNode['kind'];
       },
       token?: string | null,
+      opts?: ApiRequestOpts,
     ) =>
       request<GraphNode>(
         '/admin/paths/nodes',
-        { method: 'POST', body: JSON.stringify(body) },
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
         token,
       ),
     updateNode: (
@@ -435,44 +489,123 @@ export const api = {
         kind: GraphNode['kind'];
       }>,
       token?: string | null,
+      opts?: ApiRequestOpts,
     ) =>
       request<GraphNode>(
         `/admin/paths/nodes/${id}`,
-        { method: 'PUT', body: JSON.stringify(body) },
+        {
+          method: 'PUT',
+          body: JSON.stringify(body),
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
         token,
       ),
-    deleteNode: (id: string, cascade = false, token?: string | null) =>
+    deleteNode: (
+      id: string,
+      cascade = false,
+      token?: string | null,
+      opts?: ApiRequestOpts,
+    ) =>
       request<void>(
         `/admin/paths/nodes/${id}${cascade ? '?cascade=true' : ''}`,
-        { method: 'DELETE' },
+        {
+          method: 'DELETE',
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
         token,
       ),
-    createEdge: (body: Omit<GraphEdge, 'id'>, token?: string | null) =>
+    createEdge: (
+      body: Omit<GraphEdge, 'id'>,
+      token?: string | null,
+      opts?: ApiRequestOpts,
+    ) =>
       request<GraphEdge>(
         '/admin/paths/edges',
-        { method: 'POST', body: JSON.stringify(body) },
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
         token,
       ),
-    updateEdge: (id: string, body: Partial<GraphEdge>, token?: string | null) =>
+    updateEdge: (
+      id: string,
+      body: Partial<GraphEdge>,
+      token?: string | null,
+      opts?: ApiRequestOpts,
+    ) =>
       request<GraphEdge>(
         `/admin/paths/edges/${id}`,
-        { method: 'PUT', body: JSON.stringify(body) },
+        {
+          method: 'PUT',
+          body: JSON.stringify(body),
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
         token,
       ),
-    deleteEdge: (id: string, token?: string | null) =>
-      request<void>(`/admin/paths/edges/${id}`, { method: 'DELETE' }, token),
+    deleteEdge: (id: string, token?: string | null, opts?: ApiRequestOpts) =>
+      request<void>(
+        `/admin/paths/edges/${id}`,
+        {
+          method: 'DELETE',
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
+        token,
+      ),
     createArea: (
       body: { name: string; type: SiteArea['type']; footprint: SiteArea['footprint'] },
       token?: string | null,
-    ) => request<SiteArea>('/admin/areas', { method: 'POST', body: JSON.stringify(body) }, token),
-    updateArea: (id: string, body: Partial<SiteArea>, token?: string | null) =>
+      opts?: ApiRequestOpts,
+    ) =>
       request<SiteArea>(
-        `/admin/areas/${id}`,
-        { method: 'PUT', body: JSON.stringify(body) },
+        '/admin/areas',
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
         token,
       ),
-    deleteArea: (id: string, token?: string | null) =>
-      request<void>(`/admin/areas/${id}`, { method: 'DELETE' }, token),
+    updateArea: (
+      id: string,
+      body: Partial<SiteArea>,
+      token?: string | null,
+      opts?: ApiRequestOpts,
+    ) =>
+      request<SiteArea>(
+        `/admin/areas/${id}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(body),
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
+        token,
+      ),
+    deleteArea: (id: string, token?: string | null, opts?: ApiRequestOpts) =>
+      request<void>(
+        `/admin/areas/${id}`,
+        {
+          method: 'DELETE',
+          headers: opts?.idempotencyKey
+            ? { 'Idempotency-Key': opts.idempotencyKey }
+            : undefined,
+        },
+        token,
+      ),
     indoorSnapshot: (buildingId: string, token?: string | null) =>
       request<IndoorFloorLayoutSnapshot>(
         `/admin/map-builder/indoor/snapshot?buildingId=${encodeURIComponent(buildingId)}`,
@@ -511,6 +644,10 @@ export const api = {
         category: RoomCategory;
         wheelchairAccessible?: boolean;
         localGeometry: LocalVec2[];
+        measuredLengthM?: number;
+        measuredWidthM?: number;
+        measuredHeightM?: number;
+        measurementSource?: 'camera_ar' | 'floor_plan' | 'manual';
       },
       token?: string | null,
     ) =>
@@ -528,6 +665,10 @@ export const api = {
         wheelchairAccessible: boolean;
         localGeometry: LocalVec2[];
         floorId: string;
+        measuredLengthM: number | null;
+        measuredWidthM: number | null;
+        measuredHeightM: number | null;
+        measurementSource: 'camera_ar' | 'floor_plan' | 'manual' | null;
         expectedUpdatedAt: string;
       }>,
       token?: string | null,
@@ -648,6 +789,24 @@ export const api = {
       ),
     deleteIndoorGraphNode: (id: string, token?: string | null) =>
       request<void>(`/admin/map-builder/indoor/graph/nodes/${id}`, { method: 'DELETE' }, token),
+    createIndoorAnchor: (
+      body: {
+        mapId: string;
+        nodeId: string;
+        floorId?: string;
+        anchorCode: string;
+        physicalMarkerType?: string;
+        localX?: number;
+        localY?: number;
+        localZ?: number;
+      },
+      token?: string | null,
+    ) =>
+      request<import('@campusar/shared').IndoorAnchor>(
+        '/indoor/anchors',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
     createIndoorGraphEdge: (
       body: {
         buildingId: string;

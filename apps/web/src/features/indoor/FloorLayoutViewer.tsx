@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Floor, FloorCorridor, FloorPoi, LocalVec2, Room } from '@campusar/shared';
+import type {
+  Floor,
+  FloorCorridor,
+  FloorPoi,
+  IndoorRouteResponse,
+  LocalVec2,
+  Room,
+} from '@campusar/shared';
 import { FLOOR_PLAN_COORDINATE_SYSTEM } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { ringToSvgPoints } from '../mapBuilder/indoorLayoutUtils';
@@ -15,9 +22,11 @@ type LayoutData = {
 export function FloorLayoutViewer({
   buildingId,
   token,
+  route,
 }: {
   buildingId: string;
   token?: string | null;
+  route?: IndoorRouteResponse | null;
 }) {
   const [layout, setLayout] = useState<LayoutData | null>(null);
   const [floorId, setFloorId] = useState<string | null>(null);
@@ -52,6 +61,13 @@ export function FloorLayoutViewer({
   const pois = useMemo(
     () => (layout?.pois ?? []).filter((p) => p.floorId === floorId),
     [layout, floorId],
+  );
+  const routePoints = useMemo(
+    () =>
+      (route?.nodes ?? [])
+        .filter((node) => node.floorId === floorId)
+        .map((node) => ({ x: node.localX, y: node.localY })),
+    [route, floorId],
   );
 
   const rings: LocalVec2[][] = [
@@ -124,6 +140,28 @@ export function FloorLayoutViewer({
         ))}
         {pois.map((p) => (
           <circle key={p.id} cx={p.localX} cy={p.localY} r={0.3} fill="#f97316" />
+        ))}
+        {routePoints.length > 1 && (
+          <polyline
+            points={ringToSvgPoints(routePoints)}
+            fill="none"
+            stroke="#0f6b63"
+            strokeWidth={0.22}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="0.45 0.2"
+          />
+        )}
+        {routePoints.map((point, index) => (
+          <circle
+            key={`route-${point.x}-${point.y}-${index}`}
+            cx={point.x}
+            cy={point.y}
+            r={index === routePoints.length - 1 ? 0.32 : 0.18}
+            fill={index === routePoints.length - 1 ? '#c47a12' : '#0f6b63'}
+            stroke="#ffffff"
+            strokeWidth={0.06}
+          />
         ))}
       </svg>
     </div>

@@ -3,6 +3,7 @@ import { AppError } from '../domain/errors';
 import { mapVersionRepository } from '../infrastructure/repositories/mapVersionRepository';
 import { validateMapVersion } from './mapVersionValidationService';
 import { broadcast } from '../infrastructure/realtime/wsHub';
+import { mapVersionDiffService } from './mapVersionDiffService';
 
 /** @internal Integration tests inject a failure during publish transactions. */
 export type PublishTestFailureStep = 'after-archive' | 'before-pointer-update';
@@ -39,11 +40,16 @@ export const mapVersionPublishService = {
     versionId: string,
     userId: string | null,
   ): Promise<MapVersionPublishResult> {
+    if (!userId) {
+      throw new AppError('UNAUTHORIZED', 'Publish requires an authenticated editor', 401);
+    }
     const outcome = await mapVersionRepository.publishDraftInTransaction(
       siteId,
       versionId,
       userId,
       async (draft) => validateMapVersion(siteId, draft),
+      (draftVersionId, baseVersionId, client) =>
+        mapVersionDiffService.computeDiff(draftVersionId, baseVersionId, client),
       maybeInjectPublishTestFailure,
     );
 

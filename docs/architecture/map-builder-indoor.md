@@ -29,6 +29,7 @@ The map builder converts between these when placing or moving navigation nodes.
 | Feature | Storage | Notes |
 |---------|---------|-------|
 | Floors | `floors` | `level`, `name`, `updated_at` |
+| Floor height factor | `buildings.floor_height_m` | Per-building meters per level (default 3.5); elevation = `level × floor_height_m` |
 | Room polygons | `rooms.local_geometry` | Floor-plan polygon |
 | Corridors | `floor_corridors.local_geometry` | Polygon |
 | Indoor POIs | `floor_pois` | Point features |
@@ -58,6 +59,8 @@ Public read: `GET /api/campus/buildings/:buildingId/indoor-layout?floorId=`
 
 ## Editing workflow
 
+- **Measure tool** — tap floor-plan corners; segment distances use [AR-Measure](https://github.com/lightlessdays/AR-Measure) vector math; build room/corridor polygon and save
+- **AR Measure** (mobile WebXR when supported) — tap real floor in camera AR; apply points to floor plan
 - Floor-plan geometry: local canvas until explicit Save (2.5B.1 model)
 - Navigation nodes: created/moved/deleted via canonical API (move saved on pointer-up)
 - Connect tool: pick node A, then node B to create an edge

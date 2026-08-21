@@ -79,7 +79,7 @@ describe('site map spatial versioning (Step 2)', () => {
     expect(rows[0].map_version_id).toBe(published.id);
   });
 
-  it.skipIf(!canUseDb)('draft clone creates independent building UUIDs with same logical content', async () => {
+  it.skipIf(!canUseDb)('draft clone keeps stable_id while assigning new building UUIDs', async () => {
     const token = await loginAdmin();
     const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
     const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
@@ -89,11 +89,11 @@ describe('site map spatial versioning (Step 2)', () => {
     const draftId = draftRes.body.id as string;
 
     const { rows: pubRows } = await pool.query(
-      `SELECT id, code, name FROM buildings WHERE site_id = $1 AND map_version_id = $2`,
+      `SELECT id, stable_id, code, name FROM buildings WHERE site_id = $1 AND map_version_id = $2`,
       [RNSIT_SITE, published.id],
     );
     const { rows: draftRows } = await pool.query(
-      `SELECT id, code, name FROM buildings WHERE site_id = $1 AND map_version_id = $2`,
+      `SELECT id, stable_id, code, name FROM buildings WHERE site_id = $1 AND map_version_id = $2`,
       [RNSIT_SITE, draftId],
     );
     expect(pubRows.length).toBeGreaterThan(0);
@@ -101,6 +101,9 @@ describe('site map spatial versioning (Step 2)', () => {
     expect(draftRows.some((d: { id: string }) => d.id === RNSIT_BUILDING)).toBe(false);
     expect(new Set(draftRows.map((d: { code: string }) => d.code))).toEqual(
       new Set(pubRows.map((p: { code: string }) => p.code)),
+    );
+    expect(new Set(draftRows.map((d: { stable_id: string }) => d.stable_id))).toEqual(
+      new Set(pubRows.map((p: { stable_id: string }) => p.stable_id)),
     );
   });
 
@@ -207,6 +210,27 @@ describe('site map spatial versioning (Step 2)', () => {
       });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('CROSS_VERSION_REFERENCE');
+  });
+
+  it.skipIf(!canUseDb)('live diff endpoint returns draft-vs-parent comparison for seeded site', async () => {
+    const token = await loginAdmin();
+    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
+    const draft = await request(app).post('/api/admin/map-builder/draft').set(headers);
+    expect([200, 201]).toContain(draft.status);
+    const versionId = draft.body.id as string;
+    const diff = await request(app)
+      .get(`/api/admin/map-builder/versions/${versionId}/diff`)
+      .set(headers);
+    expect(diff.status).toBe(200);
+    expect(diff.body.versionId).toBe(versionId);
+    expect(diff.body.baseVersionId).toBeTruthy();
+    expect(diff.body.summary).toEqual(
+      expect.objectContaining({
+        added: expect.any(Number),
+        removed: expect.any(Number),
+        modified: expect.any(Number),
+      }),
+    );
   });
 
   it.skipIf(!canUseDb)('clone rollback: forced failure leaves no partial draft and published unchanged', async () => {

@@ -15,6 +15,10 @@ export default defineConfig({
       cesiumBuildPath: `${cesiumBuildPath}/`,
     }),
   ],
+  optimizeDeps: {
+    // MapLibre v6 ships a sibling ESM worker; pre-bundling breaks worker URL resolution.
+    exclude: ['maplibre-gl'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

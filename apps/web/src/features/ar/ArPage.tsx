@@ -34,6 +34,17 @@ import {
 } from '../../lib/gpsMovement';
 import { GuideDollViewport, guideFacingBearing, poseFromRouteContext } from './GuideDoll';
 import { useActiveSite } from '../../hooks/useActiveSite';
+import { MAP_ENGINE } from '../../lib/mapEngine';
+import { IndoorDestinationPicker } from '../../components/indoor/IndoorDestinationPicker';
+import { buildIndoorNavPath } from '../../lib/buildingNavigation';
+
+/**
+ * AR Navigation is a camera + compass overlay — it does not embed Leaflet or MapLibre.
+ * Bearing, turn arrow, and guide-doll yaw are pure lat/lng + DeviceOrientation math
+ * (`bearingDegrees` / `relativeBearingDeg`). Route data comes from published
+ * `GET /campus/places` + `POST /navigation/recalculate` only (no draft preview).
+ * `MAP_ENGINE` therefore does not change AR rendering; it is shown only as a diagnostic badge.
+ */
 
 /** Explicit navigation phases — only one primary phase at a time. */
 export type ArNavPhase =
@@ -71,7 +82,10 @@ export function ArPage() {
     sourceNodeId,
     destinationNodeId,
     hasIndoorMap,
+    selectedBuildingId,
     selectedBuildingName,
+    indoorMapId,
+    setIndoorDestination,
     markArrivedAtBuilding,
   } = useNavStore();
   const { accessibility, voiceEnabled, avatarGender, setAvatarGender } = usePrefsStore();
@@ -516,6 +530,9 @@ export function ArPage() {
         <div>
           <h1 className="page-title">AR Navigation</h1>
           <p className="page-sub">{label} — follow the guide on camera.</p>
+          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+            Map engine: {MAP_ENGINE} (AR overlay is engine-independent)
+          </p>
           {destLabel && (
             <p className="mt-1 text-sm text-ink-mute">
               To <span className="font-semibold text-ink">{destLabel}</span>
@@ -750,6 +767,20 @@ export function ArPage() {
         <p className="text-sm text-accent-warn">
           {error ?? gpsError ?? gpsNote ?? cameraError}
         </p>
+      )}
+
+      {arrived && hasIndoorMap && selectedBuildingId && selectedBuildingName && (
+        <IndoorDestinationPicker
+          buildingId={selectedBuildingId}
+          buildingName={selectedBuildingName}
+          indoorMapId={indoorMapId}
+          token={token}
+          onSelect={(place, detail) => {
+            setIndoorDestination(place.id, place.name, detail);
+            navigate(buildIndoorNavPath(selectedBuildingId, place.id, indoorMapId));
+          }}
+          onDismiss={() => undefined}
+        />
       )}
     </div>
   );

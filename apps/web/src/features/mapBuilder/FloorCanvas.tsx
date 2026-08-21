@@ -8,19 +8,17 @@ import {
   ringToSvgPoints,
   type IndoorTool,
 } from './indoorLayoutUtils';
+import { distance2D, formatMeasureDistance, segmentMidpoint2D } from './indoorArMeasure';
 
 const GRID = 1;
 
-function snap(v: number): number {
-  return Math.round(v / GRID) * GRID;
-}
-
-function clientToLocal(svg: SVGSVGElement, clientX: number, clientY: number): LocalVec2 {
+function clientToLocal(svg: SVGSVGElement, clientX: number, clientY: number, fine = false): LocalVec2 {
   const pt = svg.createSVGPoint();
   pt.x = clientX;
   pt.y = clientY;
   const local = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-  return { x: snap(local.x), y: snap(local.y) };
+  const step = fine ? 0.1 : GRID;
+  return { x: Math.round(local.x / step) * step, y: Math.round(local.y / step) * step };
 }
 
 type Props = {
@@ -35,7 +33,9 @@ type Props = {
   selectedId: string | null;
   selectedKind: 'room' | 'corridor' | 'poi' | 'node' | 'edge' | null;
   draftRect: LocalVec2[] | null;
+  measurePoints?: LocalVec2[];
   onDraftRect: (ring: LocalVec2[] | null) => void;
+  onMeasurePoint?: (point: LocalVec2) => void;
   onSelect: (kind: 'room' | 'corridor' | 'poi' | 'node' | 'edge', id: string) => void;
   onClearSelect: () => void;
   onPoiPlace: (point: LocalVec2) => void;
@@ -55,7 +55,9 @@ export function FloorCanvas({
   selectedId,
   selectedKind,
   draftRect,
+  measurePoints = [],
   onDraftRect,
+  onMeasurePoint,
   onSelect,
   onClearSelect,
   onPoiPlace,
@@ -96,7 +98,11 @@ export function FloorCanvas({
       panOrigin.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
       return;
     }
-    const pt = clientToLocal(svg, e.clientX, e.clientY);
+    const pt = clientToLocal(svg, e.clientX, e.clientY, tool === 'measure');
+    if (tool === 'measure') {
+      onMeasurePoint?.(pt);
+      return;
+    }
     if (tool === 'select') {
       const target = (e.target as SVGElement).dataset;
       if (target.nodeId) {
@@ -301,9 +307,40 @@ export function FloorCanvas({
             strokeDasharray="0.3 0.2"
           />
         ) : null}
+
+        {measurePoints.length > 0 && (
+          <g>
+            {measurePoints.length > 1 &&
+              measurePoints.slice(1).map((p, i) => {
+                const a = measurePoints[i];
+                const mid = segmentMidpoint2D(a, p);
+                const dist = distance2D(a, p);
+                return (
+                  <g key={`seg-${i}`}>
+                    <line
+                      x1={a.x}
+                      y1={a.y}
+                      x2={p.x}
+                      y2={p.y}
+                      stroke="#10b981"
+                      strokeWidth={0.12}
+                    />
+                    <text x={mid.x} y={mid.y - 0.25} fontSize={0.45} fill="#047857" textAnchor="middle">
+                      {formatMeasureDistance(dist)}
+                    </text>
+                  </g>
+                );
+              })}
+            {measurePoints.map((p, i) => (
+              <circle key={`mp-${i}`} cx={p.x} cy={p.y} r={0.25} fill="#10b981" stroke="#065f46" strokeWidth={0.06} />
+            ))}
+          </g>
+        )}
       </svg>
       <p className="absolute bottom-2 left-2 text-xs text-muted">
-        Local meters — Alt+drag to pan, wheel to zoom
+        {tool === 'measure'
+          ? 'Measure — tap corners; distances shown like AR-Measure'
+          : 'Local meters — Alt+drag to pan, wheel to zoom'}
       </p>
     </div>
   );

@@ -125,9 +125,13 @@ async function floorElevationM(
   floorId: string,
   mapVersionId: string,
 ): Promise<number> {
-  const floors = await campusRepository.listFloors(buildingId, undefined, mapVersionId);
+  const [floors, building] = await Promise.all([
+    campusRepository.listFloors(buildingId, undefined, mapVersionId),
+    campusRepository.getBuildingById(buildingId),
+  ]);
   const floor = floors.find((f) => f.id === floorId);
-  return (floor?.level ?? 0) * 3.5;
+  const floorHeightM = building?.floorHeightM ?? 3.5;
+  return (floor?.level ?? 0) * floorHeightM;
 }
 
 export const indoorGraphEditorService = {

@@ -28,9 +28,10 @@ import {
   prepareFootprintWkt,
 } from '../../application/footprintValidation';
 import { haversineMeters } from '../../domain/routing/astar';
+import { edgeGeometryHash, pointGeometryHash, ringGeometryHash } from '../../application/geometryHash';
 
 const BUILDING_SELECT = `
-  SELECT id, name, code, description, latitude, longitude, floors_count, site_id, updated_at,
+  SELECT id, stable_id, name, code, description, latitude, longitude, floors_count, floor_height_m, site_id, updated_at,
          CASE WHEN footprint_geom IS NOT NULL
            THEN ST_AsGeoJSON(footprint_geom)::json
            ELSE NULL END AS footprint_geojson
@@ -42,12 +43,14 @@ function mapBuildingRow(r: Record<string, unknown>): Building {
   const updatedAt = r.updated_at as Date | string | undefined;
   return {
     id: r.id as string,
+    stableId: r.stable_id as string,
     name: r.name as string,
     code: r.code as string,
     description: r.description as string | null,
     latitude: r.latitude as number,
     longitude: r.longitude as number,
     floorsCount: r.floors_count as number,
+    floorHeightM: Number(r.floor_height_m ?? 3.5),
     siteId: (r.site_id as string | null) ?? undefined,
     footprint,
     updatedAt:
@@ -96,9 +99,9 @@ export const campusRepository = {
       longitude = center.longitude;
     }
     const { rows } = await query(
-      `INSERT INTO buildings (name, code, description, latitude, longitude, floors_count, site_id, footprint_geom, updated_at, map_version_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $8::text IS NULL THEN NULL ELSE ST_GeogFromText($8)::geography END, NOW(), $9)
-       RETURNING id, name, code, description, latitude, longitude, floors_count, site_id, updated_at,
+      `INSERT INTO buildings (name, code, description, latitude, longitude, floors_count, floor_height_m, site_id, footprint_geom, updated_at, map_version_id, geometry_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $9::text IS NULL THEN NULL ELSE ST_GeogFromText($9)::geography END, NOW(), $10, $11)
+       RETURNING id, stable_id, name, code, description, latitude, longitude, floors_count, floor_height_m, site_id, updated_at,
          CASE WHEN footprint_geom IS NOT NULL THEN ST_AsGeoJSON(footprint_geom)::json ELSE NULL END AS footprint_geojson`,
       [
         input.name,
@@ -107,9 +110,11 @@ export const campusRepository = {
         latitude,
         longitude,
         input.floorsCount,
+        input.floorHeightM ?? 3.5,
         input.siteId,
         footprintWkt,
         input.mapVersionId,
+        input.footprint?.length ? ringGeometryHash(input.footprint) : pointGeometryHash(latitude, longitude),
       ],
     );
     return mapBuildingRow(rows[0] as Record<string, unknown>);
@@ -155,6 +160,11 @@ export const campusRepository = {
     const expectedUpdatedAt = input.expectedUpdatedAt
       ? new Date(input.expectedUpdatedAt)
       : null;
+    const nextFootprint = input.footprint === undefined ? existing.footprint : input.footprint;
+    const nextGeometryHash =
+      nextFootprint && nextFootprint.length > 0
+        ? ringGeometryHash(nextFootprint)
+        : pointGeometryHash(latitude ?? existing.latitude, longitude ?? existing.longitude);
 
     const { rows } = await query(
       `UPDATE buildings SET
@@ -164,14 +174,16 @@ export const campusRepository = {
          latitude = COALESCE($9, $5, latitude),
          longitude = COALESCE($10, $6, longitude),
          floors_count = COALESCE($7, floors_count),
+         floor_height_m = COALESCE($13, floor_height_m),
          footprint_geom = CASE
            WHEN $8::boolean THEN CASE WHEN $11::text IS NULL THEN NULL ELSE ST_GeogFromText($11)::geography END
            ELSE footprint_geom
          END,
+         geometry_hash = $14,
          updated_at = NOW()
        WHERE id = $1
          AND ($12::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $12::timestamptz))
-       RETURNING id, name, code, description, latitude, longitude, floors_count, site_id, updated_at,
+       RETURNING id, stable_id, name, code, description, latitude, longitude, floors_count, floor_height_m, site_id, updated_at,
          CASE WHEN footprint_geom IS NOT NULL THEN ST_AsGeoJSON(footprint_geom)::json ELSE NULL END AS footprint_geojson`,
       [
         id,
@@ -186,6 +198,8 @@ export const campusRepository = {
         longitude,
         footprintWkt ?? null,
         expectedUpdatedAt,
+        input.floorHeightM ?? null,
+        nextGeometryHash,
       ],
     );
     if (!rows[0]) {
@@ -486,6 +500,7 @@ export const campusRepository = {
   mapNodeRow(r: Record<string, unknown>): GraphNode {
     return {
       id: r.id as string,
+      stableId: r.stable_id as string | undefined,
       name: r.name as string | null,
       latitude: r.latitude as number,
       longitude: r.longitude as number,
@@ -505,6 +520,7 @@ export const campusRepository = {
     ]);
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
+      stableId: r.stable_id as string | undefined,
       fromNodeId: r.from_node_id as string,
       toNodeId: r.to_node_id as string,
       distanceM: Number(r.distance_m),
@@ -589,8 +605,8 @@ export const campusRepository = {
     }
     const { rows } = await query(
       `INSERT INTO edges (from_node_id, to_node_id, distance_m, kind, bidirectional, blocked,
-        safety_score, crowd_score, accessibility_score, site_id, map_version_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        safety_score, crowd_score, accessibility_score, site_id, map_version_id, geometry_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         input.fromNodeId,
         input.toNodeId,
@@ -603,11 +619,13 @@ export const campusRepository = {
         input.accessibilityScore,
         from.siteId,
         input.mapVersionId,
+        edgeGeometryHash(from, to),
       ],
     );
     const r = rows[0] as Record<string, unknown>;
     return {
       id: r.id as string,
+      stableId: r.stable_id as string | undefined,
       fromNodeId: r.from_node_id as string,
       toNodeId: r.to_node_id as string,
       distanceM: Number(r.distance_m),
@@ -621,6 +639,15 @@ export const campusRepository = {
   },
 
   async updateEdge(id: string, input: Partial<Omit<GraphEdge, 'id'>>) {
+    const existing = await this.getEdgeById(id);
+    if (!existing) return null;
+    const fromNodeId = input.fromNodeId ?? existing.fromNodeId;
+    const toNodeId = input.toNodeId ?? existing.toNodeId;
+    const from = await this.getNodeById(fromNodeId);
+    const to = await this.getNodeById(toNodeId);
+    if (!from || !to) {
+      throw new AppError('INVALID_NODE', 'Edge endpoints must be existing nodes', 422);
+    }
     const { rows } = await query(
       `UPDATE edges SET
          from_node_id = COALESCE($2, from_node_id),
@@ -631,7 +658,8 @@ export const campusRepository = {
          blocked = COALESCE($7, blocked),
          safety_score = COALESCE($8, safety_score),
          crowd_score = COALESCE($9, crowd_score),
-         accessibility_score = COALESCE($10, accessibility_score)
+         accessibility_score = COALESCE($10, accessibility_score),
+         geometry_hash = $11
        WHERE id = $1 RETURNING *`,
       [
         id,
@@ -644,12 +672,14 @@ export const campusRepository = {
         input.safetyScore ?? null,
         input.crowdScore ?? null,
         input.accessibilityScore ?? null,
+        edgeGeometryHash(from, to),
       ],
     );
     if (!rows[0]) return null;
     const r = rows[0] as Record<string, unknown>;
     return {
       id: r.id as string,
+      stableId: r.stable_id as string | undefined,
       fromNodeId: r.from_node_id as string,
       toNodeId: r.to_node_id as string,
       distanceM: Number(r.distance_m),
@@ -703,8 +733,8 @@ export const campusRepository = {
 
   async createNode(input: Omit<GraphNode, 'id'> & { siteId: string; mapVersionId: string }) {
     const { rows } = await query(
-      `INSERT INTO nodes (name, latitude, longitude, floor_id, building_id, kind, site_id, map_version_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO nodes (name, latitude, longitude, floor_id, building_id, kind, site_id, map_version_id, geometry_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
         input.name,
         input.latitude,
@@ -714,11 +744,13 @@ export const campusRepository = {
         input.kind,
         input.siteId,
         input.mapVersionId,
+        pointGeometryHash(input.latitude, input.longitude),
       ],
     );
     const r = rows[0] as Record<string, unknown>;
     return {
       id: r.id as string,
+      stableId: r.stable_id as string | undefined,
       name: r.name as string | null,
       latitude: r.latitude as number,
       longitude: r.longitude as number,
@@ -742,12 +774,21 @@ export const campusRepository = {
       const to = toId === nodeId ? node : await this.getNodeById(toId);
       if (!from || !to) continue;
       const distanceM = haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude);
-      await query(`UPDATE edges SET distance_m = $2 WHERE id = $1`, [row.id as string, distanceM]);
+      await query(
+        `UPDATE edges
+         SET distance_m = $2, geometry_hash = $3
+         WHERE id = $1`,
+        [row.id as string, distanceM, edgeGeometryHash(from, to)],
+      );
     }
   },
 
   async updateNode(id: string, input: Partial<Omit<GraphNode, 'id'>>) {
     const positionChanging = input.latitude !== undefined || input.longitude !== undefined;
+    const existing = await this.getNodeById(id);
+    if (!existing) return null;
+    const nextLatitude = input.latitude ?? existing.latitude;
+    const nextLongitude = input.longitude ?? existing.longitude;
     const { rows } = await query(
       `UPDATE nodes SET
          name = CASE WHEN $2::boolean THEN $3 ELSE name END,
@@ -755,7 +796,11 @@ export const campusRepository = {
          longitude = CASE WHEN $6::boolean THEN $7::float8 ELSE longitude END,
          floor_id = CASE WHEN $8::boolean THEN $9::uuid ELSE floor_id END,
          building_id = CASE WHEN $10::boolean THEN $11::uuid ELSE building_id END,
-         kind = CASE WHEN $12::boolean THEN $13 ELSE kind END
+         kind = CASE WHEN $12::boolean THEN $13 ELSE kind END,
+         geometry_hash = CASE
+           WHEN $4::boolean OR $6::boolean THEN $14
+           ELSE geometry_hash
+         END
        WHERE id = $1 RETURNING *`,
       [
         id,
@@ -771,6 +816,7 @@ export const campusRepository = {
         input.buildingId ?? null,
         input.kind !== undefined,
         input.kind ?? null,
+        pointGeometryHash(nextLatitude, nextLongitude),
       ],
     );
     if (!rows[0]) return null;

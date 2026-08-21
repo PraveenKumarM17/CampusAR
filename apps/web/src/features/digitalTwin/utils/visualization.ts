@@ -38,6 +38,8 @@ export const TWIN_STYLES = {
   boundary: '#334155',
   user: '#2563eb',
   buildingOutline: '#148a80',
+  /** Default extruded building fill — must stay readable on satellite imagery. */
+  buildingFill: '#2dd4bf',
 } as const;
 
 export const ACCESSIBLE_WALKWAY_THRESHOLD = 0.5;

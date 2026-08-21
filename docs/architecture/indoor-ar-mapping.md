@@ -33,3 +33,34 @@ Recalibrate at junction QR markers if tracking drifts. Waypoint arrival uses pro
 ## Accuracy
 
 This system is **tolerance-aware**, not centimeter-perfect. Mapping quality metadata (`trackingQuality`, `accuracyM`, `confidence`) is stored with sessions/nodes. Poor AR tracking must block new points in the Unity mapper.
+
+## Web admin measurement
+
+The web Map Builder ports the Apache-2.0
+[AR-Measure](https://github.com/lightlessdays/AR-Measure) point-to-point vector
+distance workflow to WebXR hit-test:
+
+1. The administrator opens Indoor Map Builder and selects a building/floor.
+2. **AR Measure** requests the rear camera and an `immersive-ar` session.
+3. Floor/corner taps are stored in AR-local meters and projected from X/Z into
+   `floor-plan-meters-v1`.
+4. Saving a room persists its polygon plus measured length, width, height,
+   source, and timestamp in the versioned `rooms` row.
+5. Graph nodes/edges and QR anchors are authored on top of that measured map.
+
+A plain camera feed has no metric depth. Devices without WebXR hit-test can
+preview the camera but must use the scaled floor-plan Measure tool (or the
+native Unity mapper) for reliable dimensions.
+
+## Visitor handoff
+
+Outdoor AR routes to the selected building entrance. On arrival, the visitor
+chooses a room/person scoped to that building, scans a mapped QR anchor, then
+receives both:
+
+- the measured floor-plan route overlay; and
+- camera guidance using the saved indoor route bearings.
+
+The web camera overlay advances explicitly between anchor-localized waypoints;
+it does not claim cross-device world-locked SLAM. Additional QR anchors should
+be installed at floor entrances and major junctions to control drift.

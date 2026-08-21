@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { QrCode, Search } from 'lucide-react';
+import { Camera, QrCode, Search } from 'lucide-react';
 import type { IndoorBuildingContext, IndoorPlace, IndoorRouteResponse } from '@campusar/shared';
 import { ApiError } from '../../lib/api';
 import { useCampusApi } from '../../hooks/useCampusApi';
@@ -41,6 +41,7 @@ export function IndoorPage() {
   const [busy, setBusy] = useState(false);
   const [context, setContext] = useState<IndoorBuildingContext | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const buildingId = urlIds.building ?? selectedBuildingId;
   const destinationId = urlIds.destination ?? indoorDestinationPlaceId;
@@ -121,32 +122,26 @@ export function IndoorPage() {
     };
   }, [destinationId, buildingId, token, indoorDestinationPlaceId, setIndoorDestination, campusApi]);
 
-  async function resolveQrCode(qrCode: string) {
-  const anchorCode = qrCode.trim();
-
-  if (!anchorCode) {
-    setError('Please scan a valid CampusAR QR marker.');
-    return;
+  async function resolveQr(e: FormEvent) {
+    e.preventDefault();
+    await localizeAtAnchor(qr.trim());
   }
 
-  setQr(anchorCode);
-  setError(null);
-  setStatus(null);
-  setRoute(null);
-
-  try {
-    const res = await campusApi.indoorResolveAnchor(
-      anchorCode,
-      token,
-      buildingId ?? undefined,
-    );
-
-    setStatus(
-      `Localized at ${res.node.name ?? res.anchor.anchorCode} (${res.map.name}).`,
-    );
-
-    if (guided && destinationId) {
-      await startIndoor(destinationId, anchorCode);
+  async function localizeAtAnchor(code: string) {
+    if (!code) return;
+    setError(null);
+    setRoute(null);
+    try {
+      const normalized = code.toUpperCase();
+      setQr(normalized);
+      const res = await campusApi.indoorResolveAnchor(normalized, token, buildingId ?? undefined);
+      setStatus(`Localized at ${res.node.name ?? res.anchor.anchorCode} (${res.map.name}).`);
+      if (guided && destinationId) {
+        await startIndoor(destinationId, normalized);
+      }
+    } catch (err) {
+      setStatus(null);
+      setError(err instanceof Error ? err.message : 'Marker not found');
     }
   } catch (err) {
     setStatus(null);
@@ -228,7 +223,7 @@ async function resolveQr(e: FormEvent) {
       {buildingId && !restoreError && (
         <div className="panel rounded-md p-4">
           <h2 className="mb-2 text-sm font-semibold text-ink">Floor plan</h2>
-          <FloorLayoutViewer buildingId={buildingId} token={token} />
+          <FloorLayoutViewer buildingId={buildingId} token={token} route={route} />
         </div>
       )}
 
@@ -278,6 +273,13 @@ async function resolveQr(e: FormEvent) {
             <QrCode size={16} /> Localize
           </button>
         </div>
+        <button
+          className="btn-ghost w-full"
+          type="button"
+          onClick={() => setScannerOpen(true)}
+        >
+          <Camera size={16} /> Scan marker with camera
+        </button>
         {guided && (
           <button className="btn-ghost w-full" type="button" onClick={handleCancelScan}>
             Cancel
@@ -333,24 +335,37 @@ async function resolveQr(e: FormEvent) {
       {error && <p className="text-sm text-accent-danger">{error}</p>}
 
       {route && (
-        <div className="panel space-y-3 rounded-md p-4">
-          <p className="font-semibold">
-            {current?.instruction ?? 'Walk'}
-            {next ? ` · next ${next.distanceM.toFixed(1)} m` : ''}
-          </p>
-          <ol className="list-decimal space-y-1 pl-5 text-sm">
-            {route.instructions.map((step, i) => (
-              <li key={`${i}-${step}`}>{step}</li>
-            ))}
-          </ol>
-          <p className="text-xs text-ink-faint">
-            {Math.round(route.totalDistanceM)} m · ~{route.estimatedTimeMinutes.toFixed(1)} min ·
-            proximity-based waypoints (not centimeter GPS)
-          </p>
-          <button className="btn-ghost w-full" type="button" onClick={handleFinish}>
-            Finish indoor navigation
-          </button>
-        </div>
+        <>
+          <IndoorArNavigator
+            route={route}
+            destinationName={selected?.name ?? indoorDestinationName ?? 'Indoor destination'}
+            onFinish={handleFinish}
+          />
+          <div className="panel space-y-3 rounded-md p-4">
+            <p className="font-semibold">
+              {current?.instruction ?? 'Walk'}
+              {next ? ` · next ${next.distanceM.toFixed(1)} m` : ''}
+            </p>
+            <ol className="list-decimal space-y-1 pl-5 text-sm">
+              {route.instructions.map((step, i) => (
+                <li key={`${i}-${step}`}>{step}</li>
+              ))}
+            </ol>
+            <p className="text-xs text-ink-faint">
+              {Math.round(route.totalDistanceM)} m · ~{route.estimatedTimeMinutes.toFixed(1)} min ·
+              anchor-localized indoor waypoints
+            </p>
+          </div>
+        </>
+      )}
+      {scannerOpen && (
+        <IndoorQrScanner
+          onClose={() => setScannerOpen(false)}
+          onScan={(value) => {
+            setScannerOpen(false);
+            void localizeAtAnchor(value);
+          }}
+        />
       )}
     </div>
   );

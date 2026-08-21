@@ -7,12 +7,13 @@ import {
   ConstantProperty,
   CustomDataSource,
   DistanceDisplayCondition,
-  OpenStreetMapImageryProvider,
+  UrlTemplateImageryProvider,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   VerticalOrigin,
   Viewer,
   type Entity,
+  type ImageryLayer,
 } from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import type { DangerZone } from '@campusar/shared';
@@ -118,6 +119,84 @@ function labelStyle(offsetY = -12) {
   };
 }
 
+/** Hybrid satellite + roads/labels — matches 2D RealBasemap and avoids OSM CORS. */
+function addHybridBasemap(viewer: Viewer): void {
+  viewer.imageryLayers.removeAll();
+  viewer.imageryLayers.addImageryProvider(
+    new UrlTemplateImageryProvider({
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      maximumLevel: 19,
+      credit: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics',
+    }),
+  );
+  const addReference = (url: string, alpha: number): ImageryLayer => {
+    const layer = viewer.imageryLayers.addImageryProvider(
+      new UrlTemplateImageryProvider({ url, maximumLevel: 19 }),
+    );
+    layer.alpha = alpha;
+    return layer;
+  };
+  addReference(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+    0.95,
+  );
+  addReference(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    0.95,
+  );
+}
+
+function buildingEntityGraphics(
+  b: DigitalTwinBuilding,
+  fillHex: string,
+  outline: Color,
+) {
+  const height = b.heightM;
+  const position = Cartesian3.fromDegrees(b.longitude, b.latitude, height / 2);
+  const ring =
+    b.geometryKind === 'footprint' && b.footprint
+      ? b.footprint
+      : b.geometryKind === 'dimensions' && b.width && b.depth
+        ? dimensionRectangleRing(b.center, b.width, b.depth)
+        : null;
+
+  if (b.modelUrl) {
+    return {
+      position,
+      model: {
+        uri: b.modelUrl,
+        scale: 1,
+        minimumPixelSize: 48,
+      },
+    };
+  }
+  if (ring) {
+    return {
+      position,
+      polygon: {
+        hierarchy: Cartesian3.fromDegreesArray(toCesiumDegreesArray(ring)),
+        height: 0,
+        extrudedHeight: height,
+        closeTop: true,
+        closeBottom: true,
+        material: cssColor(fillHex, 0.88),
+        outline: true,
+        outlineColor: outline,
+      },
+    };
+  }
+  return {
+    position,
+    box: {
+      dimensions: new Cartesian3(b.width ?? 28, b.depth ?? 22, height),
+      material: cssColor(fillHex, 0.88),
+      outline: true,
+      outlineColor: outline,
+      outlineWidth: 2,
+    },
+  };
+}
+
 export const CesiumDigitalTwin = forwardRef<CesiumDigitalTwinHandle, CesiumDigitalTwinProps>(
   function CesiumDigitalTwin(
     {
@@ -219,12 +298,9 @@ export const CesiumDigitalTwin = forwardRef<CesiumDigitalTwinHandle, CesiumDigit
       }
 
       viewer.imageryLayers.removeAll();
-      viewer.imageryLayers.addImageryProvider(
-        new OpenStreetMapImageryProvider({
-          url: 'https://tile.openstreetmap.org/',
-        }),
-      );
+      addHybridBasemap(viewer);
       viewer.scene.globe.depthTestAgainstTerrain = false;
+      viewer.scene.globe.enableLighting = false;
       const creditContainer = viewer.cesiumWidget.creditContainer as HTMLElement;
       creditContainer.style.display = 'none';
 
@@ -296,48 +372,12 @@ export const CesiumDigitalTwin = forwardRef<CesiumDigitalTwinHandle, CesiumDigit
 
       sources.buildings.entities.removeAll();
       for (const b of buildings) {
-        const height = b.heightM;
-        const fill = CROWD_BAND_COLORS.UNKNOWN;
-        const outline = cssColor(TWIN_STYLES.buildingOutline, 0.85);
-        const position = Cartesian3.fromDegrees(b.longitude, b.latitude, height / 2);
-        const ring =
-          b.geometryKind === 'footprint' && b.footprint
-            ? b.footprint
-            : b.geometryKind === 'dimensions' && b.width && b.depth
-              ? dimensionRectangleRing(b.center, b.width, b.depth)
-              : null;
-
+        const outline = cssColor(TWIN_STYLES.buildingOutline, 0.95);
+        const fillHex = TWIN_STYLES.buildingFill;
         sources.buildings.entities.add({
           id: buildingEntityId(b.id),
           name: b.name,
-          position,
-          ...(b.modelUrl
-            ? {
-                model: {
-                  uri: b.modelUrl,
-                  scale: 1,
-                  minimumPixelSize: 48,
-                },
-              }
-            : ring
-              ? {
-                  polygon: {
-                    hierarchy: Cartesian3.fromDegreesArray(toCesiumDegreesArray(ring)),
-                    extrudedHeight: height,
-                    material: cssColor(fill, 0.92),
-                    outline: true,
-                    outlineColor: outline,
-                  },
-                }
-              : {
-                  box: {
-                    dimensions: new Cartesian3(b.width ?? 28, b.depth ?? 22, height),
-                    material: cssColor(fill, 0.92),
-                    outline: true,
-                    outlineColor: outline,
-                    outlineWidth: 1,
-                  },
-                }),
+          ...buildingEntityGraphics(b, fillHex, outline),
           label: {
             text: b.code,
             ...labelStyle(-12),
@@ -482,7 +522,7 @@ export const CesiumDigitalTwin = forwardRef<CesiumDigitalTwinHandle, CesiumDigit
       }
       // Static campus graph only. Crowd, selection, route, and hazards have their own effects.
       // eslint-disable-next-line react-hooks/exhaustive-deps -- crowdByEdge/live flags must not rebuild static entities
-    }, [buildings, walkways, pois, entrances, parking, greenAreas, boundary]);
+    }, [buildings, walkways, pois, entrances, parking, greenAreas, boundary, mapCenter]);
 
     useEffect(() => {
       const sources = sourcesRef.current;
@@ -503,8 +543,8 @@ export const CesiumDigitalTwin = forwardRef<CesiumDigitalTwinHandle, CesiumDigit
         const entity = sources.buildings.entities.getById(buildingEntityId(b.id));
         if (!entity) continue;
         const { band } = deriveBuildingCrowd(b.id, nodes, edges, crowdByEdge);
-        const fill = layers.liveData ? CROWD_BAND_COLORS[band] : CROWD_BAND_COLORS.UNKNOWN;
-        const material = cssColor(fill, 0.92);
+        const fillHex = layers.liveData ? CROWD_BAND_COLORS[band] : TWIN_STYLES.buildingFill;
+        const material = cssColor(fillHex, 0.88);
         if (entity.box) entity.box.material = new ColorMaterialProperty(material);
         if (entity.polygon) entity.polygon.material = new ColorMaterialProperty(material);
       }

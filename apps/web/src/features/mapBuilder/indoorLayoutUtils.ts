@@ -5,6 +5,7 @@ export type IndoorTool =
   | 'room'
   | 'corridor'
   | 'poi'
+  | 'measure'
   | 'node'
   | 'connect'
   | 'entrance'
