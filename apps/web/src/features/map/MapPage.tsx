@@ -421,17 +421,12 @@ export function MapPage() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
         <div className="relative overflow-hidden rounded-md border border-line">
-          {!useMapLibre ? (
-            <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
-          ) : (
-            <span className="absolute left-3 top-3 z-[1000] rounded border border-line bg-paper-raised px-2 py-1 text-[11px] font-semibold uppercase text-ink-mute">
-              Engine: maplibre
-            </span>
-          )}
+          <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
           {useMapLibre ? (
             <CampusMapLibreMap
               className="h-[62vh] w-full"
               center={mapCenter}
+              basemapMode={basemapMode}
               buildings={filteredBuildings}
               placeNodes={placeNodes}
               graphNodes={nodes}

@@ -67,8 +67,9 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { EmptySiteNotice } from '../../components/EmptySiteNotice';
 import { EditableFootprintLayer } from './EditableFootprintLayer';
 import { MapBuilderNav } from './MapBuilderNav';
-import { MAP_ENGINE, MAPLIBRE_STYLE_URL } from '../../lib/mapEngine';
+import { MAP_ENGINE } from '../../lib/mapEngine';
 import { ensureMapLibreWorker } from '../../lib/maplibreWorker';
+import { applyMapLibreBasemap, emptyMapLibreStyle } from '../../lib/maplibreBasemap';
 import {
   DEFAULT_LAYER_VISIBILITY,
   MapBuilderLayersPanel,
@@ -213,6 +214,7 @@ function MapLibreCanvas({
   issueBadges = [],
   conflictFeatureId = null,
   geometryEditLocked = false,
+  basemapMode = 'streets',
   onSelect,
   onNodeWalkwayClick,
   onPointDrawn,
@@ -231,6 +233,7 @@ function MapLibreCanvas({
   issueBadges?: IssueBadgePoint[];
   conflictFeatureId?: string | null;
   geometryEditLocked?: boolean;
+  basemapMode?: BasemapMode;
   onSelect: (s: Selection) => void;
   onNodeWalkwayClick: (nodeId: string) => void;
   onPointDrawn: (lat: number, lon: number) => void;
@@ -242,6 +245,7 @@ function MapLibreCanvas({
   const drawRef = useRef<TerraDraw | null>(null);
   const toolRef = useRef<BuilderTool>('select');
   const editFeatureIdsRef = useRef<Array<string | number>>([]);
+  const basemapModeRef = useRef(basemapMode);
   const onPolygonDrawnRef = useRef(onPolygonDrawn);
   const onPointDrawnRef = useRef(onPointDrawn);
   const onSelectRef = useRef(onSelect);
@@ -255,6 +259,9 @@ function MapLibreCanvas({
   useEffect(() => {
     toolRef.current = tool;
   }, [tool]);
+  useEffect(() => {
+    basemapModeRef.current = basemapMode;
+  }, [basemapMode]);
   useEffect(() => {
     buildingsRef.current = buildings;
     nodesRef.current = nodes;
@@ -407,7 +414,7 @@ function MapLibreCanvas({
     ensureMapLibreWorker();
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: MAPLIBRE_STYLE_URL,
+      style: emptyMapLibreStyle(),
       center: [center[1], center[0]],
       zoom: CAMPUS_DEFAULT_ZOOM,
       maxZoom: CAMPUS_MAX_ZOOM,
@@ -419,6 +426,8 @@ function MapLibreCanvas({
     }
 
     const onLoad = () => {
+      applyMapLibreBasemap(map, basemapModeRef.current);
+
       map.addSource('mapbuilder-buildings', { type: 'geojson', data: buildingsGeo });
       map.addSource('mapbuilder-edges', { type: 'geojson', data: edgesGeo });
       map.addSource('mapbuilder-nodes', { type: 'geojson', data: nodesGeo });
@@ -944,6 +953,12 @@ function MapLibreCanvas({
     setSource('mapbuilder-areas', areasGeo);
     setSource('mapbuilder-issue-badges', issueBadgesGeo);
   }, [areasGeo, buildingsGeo, edgesGeo, nodesGeo, issueBadgesGeo]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    applyMapLibreBasemap(map, basemapMode);
+  }, [basemapMode]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }
@@ -1967,25 +1982,29 @@ export function MapBuilderPage() {
             <div className="flex h-full items-center justify-center p-6 text-sm text-danger">{loadError}</div>
           ) : (
             MAP_ENGINE === 'maplibre' ? (
-              <MapLibreCanvas
-                center={center}
-                buildings={buildings}
-                nodes={nodes}
-                edges={edges}
-                areas={areas}
-                tool={tool}
-                walkFromId={walkFrom}
-                selection={selection}
-                layerVisibility={layerVisibility}
-                issueBadges={mapIssueBadges}
-                conflictFeatureId={conflict?.id ?? null}
-                geometryEditLocked={Boolean(conflict)}
-                onSelect={(s) => selectResource(s)}
-                onNodeWalkwayClick={handleWalkwayClick}
-                onPointDrawn={(lat, lon) => void handleMapClick(lat, lon)}
-                onPolygonDrawn={(ring) => void onPolygonDrawn(ring)}
-                onGeometryCommit={scheduleGeometrySave}
-              />
+              <>
+                <BasemapModeSwitcher mode={basemap} onChange={setBasemap} />
+                <MapLibreCanvas
+                  center={center}
+                  buildings={buildings}
+                  nodes={nodes}
+                  edges={edges}
+                  areas={areas}
+                  tool={tool}
+                  walkFromId={walkFrom}
+                  selection={selection}
+                  layerVisibility={layerVisibility}
+                  issueBadges={mapIssueBadges}
+                  conflictFeatureId={conflict?.id ?? null}
+                  geometryEditLocked={Boolean(conflict)}
+                  basemapMode={basemap}
+                  onSelect={(s) => selectResource(s)}
+                  onNodeWalkwayClick={handleWalkwayClick}
+                  onPointDrawn={(lat, lon) => void handleMapClick(lat, lon)}
+                  onPolygonDrawn={(ring) => void onPolygonDrawn(ring)}
+                  onGeometryCommit={scheduleGeometrySave}
+                />
+              </>
             ) : (
               <MapContainer center={center} zoom={CAMPUS_DEFAULT_ZOOM} maxZoom={CAMPUS_MAX_ZOOM} className="h-full w-full">
                 <RealBasemapTiles mode={basemap} />
