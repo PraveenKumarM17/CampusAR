@@ -11,9 +11,7 @@ import {
   placeBelongsToBuilding,
 } from '../../lib/buildingNavigation';
 import { FloorLayoutViewer } from './FloorLayoutViewer';
-import { IndoorArNavigator } from './IndoorArNavigator';
-import { IndoorQrScanner } from './IndoorQrScanner';
-
+import { IndoorQrScanner } from '../../components/indoor/IndoorQrScanner';
 export function IndoorPage() {
   const token = useAuthStore((s) => s.accessToken);
   const campusApi = useCampusApi();
@@ -145,7 +143,18 @@ export function IndoorPage() {
       setStatus(null);
       setError(err instanceof Error ? err.message : 'Marker not found');
     }
+  } catch (err) {
+    setStatus(null);
+    setError(
+      err instanceof Error ? err.message : 'Marker not found',
+    );
   }
+}
+
+async function resolveQr(e: FormEvent) {
+  e.preventDefault();
+  await resolveQrCode(qr);
+}
 
   async function searchPlaces(e: FormEvent) {
     e.preventDefault();
@@ -159,23 +168,27 @@ export function IndoorPage() {
     }
   }
 
-  async function startIndoor(placeId: string, anchorCode = qr.trim()) {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await campusApi.indoorRoute(
-        {
-          sourceAnchorCode: anchorCode,
-          destinationPlaceId: placeId,
-          expectedBuildingId: buildingId ?? undefined,
-          preferences: {
-            avoidStairs: accessibility.avoidStairs,
-            preferElevator: accessibility.preferLift,
-            wheelchairAccessible: accessibility.wheelchairMode,
-          },
+  async function startIndoor(
+  placeId: string,
+  sourceQr = qr,
+) {
+  setBusy(true);
+  setError(null);
+
+  try {
+    const res = await campusApi.indoorRoute(
+      {
+        sourceAnchorCode: sourceQr.trim(),
+        destinationPlaceId: placeId,
+        expectedBuildingId: buildingId ?? undefined,
+        preferences: {
+          avoidStairs: accessibility.avoidStairs,
+          preferElevator: accessibility.preferLift,
+          wheelchairAccessible: accessibility.wheelchairMode,
         },
-        token,
-      );
+      },
+      token,
+    );
       setRoute(res);
       startIndoorNavigation();
       setStatus(`Indoor route ready · ${Math.round(res.totalDistanceM)} m`);
@@ -232,11 +245,23 @@ export function IndoorPage() {
       )}
 
       <form className="panel space-y-3 rounded-md p-4" onSubmit={(e) => void resolveQr(e)}>
-        <label className="label" htmlFor="indoor-qr">
-          Indoor QR / marker code
-        </label>
-        <p className="text-sm text-ink-mute">Scan the CampusAR marker</p>
-        <div className="flex gap-2">
+  <label className="label" htmlFor="indoor-qr">
+    Indoor QR / marker code
+  </label>
+
+  <p className="text-sm text-ink-mute">
+    Scan the CampusAR marker
+  </p>
+
+  <IndoorQrScanner
+    onScan={(decodedText) => {
+      void resolveQrCode(decodedText);
+    }}
+    onError={(message) => {
+      setError(message);
+    }}
+  />
+  <div className="flex gap-2">
           <input
             id="indoor-qr"
             className="input"
