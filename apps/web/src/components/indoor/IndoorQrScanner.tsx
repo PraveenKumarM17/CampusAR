@@ -6,10 +6,7 @@ type IndoorQrScannerProps = {
   onError?: (message: string) => void;
 };
 
-export function IndoorQrScanner({
-  onScan,
-  onError,
-}: IndoorQrScannerProps) {
+export function IndoorQrScanner({ onScan, onError }: IndoorQrScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [scanning, setScanning] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -61,15 +58,9 @@ export function IndoorQrScanner({
       scannerRef.current = null;
       setScanning(false);
 
-      setCameraError(
-        'Camera access was denied or the camera is unavailable.',
-      );
+      setCameraError('Camera access was denied or the camera is unavailable.');
 
-      onError?.(
-        error instanceof Error
-          ? error.message
-          : 'Unable to access the camera.',
-      );
+      onError?.(error instanceof Error ? error.message : 'Unable to access the camera.');
     }
   };
 
@@ -113,11 +104,7 @@ export function IndoorQrScanner({
         </button>
       )}
 
-      {cameraError && (
-        <p role="alert">
-          {cameraError}
-        </p>
-      )}
+      {cameraError && <p role="alert">{cameraError}</p>}
     </div>
   );
 }
