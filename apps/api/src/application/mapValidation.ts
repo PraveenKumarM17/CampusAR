@@ -11,13 +11,13 @@ function pushIssue(
   issues.push(issue);
 }
 
-export async function validateSiteMap(siteId: string): Promise<MapValidationResult> {
+export async function validateSiteMap(siteId: string, mapVersionId: string): Promise<MapValidationResult> {
   const issues: MapValidationIssue[] = [];
   const [buildings, nodes, edges, areas] = await Promise.all([
-    campusRepository.listBuildings(siteId),
-    campusRepository.listActiveNodes(siteId),
-    campusRepository.listEdges(siteId),
-    siteAreaRepository.listBySite(siteId),
+    campusRepository.listBuildings(siteId, mapVersionId),
+    campusRepository.listActiveNodes(siteId, mapVersionId),
+    campusRepository.listEdges(siteId, mapVersionId),
+    siteAreaRepository.listBySite(siteId, mapVersionId),
   ]);
 
   const nodeIds = new Set(nodes.map((n) => n.id));

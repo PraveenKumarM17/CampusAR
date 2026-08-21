@@ -18,6 +18,7 @@ import { defaultCrowdPredictor } from '../domain/prediction/crowdPredictor';
 import { validateRouteEndpoints } from './navigationValidation';
 import { analyticsRepository } from '../infrastructure/repositories/analyticsRepository';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
+import { mapVersionService } from './mapVersionService';
 
 function normalizeAccessibility(
   input?: Partial<AccessibilityPrefs>,
@@ -47,7 +48,14 @@ export const navigationService = {
     const prefs = normalizeAccessibility(input.accessibility);
     const usePrediction = input.usePrediction !== false;
     const weights = await campusRepository.getWeights();
-    const { nodes, edges: rawEdges } = await campusRepository.getRoutingGraph(input.siteId);
+    const publishedVersion = input.siteId
+      ? await mapVersionService.getPublishedVersion(input.siteId)
+      : null;
+    const mapVersionId = publishedVersion?.id;
+    const { nodes, edges: rawEdges } = await campusRepository.getRoutingGraph(
+      input.siteId,
+      mapVersionId,
+    );
     const zones = await campusRepository.listActiveDangerZones(input.siteId);
     const events = await campusRepository.listActiveRoutingEvents(new Date(), input.siteId);
 

@@ -2,6 +2,7 @@ import type { CampusPlace, GraphNode, RoutePlaceSummary } from '@campusar/shared
 import { AppError } from '../domain/errors';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
 import { assertSameSite } from './siteContext';
+import { mapVersionService } from './mapVersionService';
 
 export function isNamedPlace(node: Pick<GraphNode, 'name'>): boolean {
   return Boolean(node.name?.trim());
@@ -93,6 +94,20 @@ export async function validateRouteEndpoints(
   assertSameSite(sourceNode?.siteId, destinationNode?.siteId);
   if (siteId && sourceNode?.siteId && sourceNode.siteId !== siteId) {
     throw new AppError('CROSS_SITE_ROUTE', 'Start and destination must belong to the requested site', 422);
+  }
+  if (siteId) {
+    const published = await mapVersionService.getPublishedVersion(siteId);
+    const [fromVersion, toVersion] = await Promise.all([
+      campusRepository.getNodeMapVersionId(sourceNodeId),
+      campusRepository.getNodeMapVersionId(destinationNodeId),
+    ]);
+    if (fromVersion !== published.id || toVersion !== published.id) {
+      throw new AppError(
+        'CROSS_VERSION_REFERENCE',
+        'Route endpoints must belong to the published map version',
+        422,
+      );
+    }
   }
 
   return { source, destination };

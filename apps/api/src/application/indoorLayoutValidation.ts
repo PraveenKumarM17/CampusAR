@@ -11,6 +11,7 @@ function push(issues: MapValidationIssue[], issue: MapValidationIssue) {
 export async function validateIndoorLayout(
   buildingId: string,
   siteId: string,
+  mapVersionId: string,
 ): Promise<IndoorLayoutValidationResult> {
   const issues: MapValidationIssue[] = [];
   const building = await campusRepository.getBuildingById(buildingId);
@@ -35,7 +36,7 @@ export async function validateIndoorLayout(
     return summarize(issues);
   }
 
-  const snapshot = await floorLayoutRepository.loadSnapshot(buildingId, siteId);
+  const snapshot = await floorLayoutRepository.loadSnapshot(buildingId, siteId, mapVersionId);
 
   if (snapshot.floors.length === 0) {
     push(issues, {
@@ -146,7 +147,7 @@ export async function validateIndoorLayout(
     }
   }
 
-  const graphIssues = await validateIndoorGraph(buildingId, siteId);
+  const graphIssues = await validateIndoorGraph(buildingId, siteId, mapVersionId);
   issues.push(...graphIssues);
 
   return summarize(issues);

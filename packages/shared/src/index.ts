@@ -10,6 +10,29 @@ export type OrganizationType =
 
 export type SiteStatus = 'draft' | 'active' | 'archived';
 
+export type SiteMapVersionStatus = 'draft' | 'published' | 'archived';
+
+export interface SiteMapVersion {
+  id: string;
+  siteId: string;
+  versionNumber: number;
+  status: SiteMapVersionStatus;
+  label: string | null;
+  description: string | null;
+  basedOnVersionId: string | null;
+  createdBy: string | null;
+  publishedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  archivedAt: string | null;
+}
+
+export interface SiteMapVersionSummary {
+  publishedVersion: SiteMapVersion | null;
+  draftVersion: SiteMapVersion | null;
+}
+
 export type MembershipRole = 'org_admin' | 'site_admin' | 'member';
 
 export interface User {
@@ -122,6 +145,7 @@ export interface MapValidationResult {
 
 export interface MapBuilderSnapshot {
   siteId: string;
+  version: SiteMapVersion;
   buildings: Building[];
   nodes: GraphNode[];
   edges: GraphEdge[];

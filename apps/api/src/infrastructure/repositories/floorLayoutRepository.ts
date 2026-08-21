@@ -107,25 +107,35 @@ async function assertFloorBelongsToBuilding(floorId: string, buildingId: string)
 }
 
 export const floorLayoutRepository = {
-  async loadSnapshot(buildingId: string, siteId: string): Promise<IndoorFloorLayoutSnapshot> {
+  async loadSnapshot(
+    buildingId: string,
+    siteId: string,
+    mapVersionId: string,
+  ): Promise<IndoorFloorLayoutSnapshot> {
     const building = await campusRepository.getBuildingById(buildingId);
     if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
     if (building.siteId !== siteId) {
       throw new AppError('CROSS_SITE_REFERENCE', 'Building does not belong to the active site', 422);
     }
+    const buildingVersion = await campusRepository.getBuildingMapVersionId(buildingId);
+    if (buildingVersion !== mapVersionId) {
+      throw new AppError('CROSS_VERSION_REFERENCE', 'Building does not belong to the active map version', 422);
+    }
     const [floors, rooms, corridors, pois] = await Promise.all([
-      this.listFloors(buildingId),
-      this.listRooms(buildingId),
-      this.listCorridors(buildingId),
-      this.listPois(buildingId),
+      this.listFloors(buildingId, mapVersionId),
+      this.listRooms(buildingId, undefined, mapVersionId),
+      this.listCorridors(buildingId, undefined, mapVersionId),
+      this.listPois(buildingId, undefined, mapVersionId),
     ]);
     return { buildingId, siteId, floors, rooms, corridors, pois };
   },
 
-  async listFloors(buildingId: string): Promise<Floor[]> {
+  async listFloors(buildingId: string, mapVersionId?: string): Promise<Floor[]> {
     const { rows } = await query(
-      `SELECT id, building_id, level, name, updated_at FROM floors WHERE building_id = $1 ORDER BY level`,
-      [buildingId],
+      `SELECT id, building_id, level, name, updated_at FROM floors
+       WHERE building_id = $1 AND ($2::uuid IS NULL OR map_version_id = $2)
+       ORDER BY level`,
+      [buildingId, mapVersionId ?? null],
     );
     return (rows as Array<Record<string, unknown>>).map(mapFloorRow);
   },
@@ -139,12 +149,12 @@ export const floorLayoutRepository = {
     return mapFloorRow(rows[0] as Record<string, unknown>);
   },
 
-  async createFloor(input: { buildingId: string; level: number; name: string }) {
+  async createFloor(input: { buildingId: string; level: number; name: string; mapVersionId: string }) {
     const { rows } = await query(
-      `INSERT INTO floors (building_id, level, name, updated_at)
-       VALUES ($1, $2, $3, NOW())
+      `INSERT INTO floors (building_id, level, name, updated_at, map_version_id)
+       VALUES ($1, $2, $3, NOW(), $4)
        RETURNING id, building_id, level, name, updated_at`,
-      [input.buildingId, input.level, input.name],
+      [input.buildingId, input.level, input.name, input.mapVersionId],
     );
     return mapFloorRow(rows[0] as Record<string, unknown>);
   },
@@ -220,9 +230,13 @@ export const floorLayoutRepository = {
     await query(`DELETE FROM floors WHERE id = $1`, [id]);
   },
 
-  async listRooms(buildingId: string, floorId?: string): Promise<Room[]> {
+  async listRooms(buildingId: string, floorId?: string, mapVersionId?: string): Promise<Room[]> {
     const params: unknown[] = [buildingId];
     let sql = `SELECT * FROM rooms WHERE building_id = $1`;
+    if (mapVersionId) {
+      params.push(mapVersionId);
+      sql += ` AND map_version_id = $${params.length}`;
+    }
     if (floorId) {
       params.push(floorId);
       sql += ` AND floor_id = $${params.length}`;
@@ -246,12 +260,13 @@ export const floorLayoutRepository = {
     category: RoomCategory;
     wheelchairAccessible?: boolean;
     localGeometry: LocalVec2[];
+    mapVersionId: string;
   }) {
     await assertFloorBelongsToBuilding(input.floorId, input.buildingId);
     validateLocalPolygon(input.localGeometry, 'Room');
     const { rows } = await query(
-      `INSERT INTO rooms (floor_id, building_id, name, code, category, wheelchair_accessible, local_geometry, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
+      `INSERT INTO rooms (floor_id, building_id, name, code, category, wheelchair_accessible, local_geometry, updated_at, map_version_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), $8)
        RETURNING *`,
       [
         input.floorId,
@@ -261,6 +276,7 @@ export const floorLayoutRepository = {
         input.category,
         input.wheelchairAccessible ?? true,
         JSON.stringify(input.localGeometry),
+        input.mapVersionId,
       ],
     );
     return mapRoomRow(rows[0] as Record<string, unknown>);
@@ -317,10 +333,16 @@ export const floorLayoutRepository = {
     }
     const updated = mapRoomRow(rows[0] as Record<string, unknown>);
     if (input.name) {
-      const draft = await indoorRepository.getDraftMapByBuilding(updated.buildingId);
-      const published = await indoorRepository.getPublishedMapByBuilding(updated.buildingId);
-      const mapId = draft?.id ?? published?.id;
-      if (mapId) await indoorRepository.syncPlaceNameForRoom(mapId, id, input.name);
+      const buildingVersion = await campusRepository.getBuildingMapVersionId(updated.buildingId);
+      if (buildingVersion) {
+        const draft = await indoorRepository.getDraftMapByBuilding(updated.buildingId, buildingVersion);
+        const published = await indoorRepository.getPublishedMapByBuilding(
+          updated.buildingId,
+          buildingVersion,
+        );
+        const mapId = draft?.id ?? published?.id;
+        if (mapId) await indoorRepository.syncPlaceNameForRoom(mapId, id, input.name);
+      }
     }
     return updated;
   },
@@ -350,9 +372,13 @@ export const floorLayoutRepository = {
     await query(`DELETE FROM rooms WHERE id = $1`, [id]);
   },
 
-  async listCorridors(buildingId: string, floorId?: string): Promise<FloorCorridor[]> {
+  async listCorridors(buildingId: string, floorId?: string, mapVersionId?: string): Promise<FloorCorridor[]> {
     const params: unknown[] = [buildingId];
     let sql = `SELECT * FROM floor_corridors WHERE building_id = $1`;
+    if (mapVersionId) {
+      params.push(mapVersionId);
+      sql += ` AND map_version_id = $${params.length}`;
+    }
     if (floorId) {
       params.push(floorId);
       sql += ` AND floor_id = $${params.length}`;
@@ -373,12 +399,13 @@ export const floorLayoutRepository = {
     name?: string | null;
     category?: string;
     localGeometry: LocalVec2[];
+    mapVersionId: string;
   }) {
     await assertFloorBelongsToBuilding(input.floorId, input.buildingId);
     validateLocalPolygon(input.localGeometry, 'Corridor');
     const { rows } = await query(
-      `INSERT INTO floor_corridors (floor_id, building_id, name, category, local_geometry, updated_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+      `INSERT INTO floor_corridors (floor_id, building_id, name, category, local_geometry, updated_at, map_version_id)
+       VALUES ($1, $2, $3, $4, $5::jsonb, NOW(), $6)
        RETURNING *`,
       [
         input.floorId,
@@ -386,6 +413,7 @@ export const floorLayoutRepository = {
         input.name ?? null,
         input.category ?? 'corridor',
         JSON.stringify(input.localGeometry),
+        input.mapVersionId,
       ],
     );
     return mapCorridorRow(rows[0] as Record<string, unknown>);
@@ -441,9 +469,13 @@ export const floorLayoutRepository = {
     await query(`DELETE FROM floor_corridors WHERE id = $1`, [id]);
   },
 
-  async listPois(buildingId: string, floorId?: string): Promise<FloorPoi[]> {
+  async listPois(buildingId: string, floorId?: string, mapVersionId?: string): Promise<FloorPoi[]> {
     const params: unknown[] = [buildingId];
     let sql = `SELECT * FROM floor_pois WHERE building_id = $1`;
+    if (mapVersionId) {
+      params.push(mapVersionId);
+      sql += ` AND map_version_id = $${params.length}`;
+    }
     if (floorId) {
       params.push(floorId);
       sql += ` AND floor_id = $${params.length}`;
@@ -465,14 +497,15 @@ export const floorLayoutRepository = {
     category: FloorPoiCategory;
     localX: number;
     localY: number;
+    mapVersionId: string;
   }) {
     await assertFloorBelongsToBuilding(input.floorId, input.buildingId);
     validateLocalPoint(input.localX, input.localY, 'POI');
     const { rows } = await query(
-      `INSERT INTO floor_pois (floor_id, building_id, name, category, local_x, local_y, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `INSERT INTO floor_pois (floor_id, building_id, name, category, local_x, local_y, updated_at, map_version_id)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
        RETURNING *`,
-      [input.floorId, input.buildingId, input.name, input.category, input.localX, input.localY],
+      [input.floorId, input.buildingId, input.name, input.category, input.localX, input.localY, input.mapVersionId],
     );
     return mapPoiRow(rows[0] as Record<string, unknown>);
   },

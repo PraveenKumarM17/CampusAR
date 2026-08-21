@@ -132,13 +132,13 @@ export const indoorRepository = {
     return rows.map(mapFromRow);
   },
 
-  async getPublishedMapByBuilding(buildingId: string): Promise<IndoorMap | null> {
+  async getPublishedMapByBuilding(buildingId: string, mapVersionId: string): Promise<IndoorMap | null> {
     const { rows } = await query<MapRow>(
       `SELECT * FROM indoor_maps
-       WHERE building_id = $1 AND active = TRUE AND status = 'published'
+       WHERE building_id = $1 AND map_version_id = $2 AND active = TRUE AND status = 'published'
        ORDER BY updated_at DESC
        LIMIT 1`,
-      [buildingId],
+      [buildingId, mapVersionId],
     );
     return rows[0] ? mapFromRow(rows[0]) : null;
   },
@@ -156,10 +156,12 @@ export const indoorRepository = {
     trackingQuality?: string | null;
     planeCount?: number;
     confidence?: number | null;
+    mapVersionId: string;
+    status?: IndoorMap['status'];
   }): Promise<IndoorMap> {
     const { rows } = await query<MapRow>(
-      `INSERT INTO indoor_maps (building_id, name, notes, created_by, tracking_quality, plane_count, confidence)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      `INSERT INTO indoor_maps (building_id, name, notes, created_by, tracking_quality, plane_count, confidence, status, map_version_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
         input.buildingId,
         input.name,
@@ -168,6 +170,8 @@ export const indoorRepository = {
         input.trackingQuality ?? null,
         input.planeCount ?? 0,
         input.confidence ?? null,
+        input.status ?? 'draft',
+        input.mapVersionId,
       ],
     );
     return mapFromRow(rows[0]);
@@ -230,8 +234,9 @@ export const indoorRepository = {
     const { rows } = await query(
       `INSERT INTO indoor_nodes (
          map_id, building_id, floor_id, anchor_id, local_x, local_y, local_z,
-         kind, name, category, accuracy_m, tracking_quality, active
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+         kind, name, category, accuracy_m, tracking_quality, active, map_version_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+         (SELECT map_version_id FROM indoor_maps WHERE id = $1)) RETURNING *`,
       [
         input.mapId,
         input.buildingId,
@@ -309,8 +314,9 @@ export const indoorRepository = {
     const { rows } = await query(
       `INSERT INTO indoor_edges (
          map_id, building_id, from_floor_id, to_floor_id, from_node_id, to_node_id,
-         distance_m, kind, bidirectional, wheelchair_accessible, waypoints, active
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12) RETURNING *`,
+         distance_m, kind, bidirectional, wheelchair_accessible, waypoints, active, map_version_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,
+         (SELECT map_version_id FROM indoor_maps WHERE id = $1)) RETURNING *`,
       [
         input.mapId,
         input.buildingId,
@@ -411,8 +417,9 @@ export const indoorRepository = {
   async createPlace(input: Omit<IndoorPlace, 'id'>): Promise<IndoorPlace> {
     const { rows } = await query(
       `INSERT INTO indoor_places (
-         map_id, building_id, floor_id, node_id, parent_place_id, name, category, searchable, metadata, active
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) RETURNING *`,
+         map_id, building_id, floor_id, node_id, parent_place_id, name, category, searchable, metadata, active, map_version_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,
+         (SELECT map_version_id FROM indoor_maps WHERE id = $1)) RETURNING *`,
       [
         input.mapId,
         input.buildingId,
@@ -475,8 +482,9 @@ export const indoorRepository = {
   async createAnchor(input: Omit<IndoorAnchor, 'id'>): Promise<IndoorAnchor> {
     const { rows } = await query(
       `INSERT INTO indoor_anchors (
-         map_id, building_id, floor_id, node_id, anchor_code, physical_marker_type, local_x, local_y, local_z, active
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+         map_id, building_id, floor_id, node_id, anchor_code, physical_marker_type, local_x, local_y, local_z, active, map_version_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+         (SELECT map_version_id FROM indoor_maps WHERE id = $1)) RETURNING *`,
       [
         input.mapId,
         input.buildingId,
@@ -534,8 +542,8 @@ export const indoorRepository = {
 
   async createHandoff(input: Omit<IndoorHandoff, 'id'>): Promise<IndoorHandoff> {
     const { rows } = await query(
-      `INSERT INTO indoor_handoffs (outdoor_node_id, indoor_node_id, building_id, map_id, prompt, active)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO indoor_handoffs (outdoor_node_id, indoor_node_id, building_id, map_id, prompt, active, map_version_id)
+       VALUES ($1,$2,$3,$4,$5,$6,(SELECT map_version_id FROM indoor_maps WHERE id = $4))
        ON CONFLICT (outdoor_node_id) DO UPDATE SET
          indoor_node_id = EXCLUDED.indoor_node_id,
          building_id = EXCLUDED.building_id,
@@ -557,15 +565,35 @@ export const indoorRepository = {
     };
   },
 
-  async getDraftMapByBuilding(buildingId: string): Promise<IndoorMap | null> {
+  async getPrimaryMapForBuildingVersion(
+    buildingId: string,
+    mapVersionId: string,
+  ): Promise<IndoorMap | null> {
     const { rows } = await query<MapRow>(
-      `SELECT * FROM indoor_maps
-       WHERE building_id = $1 AND active = TRUE AND status = 'draft'
-       ORDER BY updated_at DESC
+      `SELECT im.*
+       FROM indoor_maps im
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS node_count FROM indoor_nodes n
+         WHERE n.map_id = im.id AND n.active = TRUE
+       ) stats ON TRUE
+       WHERE im.building_id = $1 AND im.map_version_id = $2 AND im.active = TRUE
+       ORDER BY stats.node_count DESC NULLS LAST, im.updated_at DESC
        LIMIT 1`,
-      [buildingId],
+      [buildingId, mapVersionId],
     );
     return rows[0] ? mapFromRow(rows[0]) : null;
+  },
+
+  async getDraftMapByBuilding(buildingId: string, mapVersionId: string): Promise<IndoorMap | null> {
+    return this.getPrimaryMapForBuildingVersion(buildingId, mapVersionId);
+  },
+
+  async getMapMapVersionId(id: string): Promise<string | null> {
+    const { rows } = await query<{ map_version_id: string | null }>(
+      `SELECT map_version_id FROM indoor_maps WHERE id = $1`,
+      [id],
+    );
+    return rows[0]?.map_version_id ?? null;
   },
 
   async listHandoffsByMap(mapId: string): Promise<IndoorHandoff[]> {

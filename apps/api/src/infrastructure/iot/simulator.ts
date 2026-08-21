@@ -1,6 +1,7 @@
 import { IOT_TICK_MS, type CrowdLevel, type IotStatus, type SensorReading } from '@campusar/shared';
 import { campusRepository } from '../repositories/campusRepository';
 import { siteRepository } from '../repositories/siteRepository';
+import { mapVersionService } from '../../application/mapVersionService';
 import { broadcast } from '../realtime/wsHub';
 import { env } from '../config/env';
 import { diurnalCrowdFactor } from '../../domain/prediction/diurnal';
@@ -64,8 +65,9 @@ class IoTSimulator {
     }
 
     for (const site of targets) {
-      const edges = await campusRepository.listEdges(site.id);
-      const buildings = await campusRepository.listBuildings(site.id);
+      const published = await mapVersionService.getPublishedVersion(site.id);
+      const edges = await campusRepository.listEdges(site.id, published.id);
+      const buildings = await campusRepository.listBuildings(site.id, published.id);
       const base = diurnalCrowdFactor();
       const levels: Array<{
         edgeId: string | null;

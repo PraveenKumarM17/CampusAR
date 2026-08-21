@@ -38,24 +38,45 @@ async function seedOtherSite() {
     [SITE_B, ORG_B],
   );
   await pool.query(
-    `INSERT INTO buildings (id, site_id, name, code, description, latitude, longitude, floors_count)
-     VALUES ($1, $2, 'Hospital Tower', 'HOSP', 'Isolation test building', 13.001, 77.601, 4)
-     ON CONFLICT (id) DO UPDATE SET site_id = EXCLUDED.site_id`,
-    [BUILDING_B, SITE_B],
+    `INSERT INTO site_map_versions (site_id, version_number, status, label, published_at, created_at, updated_at)
+     SELECT $1, 1, 'published', 'Initial published map', NOW(), NOW(), NOW()
+     WHERE NOT EXISTS (SELECT 1 FROM site_map_versions WHERE site_id = $1 AND status = 'published')`,
+    [SITE_B],
   );
   await pool.query(
-    `INSERT INTO nodes (id, site_id, name, latitude, longitude, kind, active)
+    `UPDATE sites s SET published_map_version_id = v.id
+     FROM site_map_versions v
+     WHERE v.site_id = s.id AND v.status = 'published' AND s.id = $1 AND s.published_map_version_id IS NULL`,
+    [SITE_B],
+  );
+  const { rows: versionRows } = await pool.query<{ id: string }>(
+    `SELECT id FROM site_map_versions WHERE site_id = $1 AND status = 'published' LIMIT 1`,
+    [SITE_B],
+  );
+  const versionId = versionRows[0]?.id;
+  if (!versionId) throw new Error('missing published version for test site');
+
+  await pool.query(
+    `INSERT INTO buildings (id, site_id, name, code, description, latitude, longitude, floors_count, map_version_id)
+     VALUES ($1, $2, 'Hospital Tower', 'HOSP', 'Isolation test building', 13.001, 77.601, 4, $3)
+     ON CONFLICT (id) DO UPDATE SET site_id = EXCLUDED.site_id, map_version_id = EXCLUDED.map_version_id`,
+    [BUILDING_B, SITE_B, versionId],
+  );
+  await pool.query(
+    `INSERT INTO nodes (id, site_id, name, latitude, longitude, kind, active, map_version_id)
      VALUES
-       ($1, $3, 'Hospital Gate', 13.001, 77.601, 'outdoor', TRUE),
-       ($2, $3, 'Hospital Lobby', 13.002, 77.602, 'outdoor', TRUE)
-     ON CONFLICT (id) DO UPDATE SET site_id = EXCLUDED.site_id`,
-    [NODE_B1, NODE_B2, SITE_B],
+       ($1, $3, 'Hospital Gate', 13.001, 77.601, 'outdoor', TRUE, $4),
+       ($2, $3, 'Hospital Lobby', 13.002, 77.602, 'outdoor', TRUE, $4)
+     ON CONFLICT (id) DO UPDATE SET site_id = EXCLUDED.site_id, map_version_id = EXCLUDED.map_version_id`,
+    [NODE_B1, NODE_B2, SITE_B, versionId],
   );
 }
 
 async function cleanupOtherSite() {
   await pool.query(`DELETE FROM nodes WHERE id IN ($1, $2)`, [NODE_B1, NODE_B2]);
   await pool.query(`DELETE FROM buildings WHERE id = $1`, [BUILDING_B]);
+  await pool.query(`DELETE FROM site_map_versions WHERE site_id = $1`, [SITE_B]);
+  await pool.query(`UPDATE sites SET published_map_version_id = NULL WHERE id = $1`, [SITE_B]);
   await pool.query(`DELETE FROM sites WHERE id = $1`, [SITE_B]);
   await pool.query(`DELETE FROM organizations WHERE id = $1`, [ORG_B]);
 }

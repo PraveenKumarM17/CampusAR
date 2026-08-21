@@ -5,6 +5,7 @@ import { campusRepository } from '../infrastructure/repositories/campusRepositor
 import { floorLayoutRepository } from '../infrastructure/repositories/floorLayoutRepository';
 import { indoorRepository } from '../infrastructure/repositories/indoorRepository';
 import { assertResourceInSite } from './siteContext';
+import { assertDraftWritable } from './mapVersionGuard';
 import {
   connectorEdgeDefaults,
   floorPlanToLocalVec3,
@@ -75,6 +76,11 @@ export const graphHandoffSchema = z.object({
   prompt: z.string().trim().min(1).max(240).optional(),
 });
 
+export type EditorVersionContext = {
+  draftVersionId: string;
+  publishedVersionId: string;
+};
+
 async function assertBuildingInSite(buildingId: string, siteId: string) {
   const building = await campusRepository.getBuildingById(buildingId);
   if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
@@ -82,10 +88,28 @@ async function assertBuildingInSite(buildingId: string, siteId: string) {
   return building;
 }
 
-async function assertMapInSite(mapId: string, siteId: string) {
+async function assertBuildingInDraftVersion(
+  buildingId: string,
+  versions: EditorVersionContext,
+) {
+  assertDraftWritable(
+    await campusRepository.getBuildingMapVersionId(buildingId),
+    versions.draftVersionId,
+    versions.publishedVersionId,
+    'Building',
+  );
+}
+
+async function assertMapInSite(mapId: string, siteId: string, versions: EditorVersionContext) {
   const map = await indoorRepository.getMap(mapId);
   if (!map || !map.active) throw new AppError('NOT_FOUND', 'Indoor map not found', 404);
   await assertBuildingInSite(map.buildingId, siteId);
+  assertDraftWritable(
+    await indoorRepository.getMapMapVersionId(mapId),
+    versions.draftVersionId,
+    versions.publishedVersionId,
+    'Indoor map',
+  );
   return map;
 }
 
@@ -96,34 +120,63 @@ async function assertNodeInSite(nodeId: string, siteId: string) {
   return node;
 }
 
-async function floorElevationM(buildingId: string, floorId: string): Promise<number> {
-  const floors = await campusRepository.listFloors(buildingId);
+async function floorElevationM(
+  buildingId: string,
+  floorId: string,
+  mapVersionId: string,
+): Promise<number> {
+  const floors = await campusRepository.listFloors(buildingId, undefined, mapVersionId);
   const floor = floors.find((f) => f.id === floorId);
   return (floor?.level ?? 0) * 3.5;
 }
 
 export const indoorGraphEditorService = {
-  async ensureDraftMap(buildingId: string, siteId: string, userId: string | null) {
+  async ensureDraftMap(
+    buildingId: string,
+    siteId: string,
+    userId: string | null,
+    mapVersionId: string,
+  ) {
     await assertBuildingInSite(buildingId, siteId);
-    const existing = await indoorRepository.getDraftMapByBuilding(buildingId);
+    const existing = await indoorRepository.getDraftMapByBuilding(buildingId, mapVersionId);
     if (existing) return existing;
     return indoorRepository.createMap({
       buildingId,
       name: 'Map Builder Draft',
       notes: 'Created by indoor map builder',
       createdBy: userId,
+      mapVersionId,
+      status: 'draft',
     });
   },
 
-  async loadGraphSnapshot(buildingId: string, siteId: string): Promise<IndoorGraphEditorSnapshot> {
+  async loadGraphSnapshot(
+    buildingId: string,
+    siteId: string,
+    versions: EditorVersionContext,
+  ): Promise<IndoorGraphEditorSnapshot> {
     await assertBuildingInSite(buildingId, siteId);
-    const layout = await floorLayoutRepository.loadSnapshot(buildingId, siteId);
-    const draftMap = await indoorRepository.getDraftMapByBuilding(buildingId);
-    const publishedMap = await indoorRepository.getPublishedMapByBuilding(buildingId);
+    await assertBuildingInDraftVersion(buildingId, versions);
+    const layout = await floorLayoutRepository.loadSnapshot(
+      buildingId,
+      siteId,
+      versions.draftVersionId,
+    );
+    const draftMap = await indoorRepository.getPrimaryMapForBuildingVersion(
+      buildingId,
+      versions.draftVersionId,
+    );
+    const publishedMap = await indoorRepository.getPublishedMapByBuilding(
+      buildingId,
+      versions.publishedVersionId,
+    );
     const editMap = draftMap ?? publishedMap;
     const bundle = editMap ? await indoorRepository.loadBundle(editMap.id, true) : null;
     const handoffs = editMap ? await indoorRepository.listHandoffsByMap(editMap.id) : [];
-    const outdoorEntrances = await campusRepository.listBuildingEntrances(buildingId);
+    const outdoorEntrances = await campusRepository.listBuildingEntrances(
+      buildingId,
+      versions.draftVersionId,
+    );
 
     const roomLinks: Record<string, string | null> = {};
     if (bundle) {
@@ -152,12 +205,14 @@ export const indoorGraphEditorService = {
     siteId: string,
     body: z.infer<typeof graphNodeFromPlanSchema>,
     userId: string | null,
+    versions: EditorVersionContext,
   ) {
     await assertBuildingInSite(body.buildingId, siteId);
+    await assertBuildingInDraftVersion(body.buildingId, versions);
     const map = body.mapId
-      ? await assertMapInSite(body.mapId, siteId)
-      : await this.ensureDraftMap(body.buildingId, siteId, userId);
-    const elevationM = await floorElevationM(body.buildingId, body.floorId);
+      ? await assertMapInSite(body.mapId, siteId, versions)
+      : await this.ensureDraftMap(body.buildingId, siteId, userId, versions.draftVersionId);
+    const elevationM = await floorElevationM(body.buildingId, body.floorId, versions.draftVersionId);
     const local = floorPlanToLocalVec3({ x: body.planX, y: body.planY }, elevationM);
     return indoorService.createNode({
       mapId: map.id,
@@ -171,9 +226,20 @@ export const indoorGraphEditorService = {
     });
   },
 
-  async moveNodeFromPlan(siteId: string, nodeId: string, body: z.infer<typeof graphNodeMoveSchema>) {
+  async moveNodeFromPlan(
+    siteId: string,
+    nodeId: string,
+    body: z.infer<typeof graphNodeMoveSchema>,
+    versions: EditorVersionContext,
+  ) {
     const node = await assertNodeInSite(nodeId, siteId);
-    const elevationM = await floorElevationM(node.buildingId, node.floorId);
+    assertDraftWritable(
+      await indoorRepository.getMapMapVersionId(node.mapId),
+      versions.draftVersionId,
+      versions.publishedVersionId,
+      'Indoor node',
+    );
+    const elevationM = await floorElevationM(node.buildingId, node.floorId, versions.draftVersionId);
     const local = floorPlanToLocalVec3({ x: body.planX, y: body.planY }, elevationM);
     return indoorService.updateNode(nodeId, {
       localX: local.x,
@@ -183,16 +249,28 @@ export const indoorGraphEditorService = {
     });
   },
 
-  async deleteNode(siteId: string, nodeId: string) {
-    await assertNodeInSite(nodeId, siteId);
+  async deleteNode(siteId: string, nodeId: string, versions: EditorVersionContext) {
+    const node = await assertNodeInSite(nodeId, siteId);
+    assertDraftWritable(
+      await indoorRepository.getMapMapVersionId(node.mapId),
+      versions.draftVersionId,
+      versions.publishedVersionId,
+      'Indoor node',
+    );
     await indoorService.deleteNode(nodeId);
   },
 
-  async createEdge(siteId: string, body: z.infer<typeof graphEdgeCreateSchema>, userId: string | null) {
+  async createEdge(
+    siteId: string,
+    body: z.infer<typeof graphEdgeCreateSchema>,
+    userId: string | null,
+    versions: EditorVersionContext,
+  ) {
     await assertBuildingInSite(body.buildingId, siteId);
+    await assertBuildingInDraftVersion(body.buildingId, versions);
     const map = body.mapId
-      ? await assertMapInSite(body.mapId, siteId)
-      : await this.ensureDraftMap(body.buildingId, siteId, userId);
+      ? await assertMapInSite(body.mapId, siteId, versions)
+      : await this.ensureDraftMap(body.buildingId, siteId, userId, versions.draftVersionId);
     const from = await assertNodeInSite(body.fromNodeId, siteId);
     const to = await assertNodeInSite(body.toNodeId, siteId);
     if (from.mapId !== map.id || to.mapId !== map.id) {
@@ -217,27 +295,39 @@ export const indoorGraphEditorService = {
     });
   },
 
-  async deleteEdge(siteId: string, edgeId: string) {
+  async deleteEdge(siteId: string, edgeId: string, versions: EditorVersionContext) {
     const edge = await indoorRepository.getEdge(edgeId);
     if (!edge || !edge.active) throw new AppError('NOT_FOUND', 'Indoor edge not found', 404);
     await assertBuildingInSite(edge.buildingId, siteId);
+    assertDraftWritable(
+      await indoorRepository.getMapMapVersionId(edge.mapId),
+      versions.draftVersionId,
+      versions.publishedVersionId,
+      'Indoor edge',
+    );
     await indoorService.deleteEdge(edgeId);
   },
 
-  async linkRoom(siteId: string, body: z.infer<typeof graphRoomLinkSchema>, userId: string | null) {
+  async linkRoom(
+    siteId: string,
+    body: z.infer<typeof graphRoomLinkSchema>,
+    userId: string | null,
+    versions: EditorVersionContext,
+  ) {
     await assertBuildingInSite(body.buildingId, siteId);
+    await assertBuildingInDraftVersion(body.buildingId, versions);
     const room = await floorLayoutRepository.getRoomById(body.roomId);
     if (!room || room.buildingId !== body.buildingId) {
       throw new AppError('NOT_FOUND', 'Room not found in this building', 404);
     }
     const map = body.mapId
-      ? await assertMapInSite(body.mapId, siteId)
-      : await this.ensureDraftMap(body.buildingId, siteId, userId);
+      ? await assertMapInSite(body.mapId, siteId, versions)
+      : await this.ensureDraftMap(body.buildingId, siteId, userId, versions.draftVersionId);
 
     let nodeId = body.nodeId ?? null;
     if (!nodeId && body.createEntrance !== false) {
       const point = resolveRoomEntrancePoint(room.localGeometry, body.planX, body.planY);
-      const elevationM = await floorElevationM(body.buildingId, room.floorId);
+      const elevationM = await floorElevationM(body.buildingId, room.floorId, versions.draftVersionId);
       const local = floorPlanToLocalVec3(point, elevationM);
       const node = await indoorService.createNode({
         mapId: map.id,
@@ -281,18 +371,30 @@ export const indoorGraphEditorService = {
     });
   },
 
-  async unlinkRoom(siteId: string, buildingId: string, roomId: string, mapId?: string) {
+  async unlinkRoom(
+    siteId: string,
+    buildingId: string,
+    roomId: string,
+    versions: EditorVersionContext,
+    mapId?: string,
+  ) {
     await assertBuildingInSite(buildingId, siteId);
     const map = mapId
-      ? await assertMapInSite(mapId, siteId)
-      : (await indoorRepository.getDraftMapByBuilding(buildingId)) ??
-        (await indoorRepository.getPublishedMapByBuilding(buildingId));
+      ? await assertMapInSite(mapId, siteId, versions)
+      : (await indoorRepository.getDraftMapByBuilding(buildingId, versions.draftVersionId)) ??
+        (await indoorRepository.getPublishedMapByBuilding(buildingId, versions.draftVersionId));
     if (!map) return;
     await indoorRepository.deactivatePlaceByRoomId(map.id, roomId);
   },
 
-  async createHandoff(siteId: string, body: z.infer<typeof graphHandoffSchema>, _userId: string | null) {
+  async createHandoff(
+    siteId: string,
+    body: z.infer<typeof graphHandoffSchema>,
+    _userId: string | null,
+    versions: EditorVersionContext,
+  ) {
     await assertBuildingInSite(body.buildingId, siteId);
+    await assertBuildingInDraftVersion(body.buildingId, versions);
     const outdoor = await campusRepository.getNodeById(body.outdoorNodeId);
     if (!outdoor || !outdoor.active) {
       throw new AppError('NOT_FOUND', 'Outdoor entrance not found', 404);
@@ -303,16 +405,20 @@ export const indoorGraphEditorService = {
     if (outdoor.buildingId && outdoor.buildingId !== body.buildingId) {
       throw new AppError('BUILDING_MISMATCH', 'Outdoor entrance belongs to another building', 422);
     }
+    const outdoorVersion = await campusRepository.getNodeMapVersionId(body.outdoorNodeId);
+    assertDraftWritable(
+      outdoorVersion,
+      versions.draftVersionId,
+      versions.publishedVersionId,
+      'Outdoor node',
+    );
     const indoor = await assertNodeInSite(body.indoorNodeId, siteId);
     if (indoor.buildingId !== body.buildingId) {
       throw new AppError('BUILDING_MISMATCH', 'Indoor node belongs to another building', 422);
     }
-    if (indoor.kind !== 'entrance' && indoor.kind !== 'corridor' && indoor.kind !== 'junction') {
-      // Allow linking to corridor/junction near entrance; warn in validation if not entrance kind
-    }
     const map = body.mapId
-      ? await assertMapInSite(body.mapId, siteId)
-      : await assertMapInSite(indoor.mapId, siteId);
+      ? await assertMapInSite(body.mapId, siteId, versions)
+      : await assertMapInSite(indoor.mapId, siteId, versions);
     return indoorRepository.createHandoff({
       outdoorNodeId: body.outdoorNodeId,
       indoorNodeId: indoor.id,
@@ -323,10 +429,16 @@ export const indoorGraphEditorService = {
     });
   },
 
-  async deleteHandoff(siteId: string, handoffId: string) {
+  async deleteHandoff(siteId: string, handoffId: string, versions: EditorVersionContext) {
     const handoff = await indoorRepository.getHandoffById(handoffId);
     if (!handoff || !handoff.active) throw new AppError('NOT_FOUND', 'Handoff not found', 404);
     await assertBuildingInSite(handoff.buildingId, siteId);
+    assertDraftWritable(
+      await indoorRepository.getMapMapVersionId(handoff.mapId),
+      versions.draftVersionId,
+      versions.publishedVersionId,
+      'Handoff',
+    );
     const ok = await indoorRepository.softDeleteHandoff(handoffId);
     if (!ok) throw new AppError('NOT_FOUND', 'Handoff not found', 404);
   },

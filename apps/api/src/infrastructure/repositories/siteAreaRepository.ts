@@ -25,16 +25,24 @@ async function validatePolygon(wkt: string): Promise<void> {
 }
 
 export const siteAreaRepository = {
-  async listBySite(siteId: string): Promise<SiteArea[]> {
+  async listBySite(siteId: string, mapVersionId: string): Promise<SiteArea[]> {
     const { rows } = await query(
       `SELECT id, site_id, name, type,
               CASE WHEN footprint_geom IS NOT NULL
                 THEN ST_AsGeoJSON(footprint_geom)::json
                 ELSE NULL END AS footprint_geojson
-       FROM site_areas WHERE site_id = $1 ORDER BY name`,
-      [siteId],
+       FROM site_areas WHERE site_id = $1 AND map_version_id = $2 ORDER BY name`,
+      [siteId, mapVersionId],
     );
     return (rows as Array<Record<string, unknown>>).map(mapAreaRow);
+  },
+
+  async getMapVersionId(id: string): Promise<string | null> {
+    const { rows } = await query<{ map_version_id: string | null }>(
+      `SELECT map_version_id FROM site_areas WHERE id = $1`,
+      [id],
+    );
+    return rows[0]?.map_version_id ?? null;
   },
 
   async getById(id: string): Promise<SiteArea | null> {
@@ -52,6 +60,7 @@ export const siteAreaRepository = {
 
   async create(input: {
     siteId: string;
+    mapVersionId: string;
     name: string;
     type: SiteAreaType;
     footprint: LatLng[];
@@ -59,11 +68,11 @@ export const siteAreaRepository = {
     const wkt = ringToWkt(input.footprint);
     await validatePolygon(wkt);
     const { rows } = await query(
-      `INSERT INTO site_areas (site_id, name, type, footprint_geom)
-       VALUES ($1, $2, $3, ST_GeogFromText($4)::geography)
+      `INSERT INTO site_areas (site_id, name, type, footprint_geom, map_version_id)
+       VALUES ($1, $2, $3, ST_GeogFromText($4)::geography, $5)
        RETURNING id, site_id, name, type,
          ST_AsGeoJSON(footprint_geom)::json AS footprint_geojson`,
-      [input.siteId, input.name, input.type, wkt],
+      [input.siteId, input.name, input.type, wkt, input.mapVersionId],
     );
     return mapAreaRow(rows[0] as Record<string, unknown>);
   },

@@ -22,13 +22,14 @@ function buildAdjacency(nodes: IndoorNode[], edges: IndoorEdge[]): Map<string, S
 export async function validateIndoorGraph(
   buildingId: string,
   siteId: string,
+  mapVersionId: string,
 ): Promise<MapValidationIssue[]> {
   const issues: MapValidationIssue[] = [];
   const building = await campusRepository.getBuildingById(buildingId);
   if (!building || building.siteId !== siteId) return issues;
 
-  const draftMap = await indoorRepository.getDraftMapByBuilding(buildingId);
-  const publishedMap = await indoorRepository.getPublishedMapByBuilding(buildingId);
+  const draftMap = await indoorRepository.getDraftMapByBuilding(buildingId, mapVersionId);
+  const publishedMap = await indoorRepository.getPublishedMapByBuilding(buildingId, mapVersionId);
   const map = draftMap ?? publishedMap;
   if (!map) {
     push(issues, {
@@ -46,8 +47,8 @@ export async function validateIndoorGraph(
 
   const { nodes, edges, places } = bundle;
   const handoffs = await indoorRepository.listHandoffsByMap(map.id);
-  const layout = await floorLayoutRepository.loadSnapshot(buildingId, siteId);
-  const outdoorEntrances = await campusRepository.listBuildingEntrances(buildingId);
+  const layout = await floorLayoutRepository.loadSnapshot(buildingId, siteId, mapVersionId);
+  const outdoorEntrances = await campusRepository.listBuildingEntrances(buildingId, mapVersionId);
 
   if (nodes.length === 0) {
     push(issues, {

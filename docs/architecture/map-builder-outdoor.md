@@ -59,4 +59,4 @@ Existing RNSIT buildings keep their UUIDs and point coordinates. Footprints are 
 
 - **2.5C** — Indoor floor editor (floors, room/corridor/POI geometry) — see [map-builder-indoor.md](./map-builder-indoor.md)
 - **2.5D** — Indoor navigation graph editor + room/routing linkage
-- **2.5E** — Draft → validate → preview → publish workflow
+- **2.5E** — Draft → validate → preview → publish workflow — see [map-versioning.md](./map-versioning.md) (Step 2: spatial isolation + transactional draft clone)

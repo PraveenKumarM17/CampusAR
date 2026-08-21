@@ -25,6 +25,7 @@ import {
 } from '../../../application/indoorEditorGuard';
 import { optionalAuth, requireAuth, type AuthedRequest } from '../middleware/auth';
 import { requireMapEditor } from '../middleware/mapEditorAuth';
+import { resolveRequestSiteId } from '../../../application/siteContext';
 
 export const indoorRouter = Router();
 
@@ -141,7 +142,8 @@ indoorRouter.post('/places', requireAuth, requireMapEditor, async (req: AuthedRe
 indoorRouter.get('/buildings/:buildingId/context', optionalAuth, async (req, res, next) => {
   try {
     const buildingId = z.string().uuid().parse(req.params.buildingId);
-    res.json(await indoorService.getBuildingContext(buildingId));
+    const siteId = await resolveRequestSiteId(req);
+    res.json(await indoorService.getBuildingContext(buildingId, siteId ?? undefined));
   } catch (err) {
     next(err);
   }

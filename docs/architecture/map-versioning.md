@@ -1,0 +1,153 @@
+# Site Map Versioning (Phase 2.5E)
+
+CampusAR map data supports a **draft → validate → preview → publish → live** workflow so organizations can edit maps without affecting live navigation.
+
+---
+
+## Architecture (Step 2 complete)
+
+```
+Organization
+    └── Site
+          ├── Published Map Version  →  Public Map / Navigate / Indoor / AR / Search / Digital Twin
+          └── Draft Map Version      →  Map Builder only
+```
+
+Every canonical authored spatial row carries `map_version_id` referencing `site_map_versions`.
+
+### Versioned tables
+
+| Layer | Tables |
+|-------|--------|
+| Outdoor | `buildings`, `nodes`, `edges`, `site_areas` |
+| Indoor layout | `floors`, `rooms`, `floor_corridors`, `floor_pois` |
+| Indoor navigation | `indoor_maps`, `indoor_nodes`, `indoor_edges`, `indoor_places`, `indoor_anchors`, `indoor_handoffs` |
+
+### Explicitly **not** versioned (live operational data)
+
+`users`, `organizations`, `sites`, memberships, `danger_zones`, `events`, `emergency_contacts`, `emergency_exits`, `crowd_levels`, `sensor_readings`, analytics, WebSocket sessions.
+
+Emergency exits/contacts may reference **published** outdoor `nodes` by UUID; they are not cloned with drafts.
+
+---
+
+## Published vs draft resolution
+
+```
+Public request
+  → resolveRequestSiteId()
+  → resolvePublishedMapVersion(siteId)
+  → SQL WHERE map_version_id = publishedVersionId
+
+Map Builder (requireMapEditor + X-Site-Id)
+  → resolveEditorDraftMapVersion()  // idempotent; clones on first create
+  → SQL reads/writes WHERE map_version_id = draftVersionId
+```
+
+Public indoor routing additionally requires `indoor_maps.status = 'published'` within the published site version.
+
+---
+
+## Draft clone algorithm
+
+When `POST /api/admin/map-builder/draft` creates a new draft (or backfills spatial rows for a metadata-only draft from Step 1):
+
+1. `BEGIN` — lock site row (`FOR UPDATE`)
+2. Re-check for existing draft; if spatial rows already exist for draft version, return it
+3. Insert draft `site_map_versions` row (`based_on_version_id` → published)
+4. **Transactional clone** published → draft with **new UUIDs** and an in-memory old→new ID map:
+
+   ```
+   buildings → floors → outdoor nodes → rooms → corridors → POIs
+   → outdoor edges → site_areas
+   → indoor_maps (status=draft) → indoor_nodes → indoor_edges
+   → indoor_places (two-pass parent_place_id) → indoor_anchors → origin_anchor update
+   → indoor_handoffs
+   ```
+
+5. `COMMIT` — on any failure, full rollback (no partial draft graph)
+
+Published row UUIDs (e.g. RNSIT seed buildings) are **never changed**. Draft clones get independent IDs.
+
+Indoor anchor codes are suffixed (`-d{versionPrefix}`) to satisfy version-scoped uniqueness.
+
+---
+
+## Authorization / guards
+
+Existing site guards remain (`requireMapEditor`, `resolveEditorSiteId`, `assertResourceInSite`).
+
+Additional version guards (`mapVersionGuard.ts`):
+
+| Code | Meaning |
+|------|---------|
+| `VERSION_CONTEXT_REQUIRED` | Row missing `map_version_id` |
+| `CROSS_VERSION_REFERENCE` | Resource or edge endpoint not in active version |
+| `PUBLISHED_VERSION_READ_ONLY` | Map Builder attempted to mutate published rows |
+
+Outdoor edge creation validates both endpoints share the draft `map_version_id`.
+
+---
+
+## Migration / backfill
+
+File: `map-builder-versioning-spatial.sql`
+
+- Adds nullable `map_version_id` to all versioned tables
+- Ensures each site has published version 1 (idempotent)
+- Backfills `map_version_id = sites.published_map_version_id` (building-scoped tables via join)
+- Adds indexes; replaces `buildings (site_id, code)` unique with `(map_version_id, code)`
+- Sets `NOT NULL` after backfill when safe
+
+---
+
+## API
+
+Map Builder snapshot (`GET /api/admin/map-builder/snapshot`):
+
+```json
+{
+  "siteId": "...",
+  "version": { "id": "...", "status": "draft", "versionNumber": 2, ... },
+  "buildings": [],
+  "nodes": [],
+  "edges": [],
+  "areas": []
+}
+```
+
+Draft creation: `POST /api/admin/map-builder/draft` — idempotent, returns 201 on first create / 200 if draft exists.
+
+---
+
+## Code map
+
+| Layer | File |
+|-------|------|
+| Spatial migration | `infrastructure/db/map-builder-versioning-spatial.sql` |
+| Clone service | `application/mapVersionCloneService.ts` |
+| Version guards | `application/mapVersionGuard.ts` |
+| Version service/repo | `application/mapVersionService.ts`, `infrastructure/repositories/mapVersionRepository.ts` |
+| Context helpers | `application/mapVersionContext.ts` |
+| Tests | `interfaces/http/mapVersionSpatial.api.test.ts` |
+
+---
+
+## Step 2 acceptance criteria ✓
+
+- Public users only see published version spatial rows
+- Map Builder only reads/writes draft version rows
+- Draft clone is self-contained with remapped UUIDs
+- No cross-version edges or indoor graph references
+- RNSIT published building UUIDs preserved
+- Empty sites get empty editable drafts
+- Transactional clone with rollback on failure
+
+---
+
+## Remaining (Step 3+)
+
+- [ ] Unified validation against draft bundle (partially wired for outdoor/indoor layout)
+- [ ] Preview mode for editors on public UI
+- [ ] **Publish** — atomic swap of `sites.published_map_version_id`, archive prior published
+- [ ] Rollback / version history UI

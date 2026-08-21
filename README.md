@@ -4,6 +4,8 @@ Reusable platform for universities, hospitals, corporate campuses, factories, an
 
 RNSIT is the first **seeded organization/site**, not the application itself. Canonical site map data powers Leaflet, navigation, Cesium, and AR. See [`docs/architecture/site-tenancy.md`](docs/architecture/site-tenancy.md).
 
+**Map versioning (Phase 2.5E):** Public apps read the **published** site map version; Map Builder edits an isolated **draft** clone. See [`docs/architecture/map-versioning.md`](docs/architecture/map-versioning.md).
+
 ## Stack
 
 - **Web**: React + TypeScript + Tailwind + **CesiumJS** Digital Twin (`/digital-twin`) + Leaflet maps

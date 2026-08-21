@@ -10,6 +10,7 @@ import { DEFAULT_INDOOR_PREFERENCES, INDOOR_MIN_NODE_SPACING_M, INDOOR_SNAP_DIST
 import { AppError } from '../domain/errors';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
 import { indoorRepository } from '../infrastructure/repositories/indoorRepository';
+import { mapVersionService } from './mapVersionService';
 import { edgeDistanceM, snapCandidate } from '../domain/indoor/geometry';
 import { buildIndoorSteps, etaMinutes, routeIndoorGraph } from '../domain/indoor/indoorRouting';
 import { indoorAnchorBuildingError, indoorPlaceBuildingError } from '../domain/indoor/buildingHandoff';
@@ -187,7 +188,11 @@ export const indoorService = {
     if (!building) {
       throw new AppError('NOT_FOUND', 'Building not found', 404);
     }
-    return indoorRepository.createMap({ ...body, createdBy: userId });
+    const mapVersionId = await campusRepository.getBuildingMapVersionId(body.buildingId);
+    if (!mapVersionId) {
+      throw new AppError('VERSION_CONTEXT_REQUIRED', 'Building has no map version', 422);
+    }
+    return indoorRepository.createMap({ ...body, createdBy: userId, mapVersionId });
   },
 
   async getBundle(id: string, admin = false) {
@@ -385,15 +390,26 @@ export const indoorService = {
     });
   },
 
-  async getBuildingContext(buildingId: string) {
+  async getBuildingContext(buildingId: string, siteId?: string) {
     const building = await campusRepository.getBuildingById(buildingId);
     if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
 
-    const indoorMap = await indoorRepository.getPublishedMapByBuilding(buildingId);
+    const publishedVersion = siteId ? await mapVersionService.getPublishedVersion(siteId) : null;
+    const mapVersionId = publishedVersion?.id;
+    if (mapVersionId) {
+      const buildingVersion = await campusRepository.getBuildingMapVersionId(buildingId);
+      if (buildingVersion !== mapVersionId) {
+        throw new AppError('NOT_FOUND', 'Building not found', 404);
+      }
+    }
+
+    const indoorMap = mapVersionId
+      ? await indoorRepository.getPublishedMapByBuilding(buildingId, mapVersionId)
+      : null;
     const [floors, handoff, outdoorEntrance, places] = await Promise.all([
-      campusRepository.listFloors(buildingId),
+      campusRepository.listFloors(buildingId, siteId, mapVersionId ?? undefined),
       indoorRepository.getHandoffByBuilding(buildingId),
-      campusRepository.findOutdoorEntrance(buildingId),
+      campusRepository.findOutdoorEntrance(buildingId, mapVersionId ?? undefined),
       indoorMap ? indoorRepository.listPlacesByBuilding(buildingId) : Promise.resolve([]),
     ]);
 

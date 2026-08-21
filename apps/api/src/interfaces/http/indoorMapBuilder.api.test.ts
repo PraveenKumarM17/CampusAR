@@ -170,8 +170,13 @@ describe('indoor map builder', () => {
     const layout = await request(app)
       .get(`/api/campus/buildings/${buildingId}/indoor-layout?floorId=${floorId}`)
       .set('X-Site-Id', SITE_C);
-    expect(layout.status).toBe(200);
-    expect(layout.body.rooms.length).toBe(1);
+    expect(layout.status).toBe(404);
+
+    const draftLayout = await request(app)
+      .get(`/api/admin/map-builder/indoor/snapshot?buildingId=${buildingId}`)
+      .set(auth);
+    expect(draftLayout.status).toBe(200);
+    expect(draftLayout.body.rooms.length).toBe(1);
 
     const updated = await request(app)
       .put(`/api/admin/map-builder/indoor/rooms/${roomA.body.id}`)

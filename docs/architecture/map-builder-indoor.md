@@ -65,7 +65,14 @@ Public read: `GET /api/campus/buildings/:buildingId/indoor-layout?floorId=`
 - Handoff: pick outdoor entrance, then indoor node
 - Validation covers layout **and** graph connectivity (errors + warnings)
 
-## Phase 2.5E (not yet)
+## Phase 2.5E — site map versioning
 
-- Unified Draft → Validate → Preview → Publish for outdoor + indoor together
-- Full publish gate before public navigation consumes draft graph edits
+Indoor layout and indoor graph rows are scoped by `map_version_id` like outdoor data. Map Builder reads/writes the site **draft** version; public `/api/campus/*`, `/api/indoor/*`, and navigation consume the **published** version only.
+
+Building-level `indoor_maps.status` (`draft` / `published`) remains for graph lifecycle within a site version. On site draft clone, indoor maps are copied as `status = 'draft'`.
+
+See [map-versioning.md](./map-versioning.md).
+
+## Phase 2.5E Step 3+ (not yet)
+
+- Unified validate → preview → **publish** gate for outdoor + indoor together

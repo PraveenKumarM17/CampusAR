@@ -72,6 +72,14 @@ async function migrate() {
   const indoorBuilderSql = fs.readFileSync(indoorBuilderPath, 'utf8');
   await pool.query(indoorBuilderSql);
 
+  const versioningPath = path.join(__dirname, 'map-builder-versioning.sql');
+  const versioningSql = fs.readFileSync(versioningPath, 'utf8');
+  await pool.query(versioningSql);
+
+  const versioningSpatialPath = path.join(__dirname, 'map-builder-versioning-spatial.sql');
+  const versioningSpatialSql = fs.readFileSync(versioningSpatialPath, 'utf8');
+  await pool.query(versioningSpatialSql);
+
   console.log('Schema applied');
   await pool.end();
 }

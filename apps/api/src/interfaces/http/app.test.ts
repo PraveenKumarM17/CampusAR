@@ -121,10 +121,16 @@ describe('API integration', () => {
 
   it.skipIf(!canUseDb)('rejects unnamed admin node as route endpoint', async () => {
     const places = await loadPlaces();
+    const { rows: versionRows } = await pool.query<{ id: string }>(
+      `SELECT published_map_version_id AS id FROM sites WHERE id = 'c0000001-0000-4000-8000-000000000010'`,
+    );
+    const mapVersionId = versionRows[0]?.id;
+    expect(mapVersionId).toBeTruthy();
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO nodes (name, latitude, longitude, kind, site_id)
-       VALUES (NULL, 12.901, 77.518, 'outdoor', 'c0000001-0000-4000-8000-000000000010')
+      `INSERT INTO nodes (name, latitude, longitude, kind, site_id, map_version_id)
+       VALUES (NULL, 12.901, 77.518, 'outdoor', 'c0000001-0000-4000-8000-000000000010', $1)
        RETURNING id`,
+      [mapVersionId],
     );
     const unnamedId = rows[0].id;
     const res = await request(app).post('/api/navigation/route').send({
