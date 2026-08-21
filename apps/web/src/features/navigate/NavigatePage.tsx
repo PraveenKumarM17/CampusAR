@@ -13,8 +13,18 @@ import {
   CheckCircle2,
   MapPin,
 } from 'lucide-react';
-import type { Building, CampusPlace, GraphNode, IndoorHandoff, RouteResponse } from '@campusar/shared';
+import type {
+  Building,
+  CampusPlace,
+  DangerZone,
+  GraphNode,
+  IndoorHandoff,
+  RouteResponse,
+  SiteArea,
+} from '@campusar/shared';
+import { api } from '../../lib/api';
 import { useCampusApi } from '../../hooks/useCampusApi';
+import { useCampusLive } from '../../hooks/useCampusLive';
 import { usePreviewStore } from '../../stores/previewStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
@@ -45,10 +55,12 @@ import {
   RecenterOnSite,
   UserLocationMarker,
 } from '../../components/maps/GpsTracker';
+import { CampusMapLibreMap } from '../../components/maps/CampusMapLibreMap';
 import { PlaceSearchSelect } from '../../components/navigate/PlaceSearchSelect';
 import { IndoorDestinationPicker } from '../../components/indoor/IndoorDestinationPicker';
 import { EmptySiteNotice } from '../../components/EmptySiteNotice';
 import { useActiveSite } from '../../hooks/useActiveSite';
+import { MAP_ENGINE } from '../../lib/mapEngine';
 import {
   buildingContextToNavPatch,
   buildIndoorNavPath,
@@ -91,6 +103,11 @@ export function NavigatePage() {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [places, setPlaces] = useState<CampusPlace[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
+  const [edges, setEdges] = useState<
+    { id: string; crowdScore: number; fromNodeId: string; toNodeId: string }[]
+  >([]);
+  const [areas, setAreas] = useState<SiteArea[]>([]);
+  const [zones, setZones] = useState<DangerZone[]>([]);
   const [route, setRoute] = useState<RouteResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -109,6 +126,8 @@ export function NavigatePage() {
   const { pose, error: gpsError, requestCompassPermission, refreshLocation, watching } =
     useGeolocation(true);
   const useGoogle = hasGoogleMapsKey();
+  const useMapLibre = MAP_ENGINE === 'maplibre';
+  const live = useCampusLive();
   const routeReqId = useRef(0);
   const urlAppliedRef = useRef(false);
   const arrivalHoldRef = useRef<{ since: number | null }>({ since: null });
@@ -132,7 +151,7 @@ export function NavigatePage() {
   const hasPublishedMap = siteHasPublishedMap({
     buildings: buildings.length,
     nodes: nodes.length,
-    edges: 0,
+    edges: edges.length,
   });
   const placeIdSet = useMemo(() => new Set(placeNodes.map((n) => n.id)), [placeNodes]);
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
@@ -149,18 +168,52 @@ export function NavigatePage() {
   const routeNodeKey = route?.nodeIds.join(',') ?? '';
 
   useEffect(() => {
-    Promise.all([campusApi.places(token), campusApi.nodes(token), campusApi.buildings(token)])
-      .then(([p, n, b]) => {
+    Promise.all([
+      campusApi.places(token),
+      campusApi.nodes(token),
+      campusApi.buildings(token),
+      campusApi.edges(token),
+      campusApi.areas(token),
+      api.zones(),
+    ])
+      .then(([p, n, b, e, a, z]) => {
         setPlaces(p);
         setNodes(n);
         setBuildings(b);
+        setEdges(
+          e.map((edge) => ({
+            id: edge.id,
+            crowdScore: edge.crowdScore,
+            fromNodeId: edge.fromNodeId,
+            toNodeId: edge.toNodeId,
+          })),
+        );
+        setAreas(a);
+        setZones(z.filter((x) => x.active));
       })
       .catch(() => {
         setPlaces([]);
         setNodes([]);
         setBuildings([]);
+        setEdges([]);
+        setAreas([]);
+        setZones([]);
       });
   }, [token, activeSiteId, campusApi]);
+
+  useEffect(() => {
+    if (!live.crowd.length) return;
+    setEdges((prev) =>
+      prev.map((edge) => {
+        const hit = live.crowd.find((c) => c.edgeId === edge.id);
+        return hit ? { ...edge, crowdScore: hit.intensity } : edge;
+      }),
+    );
+  }, [live.crowd]);
+
+  useEffect(() => {
+    if (live.zones.length) setZones(live.zones.filter((z) => z.active));
+  }, [live.zones]);
 
   useEffect(() => {
     if (!destinationNodeId) {
@@ -655,13 +708,39 @@ export function NavigatePage() {
         {!hasPublishedMap && <EmptySiteNotice compact />}
 
         <div className="relative overflow-hidden rounded-md border border-line">
-          <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
+          {!useMapLibre ? (
+            <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
+          ) : (
+            <span className="absolute left-3 top-3 z-[1000] rounded border border-line bg-paper-raised px-2 py-1 text-[11px] font-semibold uppercase text-ink-mute">
+              Engine: maplibre
+            </span>
+          )}
           {distanceRemainingM != null && route && pose && (
             <div className="pointer-events-none absolute left-3 top-14 z-[1000] rounded-md border border-line bg-paper-raised/95 px-3 py-2 text-sm font-semibold shadow-sm">
               {formatDistance(distanceRemainingM)} left
             </div>
           )}
-          {useGoogle ? (
+          {useMapLibre ? (
+            <CampusMapLibreMap
+              className="h-[70vh] w-full"
+              center={mapCenter}
+              buildings={buildings}
+              placeNodes={placeNodes}
+              graphNodes={nodes}
+              edges={edges}
+              areas={areas}
+              zones={zones}
+              routePoints={points}
+              pose={pose}
+              followGps={trackOnMap}
+              recenterAt={recenterAt}
+              sourceNodeId={sourceNodeId}
+              destinationNodeId={destinationNodeId}
+              onFollowBreak={() => setFollowGps(false)}
+              onPlaceClick={handleMapPlaceClick}
+              onBuildingClick={(id) => void handleBuildingSelect(id)}
+            />
+          ) : useGoogle ? (
             <GoogleCampusMap
               className="h-[70vh] w-full"
               mode={basemapMode}

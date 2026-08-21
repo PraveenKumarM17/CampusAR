@@ -75,6 +75,7 @@ import {
   type UnsavedChoice,
 } from './mapBuilderUtils';
 import { MAP_ENGINE, MAPLIBRE_STYLE_URL } from '../../lib/mapEngine';
+import { ensureMapLibreWorker } from '../../lib/maplibreWorker';
 
 type BuilderTool = 'select' | 'building' | 'walkway' | 'node' | 'entrance' | 'poi' | 'area';
 
@@ -297,6 +298,7 @@ function MapLibreCanvas({
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    ensureMapLibreWorker();
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: MAPLIBRE_STYLE_URL,
