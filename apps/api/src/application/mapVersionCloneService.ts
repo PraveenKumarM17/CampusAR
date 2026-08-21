@@ -147,8 +147,10 @@ export async function clonePublishedMapToDraft(
     await client.query(
       `INSERT INTO rooms (
          id, floor_id, building_id, name, code, category, node_id,
-         wheelchair_accessible, local_geometry, updated_at, map_version_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),$10)`,
+         wheelchair_accessible, local_geometry, measured_length_m,
+         measured_width_m, measured_height_m, measurement_source, measured_at,
+         updated_at, map_version_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),$15)`,
       [
         newId,
         floors.remap(r.floor_id),
@@ -159,6 +161,11 @@ export async function clonePublishedMapToDraft(
         nodes.remap(r.node_id),
         r.wheelchair_accessible,
         r.local_geometry,
+        r.measured_length_m,
+        r.measured_width_m,
+        r.measured_height_m,
+        r.measurement_source,
+        r.measured_at,
         draftVersionId,
       ],
     );

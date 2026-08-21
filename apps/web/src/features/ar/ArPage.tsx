@@ -35,6 +35,8 @@ import {
 import { GuideDollViewport, guideFacingBearing, poseFromRouteContext } from './GuideDoll';
 import { useActiveSite } from '../../hooks/useActiveSite';
 import { MAP_ENGINE } from '../../lib/mapEngine';
+import { IndoorDestinationPicker } from '../../components/indoor/IndoorDestinationPicker';
+import { buildIndoorNavPath } from '../../lib/buildingNavigation';
 
 /**
  * AR Navigation is a camera + compass overlay — it does not embed Leaflet or MapLibre.
@@ -80,7 +82,10 @@ export function ArPage() {
     sourceNodeId,
     destinationNodeId,
     hasIndoorMap,
+    selectedBuildingId,
     selectedBuildingName,
+    indoorMapId,
+    setIndoorDestination,
     markArrivedAtBuilding,
   } = useNavStore();
   const { accessibility, voiceEnabled, avatarGender, setAvatarGender } = usePrefsStore();
@@ -762,6 +767,20 @@ export function ArPage() {
         <p className="text-sm text-accent-warn">
           {error ?? gpsError ?? gpsNote ?? cameraError}
         </p>
+      )}
+
+      {arrived && hasIndoorMap && selectedBuildingId && selectedBuildingName && (
+        <IndoorDestinationPicker
+          buildingId={selectedBuildingId}
+          buildingName={selectedBuildingName}
+          indoorMapId={indoorMapId}
+          token={token}
+          onSelect={(place, detail) => {
+            setIndoorDestination(place.id, place.name, detail);
+            navigate(buildIndoorNavPath(selectedBuildingId, place.id, indoorMapId));
+          }}
+          onDismiss={() => undefined}
+        />
       )}
     </div>
   );

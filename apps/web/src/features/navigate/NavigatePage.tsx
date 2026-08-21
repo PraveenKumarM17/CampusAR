@@ -47,6 +47,7 @@ import {
   RealBasemapTiles,
   type BasemapMode,
 } from '../../components/maps/RealBasemap';
+import { InvalidateMapSize } from '../../components/maps/InvalidateMapSize';
 import { GoogleCampusMap, hasGoogleMapsKey } from '../../components/maps/GoogleCampusMap';
 import {
   BreakFollowOnInteract,
@@ -757,6 +758,7 @@ export function NavigatePage() {
               className="h-[70vh] w-full"
               maxZoom={CAMPUS_MAX_ZOOM}
             >
+              <InvalidateMapSize />
               <RealBasemapTiles mode={basemapMode} />
               <RecenterOnSite center={mapCenter} enabled={!trackOnMap} />
               <BreakFollowOnInteract onBreak={() => setFollowGps(false)} />

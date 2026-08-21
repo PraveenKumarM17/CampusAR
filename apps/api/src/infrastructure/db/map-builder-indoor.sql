@@ -3,7 +3,17 @@
 ALTER TABLE floors ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS local_geometry JSONB;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS measured_length_m DOUBLE PRECISION;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS measured_width_m DOUBLE PRECISION;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS measured_height_m DOUBLE PRECISION;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS measurement_source TEXT;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS measured_at TIMESTAMPTZ;
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE rooms DROP CONSTRAINT IF EXISTS rooms_measurement_source_check;
+ALTER TABLE rooms ADD CONSTRAINT rooms_measurement_source_check CHECK (
+  measurement_source IS NULL OR measurement_source IN ('camera_ar', 'floor_plan', 'manual')
+);
 
 ALTER TABLE rooms DROP CONSTRAINT IF EXISTS rooms_category_check;
 ALTER TABLE rooms ADD CONSTRAINT rooms_category_check CHECK (category IN (

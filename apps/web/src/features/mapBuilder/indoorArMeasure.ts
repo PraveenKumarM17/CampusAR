@@ -51,6 +51,21 @@ export function polylineLength3D(points: LocalVec3[]): number {
   return total;
 }
 
+/** Axis-aligned measured extents; length is always the longer floor-plan span. */
+export function measuredRoomExtents(points: LocalVec2[]): {
+  lengthM: number;
+  widthM: number;
+} | null {
+  if (points.length < 2) return null;
+  const spanX = Math.max(...points.map((p) => p.x)) - Math.min(...points.map((p) => p.x));
+  const spanY = Math.max(...points.map((p) => p.y)) - Math.min(...points.map((p) => p.y));
+  if (spanX <= 0 || spanY <= 0) return null;
+  return {
+    lengthM: Math.max(spanX, spanY),
+    widthM: Math.min(spanX, spanY),
+  };
+}
+
 /** Vertical span between lowest and highest Y in an AR session. */
 export function verticalSpan3D(points: LocalVec3[]): number {
   if (points.length < 2) return 0;

@@ -46,6 +46,15 @@ function mapRoomRow(r: Record<string, unknown>): Room {
     nodeId: r.node_id as string | null,
     wheelchairAccessible: r.wheelchair_accessible as boolean,
     localGeometry: parseLocalGeometry(r.local_geometry),
+    measuredLengthM: (r.measured_length_m as number | null) ?? null,
+    measuredWidthM: (r.measured_width_m as number | null) ?? null,
+    measuredHeightM: (r.measured_height_m as number | null) ?? null,
+    measurementSource:
+      (r.measurement_source as Room['measurementSource']) ?? null,
+    measuredAt:
+      r.measured_at instanceof Date
+        ? r.measured_at.toISOString()
+        : ((r.measured_at as string | null) ?? null),
     updatedAt:
       updatedAt instanceof Date
         ? updatedAt.toISOString()
@@ -260,13 +269,22 @@ export const floorLayoutRepository = {
     category: RoomCategory;
     wheelchairAccessible?: boolean;
     localGeometry: LocalVec2[];
+    measuredLengthM?: number;
+    measuredWidthM?: number;
+    measuredHeightM?: number;
+    measurementSource?: NonNullable<Room['measurementSource']>;
     mapVersionId: string;
   }) {
     await assertFloorBelongsToBuilding(input.floorId, input.buildingId);
     validateLocalPolygon(input.localGeometry, 'Room');
     const { rows } = await query(
-      `INSERT INTO rooms (floor_id, building_id, name, code, category, wheelchair_accessible, local_geometry, updated_at, map_version_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), $8)
+      `INSERT INTO rooms (
+         floor_id, building_id, name, code, category, wheelchair_accessible,
+         local_geometry, measured_length_m, measured_width_m, measured_height_m,
+         measurement_source, measured_at, updated_at, map_version_id
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11,
+         CASE WHEN $11::text IS NULL THEN NULL ELSE NOW() END, NOW(), $12)
        RETURNING *`,
       [
         input.floorId,
@@ -276,6 +294,10 @@ export const floorLayoutRepository = {
         input.category,
         input.wheelchairAccessible ?? true,
         JSON.stringify(input.localGeometry),
+        input.measuredLengthM ?? null,
+        input.measuredWidthM ?? null,
+        input.measuredHeightM ?? null,
+        input.measurementSource ?? null,
         input.mapVersionId,
       ],
     );
@@ -291,6 +313,10 @@ export const floorLayoutRepository = {
       wheelchairAccessible: boolean;
       localGeometry: LocalVec2[];
       floorId: string;
+      measuredLengthM: number | null;
+      measuredWidthM: number | null;
+      measuredHeightM: number | null;
+      measurementSource: NonNullable<Room['measurementSource']> | null;
       expectedUpdatedAt?: string;
     }>,
   ) {
@@ -308,9 +334,14 @@ export const floorLayoutRepository = {
          wheelchair_accessible = COALESCE($5, wheelchair_accessible),
          floor_id = COALESCE($6, floor_id),
          local_geometry = CASE WHEN $7::boolean THEN $8::jsonb ELSE local_geometry END,
+         measured_length_m = CASE WHEN $9::boolean THEN $10 ELSE measured_length_m END,
+         measured_width_m = CASE WHEN $11::boolean THEN $12 ELSE measured_width_m END,
+         measured_height_m = CASE WHEN $13::boolean THEN $14 ELSE measured_height_m END,
+         measurement_source = CASE WHEN $15::boolean THEN $16 ELSE measurement_source END,
+         measured_at = CASE WHEN $15::boolean THEN NOW() ELSE measured_at END,
          updated_at = NOW()
        WHERE id = $1
-         AND ($9::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $9::timestamptz))
+         AND ($17::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $17::timestamptz))
        RETURNING *`,
       [
         id,
@@ -321,6 +352,14 @@ export const floorLayoutRepository = {
         input.floorId ?? null,
         input.localGeometry !== undefined,
         input.localGeometry ? JSON.stringify(input.localGeometry) : null,
+        input.measuredLengthM !== undefined,
+        input.measuredLengthM ?? null,
+        input.measuredWidthM !== undefined,
+        input.measuredWidthM ?? null,
+        input.measuredHeightM !== undefined,
+        input.measuredHeightM ?? null,
+        input.measurementSource !== undefined,
+        input.measurementSource ?? null,
         expected,
       ],
     );

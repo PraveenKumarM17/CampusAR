@@ -253,6 +253,12 @@ export interface Room {
   wheelchairAccessible: boolean;
   /** Closed or open polygon ring in floor-plan local meters. */
   localGeometry?: LocalVec2[] | null;
+  /** Measured room extents in meters. Length is the longer horizontal span. */
+  measuredLengthM?: number | null;
+  measuredWidthM?: number | null;
+  measuredHeightM?: number | null;
+  measurementSource?: 'camera_ar' | 'floor_plan' | 'manual' | null;
+  measuredAt?: string | null;
   updatedAt?: string;
 }
 
