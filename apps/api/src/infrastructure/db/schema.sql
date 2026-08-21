@@ -137,6 +137,11 @@ CREATE TABLE IF NOT EXISTS rooms (
   node_id UUID REFERENCES nodes(id) ON DELETE SET NULL,
   wheelchair_accessible BOOLEAN NOT NULL DEFAULT TRUE,
   local_geometry JSONB,
+  measured_length_m DOUBLE PRECISION,
+  measured_width_m DOUBLE PRECISION,
+  measured_height_m DOUBLE PRECISION,
+  measurement_source TEXT CHECK (measurement_source IN ('camera_ar', 'floor_plan', 'manual')),
+  measured_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (building_id, code)
 );

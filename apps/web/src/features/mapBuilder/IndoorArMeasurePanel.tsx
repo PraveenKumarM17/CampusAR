@@ -13,7 +13,10 @@ import {
 type Props = {
   onClose: () => void;
   /** Apply measured floor-plan points to the canvas (origin = first AR point). */
-  onApplyPlanPoints: (points: LocalVec2[]) => void;
+  onApplyPlanPoints: (
+    points: LocalVec2[],
+    measurement: { source: 'camera_ar'; heightM?: number },
+  ) => void;
   /** Suggest floor height from vertical AR span. */
   onSuggestFloorHeight?: (heightM: number) => void;
 };
@@ -156,7 +159,10 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
   const applyToPlan = () => {
     if (points.length < 2) return;
     const origin = points[0];
-    onApplyPlanPoints(arSessionToFloorPlan(points, origin));
+    onApplyPlanPoints(arSessionToFloorPlan(points, origin), {
+      source: 'camera_ar',
+      heightM: verticalSpan >= 0.5 ? Number(verticalSpan.toFixed(3)) : undefined,
+    });
     onClose();
   };
 

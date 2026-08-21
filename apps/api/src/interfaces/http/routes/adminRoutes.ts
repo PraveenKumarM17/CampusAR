@@ -6,6 +6,7 @@ import { notificationRepository } from '../../../infrastructure/repositories/ana
 import { siteAreaRepository } from '../../../infrastructure/repositories/siteAreaRepository';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 import { requireMapEditor } from '../middleware/mapEditorAuth';
+import { idempotencyMiddleware } from '../middleware/idempotency';
 import {
   assertResourceInSite,
   resolveEditorSiteId,
@@ -225,7 +226,7 @@ mapEditorRouter.get('/map-builder/validate', async (req: AuthedRequest, res, nex
   }
 });
 
-mapEditorRouter.post('/buildings', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.post('/buildings', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const body = z
@@ -252,7 +253,7 @@ mapEditorRouter.post('/buildings', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.put('/buildings/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -296,7 +297,7 @@ mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.delete('/buildings/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.delete('/buildings/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -322,7 +323,7 @@ mapEditorRouter.get('/paths/nodes', async (req, res, next) => {
   }
 });
 
-mapEditorRouter.post('/paths/nodes', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.post('/paths/nodes', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const body = z
@@ -363,7 +364,7 @@ mapEditorRouter.post('/paths/nodes', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.put('/paths/nodes/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.put('/paths/nodes/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -401,7 +402,7 @@ mapEditorRouter.put('/paths/nodes/:id', async (req: AuthedRequest, res, next) =>
   }
 });
 
-mapEditorRouter.delete('/paths/nodes/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.delete('/paths/nodes/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -428,7 +429,7 @@ mapEditorRouter.get('/paths/edges', async (req, res, next) => {
   }
 });
 
-mapEditorRouter.post('/paths/edges', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.post('/paths/edges', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const body = z
@@ -462,7 +463,7 @@ mapEditorRouter.post('/paths/edges', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.put('/paths/edges/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.put('/paths/edges/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -496,7 +497,7 @@ mapEditorRouter.put('/paths/edges/:id', async (req: AuthedRequest, res, next) =>
   }
 });
 
-mapEditorRouter.delete('/paths/edges/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.delete('/paths/edges/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -525,7 +526,7 @@ mapEditorRouter.get('/areas', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.post('/areas', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.post('/areas', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const body = z
@@ -549,7 +550,7 @@ mapEditorRouter.post('/areas', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.put('/areas/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.put('/areas/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -577,7 +578,7 @@ mapEditorRouter.put('/areas/:id', async (req: AuthedRequest, res, next) => {
   }
 });
 
-mapEditorRouter.delete('/areas/:id', async (req: AuthedRequest, res, next) => {
+mapEditorRouter.delete('/areas/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
   try {
     const ctx = await editorDraftContext(req);
     const id = String(req.params.id);
@@ -716,6 +717,10 @@ mapEditorRouter.post('/map-builder/indoor/rooms', async (req: AuthedRequest, res
         category: roomCategorySchema,
         wheelchairAccessible: z.boolean().optional(),
         localGeometry: localPolygonSchema,
+        measuredLengthM: z.number().positive().max(500).optional(),
+        measuredWidthM: z.number().positive().max(500).optional(),
+        measuredHeightM: z.number().positive().max(50).optional(),
+        measurementSource: z.enum(['camera_ar', 'floor_plan', 'manual']).optional(),
       })
       .parse(req.body);
     await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
@@ -742,6 +747,13 @@ mapEditorRouter.put('/map-builder/indoor/rooms/:id', async (req: AuthedRequest, 
         wheelchairAccessible: z.boolean().optional(),
         localGeometry: localPolygonSchema.optional(),
         floorId: z.string().uuid().optional(),
+        measuredLengthM: z.number().positive().max(500).nullable().optional(),
+        measuredWidthM: z.number().positive().max(500).nullable().optional(),
+        measuredHeightM: z.number().positive().max(50).nullable().optional(),
+        measurementSource: z
+          .enum(['camera_ar', 'floor_plan', 'manual'])
+          .nullable()
+          .optional(),
         expectedUpdatedAt: z.string().datetime().optional(),
       })
       .parse(req.body);

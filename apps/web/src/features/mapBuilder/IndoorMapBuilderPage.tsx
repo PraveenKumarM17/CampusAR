@@ -49,6 +49,7 @@ import {
   floorElevationM,
   formatMeasureDistance,
   geometryFromMeasurePoints,
+  measuredRoomExtents,
   polylineLength2D,
 } from './indoorArMeasure';
 
@@ -107,11 +108,16 @@ export function IndoorMapBuilderPage() {
   const [tool, setTool] = useState<IndoorTool>('select');
   const [selectedKind, setSelectedKind] = useState<'room' | 'corridor' | 'poi' | 'node' | 'edge' | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [anchorCode, setAnchorCode] = useState('');
   const [connectFromId, setConnectFromId] = useState<string | null>(null);
   const [pendingHandoffOutdoorId, setPendingHandoffOutdoorId] = useState<string | null>(null);
   const [draftRect, setDraftRect] = useState<LocalVec2[] | null>(null);
   const [measurePoints, setMeasurePoints] = useState<LocalVec2[]>([]);
   const [measureSaveAs, setMeasureSaveAs] = useState<'room' | 'corridor'>('room');
+  const [measurementSource, setMeasurementSource] = useState<
+    'camera_ar' | 'floor_plan' | 'manual'
+  >('floor_plan');
+  const [measuredHeightM, setMeasuredHeightM] = useState<number | null>(null);
   const [arPanelOpen, setArPanelOpen] = useState(false);
   const [floorHeightM, setFloorHeightM] = useState(DEFAULT_FLOOR_HEIGHT_M);
   const [floorHeightBusy, setFloorHeightBusy] = useState(false);
@@ -339,14 +345,20 @@ export function IndoorMapBuilderPage() {
       return;
     }
     setDraftRect(ring);
+    if (measurementSource !== 'camera_ar') setMeasurementSource('floor_plan');
     setPendingTool(measureSaveAs);
     setTool(measureSaveAs);
     setMeasurePoints([]);
     setError(null);
   }
 
-  function applyArMeasurePoints(planPoints: LocalVec2[]) {
+  function applyArMeasurePoints(
+    planPoints: LocalVec2[],
+    measurement: { source: 'camera_ar'; heightM?: number },
+  ) {
     setMeasurePoints(planPoints);
+    setMeasurementSource(measurement.source);
+    setMeasuredHeightM(measurement.heightM ?? null);
     setTool('measure');
     setArPanelOpen(false);
   }
@@ -358,6 +370,7 @@ export function IndoorMapBuilderPage() {
     const shapeTool = pendingTool ?? tool;
     try {
       if (shapeTool === 'room') {
+        const extents = measuredRoomExtents(draftRect);
         await api.mapBuilder.createRoom(
           {
             buildingId,
@@ -366,6 +379,10 @@ export function IndoorMapBuilderPage() {
             code: String(fd.get('code')),
             category: String(fd.get('category')) as RoomCategory,
             localGeometry: draftRect,
+            measuredLengthM: extents?.lengthM,
+            measuredWidthM: extents?.widthM,
+            measuredHeightM: measuredHeightM ?? floorHeightM,
+            measurementSource,
           },
           token,
         );
@@ -381,6 +398,8 @@ export function IndoorMapBuilderPage() {
         );
       }
       setDraftRect(null);
+      setMeasurementSource('floor_plan');
+      setMeasuredHeightM(null);
       setPendingTool(null);
       setTool('select');
       await reloadSnapshot();
@@ -417,6 +436,34 @@ export function IndoorMapBuilderPage() {
     if (snapshot?.editMapId) return snapshot.editMapId;
     const map = await api.mapBuilder.ensureIndoorGraphMap(buildingId, token);
     return map.id;
+  }
+
+  async function createAnchorForSelectedNode() {
+    if (!token || !selectedNode || !snapshot?.editMapId) return;
+    const code = anchorCode.trim().toUpperCase();
+    if (code.length < 3) {
+      setError('Enter a QR/anchor code with at least 3 characters.');
+      return;
+    }
+    try {
+      await api.mapBuilder.createIndoorAnchor(
+        {
+          mapId: snapshot.editMapId,
+          nodeId: selectedNode.id,
+          floorId: selectedNode.floorId,
+          anchorCode: code,
+          physicalMarkerType: 'qr',
+          localX: selectedNode.localX,
+          localY: selectedNode.localY,
+          localZ: selectedNode.localZ,
+        },
+        token,
+      );
+      setAnchorCode('');
+      await reloadSnapshot();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not create QR anchor');
+    }
   }
 
   async function handleGraphPoint(pt: LocalVec2) {
@@ -838,6 +885,20 @@ export function IndoorMapBuilderPage() {
               <h3 className="text-sm font-semibold">Save new {shapeTool}</h3>
               {shapeTool === 'room' && (
                 <>
+                  {(() => {
+                    const extents = measuredRoomExtents(draftRect);
+                    return extents ? (
+                      <div className="rounded-md border border-line bg-paper-soft p-2 text-xs text-muted">
+                        <p className="font-semibold text-ink">Measured dimensions</p>
+                        <p>
+                          {formatMeasureDistance(extents.lengthM)} ×{' '}
+                          {formatMeasureDistance(extents.widthM)} ×{' '}
+                          {formatMeasureDistance(measuredHeightM ?? floorHeightM)} high
+                        </p>
+                        <p className="mt-1">Source: {measurementSource.replace('_', ' ')}</p>
+                      </div>
+                    ) : null;
+                  })()}
                   <input name="name" className="input w-full text-sm" placeholder="Room name" required />
                   <input name="code" className="input w-full text-sm" placeholder="Code" required />
                   <select name="category" className="input w-full text-sm" defaultValue="office">
@@ -882,6 +943,18 @@ export function IndoorMapBuilderPage() {
                 {selectedRoom.code} · {selectedRoom.category}
                 {snapshot?.roomLinks[selectedRoom.id] ? ' · linked' : ''}
               </p>
+              {selectedRoom.measuredLengthM && selectedRoom.measuredWidthM && (
+                <p className="rounded-md bg-paper-soft p-2 text-xs text-muted">
+                  {formatMeasureDistance(selectedRoom.measuredLengthM)} ×{' '}
+                  {formatMeasureDistance(selectedRoom.measuredWidthM)}
+                  {selectedRoom.measuredHeightM
+                    ? ` × ${formatMeasureDistance(selectedRoom.measuredHeightM)} high`
+                    : ''}
+                  {selectedRoom.measurementSource
+                    ? ` · ${selectedRoom.measurementSource.replace('_', ' ')}`
+                    : ''}
+                </p>
+              )}
               <button
                 type="button"
                 className="btn-secondary w-full text-sm"
@@ -940,6 +1013,43 @@ export function IndoorMapBuilderPage() {
             <div className="space-y-2 border-t border-line pt-2">
               <h3 className="text-sm font-semibold">{selectedNode.name ?? 'Navigation node'}</h3>
               <p className="text-xs text-muted">{selectedNode.kind}</p>
+              {snapshot?.anchors.some((anchor) => anchor.nodeId === selectedNode.id) ? (
+                <div className="rounded-md border border-line bg-paper-soft p-2 text-xs">
+                  <p className="font-semibold text-ink">QR anchors</p>
+                  {snapshot.anchors
+                    .filter((anchor) => anchor.nodeId === selectedNode.id)
+                    .map((anchor) => (
+                      <code key={anchor.id} className="mt-1 block break-all text-accent">
+                        {anchor.anchorCode}
+                      </code>
+                    ))}
+                </div>
+              ) : (
+                <div className="space-y-2 rounded-md border border-line bg-paper-soft p-2">
+                  <label className="text-xs font-semibold text-muted" htmlFor="indoor-anchor-code">
+                    QR marker code
+                  </label>
+                  <input
+                    id="indoor-anchor-code"
+                    className="input w-full text-sm uppercase"
+                    value={anchorCode}
+                    onChange={(event) => setAnchorCode(event.target.value)}
+                    placeholder="IT-GF-ENTRANCE-01"
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary w-full text-sm"
+                    disabled={!snapshot?.editMapId}
+                    onClick={() => void createAnchorForSelectedNode()}
+                  >
+                    Create QR anchor
+                  </button>
+                  <p className="text-[11px] text-muted">
+                    Print this exact code as a QR value. Visitors scan it to establish their
+                    indoor position.
+                  </p>
+                </div>
+              )}
               <button type="button" className="btn-danger w-full text-sm" onClick={() => void deleteSelected()}>
                 Delete node
               </button>

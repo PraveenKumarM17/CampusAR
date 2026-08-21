@@ -23,6 +23,8 @@ Basemap toggle (Hybrid / Satellite / Streets) is shared UI (`BasemapModeSwitcher
 - **Leaflet:** Esri World Imagery (+ transport/labels for Hybrid), CARTO Voyager for Streets. Google Maps only if `VITE_GOOGLE_MAPS_API_KEY` is set.
 - **MapLibre:** same Esri/CARTO raster tile URLs via `applyMapLibreBasemap` (no API key). Demotiles is no longer used as the live basemap.
 
+**Production caveat:** there is no Esri/CARTO API key configured in this repo. Esri World Imagery is not a free unlimited public CDN for commercial production — it typically needs an ArcGIS Online / Location Platform subscription, attribution, and rate/tile quotas. CARTO’s public Voyager tiles are fine for light use but also have usage expectations. Treat the current keys-free raster URLs as **dev/demo defaults**; pick a licensed basemap provider (or self-hosted tiles) before production scale so this does not become basemap-outage #2.
+
 Pages currently behind the flag (map canvas consumers):
 
 - `MapBuilderPage` (draw + edit)

@@ -6,6 +6,7 @@ import {
   floorElevationM,
   formatMeasureDistance,
   geometryFromMeasurePoints,
+  measuredRoomExtents,
   polylineLength2D,
   verticalSpan3D,
 } from './indoorArMeasure';
@@ -67,5 +68,16 @@ describe('indoorArMeasure (AR-Measure distance logic)', () => {
   it('floorElevationM uses configurable floor height factor', () => {
     expect(floorElevationM(2, 3.5)).toBe(7);
     expect(floorElevationM(3, 4)).toBe(12);
+  });
+
+  it('stores the longer room span as length', () => {
+    expect(
+      measuredRoomExtents([
+        { x: 2, y: 3 },
+        { x: 7, y: 3 },
+        { x: 7, y: 6 },
+        { x: 2, y: 6 },
+      ]),
+    ).toEqual({ lengthM: 5, widthM: 3 });
   });
 });
