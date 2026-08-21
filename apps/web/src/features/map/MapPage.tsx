@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   MapContainer,
   CircleMarker,
@@ -16,6 +16,7 @@ import type {
   GraphNode,
   RouteResponse,
   SearchResult,
+  SiteArea,
 } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useCampusApi } from '../../hooks/useCampusApi';
@@ -49,8 +50,10 @@ import {
   RecenterOnSite,
   UserLocationMarker,
 } from '../../components/maps/GpsTracker';
+import { CampusMapLibreMap } from '../../components/maps/CampusMapLibreMap';
 import { EmptySiteNotice } from '../../components/EmptySiteNotice';
 import { useActiveSite } from '../../hooks/useActiveSite';
+import { MAP_ENGINE } from '../../lib/mapEngine';
 
 function FitBounds({ points, enabled }: { points: [number, number][]; enabled: boolean }) {
   const map = useMap();
@@ -94,6 +97,7 @@ export function MapPage() {
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [rooms, setRooms] = useState<{ buildingId: string; category: string }[]>([]);
   const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [areas, setAreas] = useState<SiteArea[]>([]);
   const [zones, setZones] = useState<DangerZone[]>([]);
   const [edges, setEdges] = useState<
     { id: string; crowdScore: number; fromNodeId: string; toNodeId: string }[]
@@ -108,6 +112,7 @@ export function MapPage() {
   const [gpsNote, setGpsNote] = useState<string | null>(null);
   const [basemapMode, setBasemapMode] = useState<BasemapMode>('hybrid');
   const useGoogle = hasGoogleMapsKey();
+  const useMapLibre = MAP_ENGINE === 'maplibre';
   const live = useCampusLive();
   const campusApi = useCampusApi();
   const { pose, error: gpsError, requestCompassPermission, refreshLocation, watching } =
@@ -119,9 +124,10 @@ export function MapPage() {
       campusApi.rooms(token),
       campusApi.nodes(token),
       campusApi.edges(token),
+      campusApi.areas(token),
       api.zones(),
       api.categories(),
-    ]).then(([b, r, n, e, z, c]) => {
+    ]).then(([b, r, n, e, a, z, c]) => {
       setBuildings(b);
       setRooms(r.map((room) => ({ buildingId: room.buildingId, category: room.category })));
       setNodes(n);
@@ -133,6 +139,7 @@ export function MapPage() {
           toNodeId: edge.toNodeId,
         })),
       );
+      setAreas(a);
       setZones(z.filter((x) => x.active));
       setCategories(c);
     });
@@ -278,6 +285,24 @@ export function MapPage() {
     return '#b42318';
   }
 
+  const handlePlaceClick = useCallback(
+    (id: string) => {
+      if (followGps && sourceNodeId) {
+        void startRoute(id);
+        return;
+      }
+      if (!sourceNodeId) setSource(id);
+      else if (!destinationNodeId) void startRoute(id);
+      else {
+        setSource(id);
+        setDestination(null);
+        setRoute(null);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- startRoute closes over latest source
+    [followGps, sourceNodeId, destinationNodeId, setSource, setDestination],
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -396,11 +421,34 @@ export function MapPage() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
         <div className="relative overflow-hidden rounded-md border border-line">
-          <BasemapModeSwitcher
-            mode={basemapMode}
-            onChange={setBasemapMode}
-          />
-          {useGoogle ? (
+          {!useMapLibre ? (
+            <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
+          ) : (
+            <span className="absolute left-3 top-3 z-[1000] rounded border border-line bg-paper-raised px-2 py-1 text-[11px] font-semibold uppercase text-ink-mute">
+              Engine: maplibre
+            </span>
+          )}
+          {useMapLibre ? (
+            <CampusMapLibreMap
+              className="h-[62vh] w-full"
+              center={mapCenter}
+              buildings={filteredBuildings}
+              placeNodes={placeNodes}
+              graphNodes={nodes}
+              edges={edges}
+              areas={areas}
+              zones={zones}
+              routePoints={routePoints}
+              pose={pose}
+              followGps={trackOnMap}
+              recenterAt={recenterAt}
+              sourceNodeId={sourceNodeId}
+              destinationNodeId={destinationNodeId}
+              onFollowBreak={() => setFollowGps(false)}
+              onPlaceClick={handlePlaceClick}
+              onBuildingClick={(id) => void startBuildingRoute(id)}
+            />
+          ) : useGoogle ? (
             <GoogleCampusMap
               className="h-[62vh] w-full"
               mode={basemapMode}
@@ -421,19 +469,7 @@ export function MapPage() {
               followGps={trackOnMap}
               recenterAt={recenterAt}
               onFollowBreak={() => setFollowGps(false)}
-              onPlaceClick={(id) => {
-                if (followGps && sourceNodeId) {
-                  void startRoute(id);
-                  return;
-                }
-                if (!sourceNodeId) setSource(id);
-                else if (!destinationNodeId) void startRoute(id);
-                else {
-                  setSource(id);
-                  setDestination(null);
-                  setRoute(null);
-                }
-              }}
+              onPlaceClick={handlePlaceClick}
             />
           ) : (
             <MapContainer
@@ -477,19 +513,7 @@ export function MapPage() {
                       weight: 2,
                     }}
                     eventHandlers={{
-                      click: () => {
-                        if (followGps && sourceNodeId) {
-                          void startRoute(node.id);
-                          return;
-                        }
-                        if (!sourceNodeId) setSource(node.id);
-                        else if (!destinationNodeId) void startRoute(node.id);
-                        else {
-                          setSource(node.id);
-                          setDestination(null);
-                          setRoute(null);
-                        }
-                      },
+                      click: () => handlePlaceClick(node.id),
                     }}
                   >
                     <Tooltip
@@ -598,7 +622,7 @@ export function MapPage() {
               )}
             </MapContainer>
           )}
-          {useGoogle && pose && (
+          {(useGoogle || useMapLibre) && pose && (
             <button
               type="button"
               className={`absolute bottom-4 right-4 z-[1000] inline-flex items-center gap-2 rounded-md border border-line bg-paper-raised px-3 py-2 text-sm font-semibold text-ink shadow-sm hover:border-accent ${
@@ -609,7 +633,7 @@ export function MapPage() {
               <LocateFixed size={16} className="text-accent" /> Track me
             </button>
           )}
-          {!useGoogle && (
+          {!useGoogle && !useMapLibre && (
             <p className="pointer-events-none absolute bottom-3 left-3 z-[1000] max-w-xs rounded-md bg-ink/75 px-2 py-1 text-[10px] text-white/90">
               Real satellite + roads. Add VITE_GOOGLE_MAPS_API_KEY for Google Maps 3D tilt.
             </p>
