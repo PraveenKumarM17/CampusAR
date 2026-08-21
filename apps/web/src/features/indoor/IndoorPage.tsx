@@ -2,7 +2,8 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { QrCode, Search } from 'lucide-react';
 import type { IndoorBuildingContext, IndoorPlace, IndoorRouteResponse } from '@campusar/shared';
-import { api, ApiError } from '../../lib/api';
+import { ApiError } from '../../lib/api';
+import { useCampusApi } from '../../hooks/useCampusApi';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import {
@@ -13,6 +14,7 @@ import { FloorLayoutViewer } from './FloorLayoutViewer';
 
 export function IndoorPage() {
   const token = useAuthStore((s) => s.accessToken);
+  const campusApi = useCampusApi();
   const { accessibility } = usePrefsStore();
   const {
     selectedBuildingId,
@@ -55,12 +57,12 @@ export function IndoorPage() {
       return;
     }
     let cancelled = false;
-    api
+    campusApi
       .indoorBuildingContext(buildingId, token)
       .then((ctx) => {
         if (cancelled) return;
         if (!ctx.indoorMap) {
-          setRestoreError(`${ctx.building.name} does not have a published indoor map.`);
+          setRestoreError(`${ctx.building.name} does not have an indoor map for this preview.`);
           setContext(ctx);
           return;
         }
@@ -79,7 +81,7 @@ export function IndoorPage() {
     return () => {
       cancelled = true;
     };
-  }, [buildingId, token]);
+  }, [buildingId, token, campusApi]);
 
   useEffect(() => {
     if (!destinationId) {
@@ -87,7 +89,7 @@ export function IndoorPage() {
       return;
     }
     let cancelled = false;
-    api
+    campusApi
       .indoorPlace(destinationId, buildingId ?? undefined, token)
       .then((place) => {
         if (cancelled) return;
@@ -117,14 +119,14 @@ export function IndoorPage() {
     return () => {
       cancelled = true;
     };
-  }, [destinationId, buildingId, token, indoorDestinationPlaceId, setIndoorDestination]);
+  }, [destinationId, buildingId, token, indoorDestinationPlaceId, setIndoorDestination, campusApi]);
 
   async function resolveQr(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setRoute(null);
     try {
-      const res = await api.indoorResolveAnchor(qr.trim(), token, buildingId ?? undefined);
+      const res = await campusApi.indoorResolveAnchor(qr.trim(), token, buildingId ?? undefined);
       setStatus(`Localized at ${res.node.name ?? res.anchor.anchorCode} (${res.map.name}).`);
       if (guided && destinationId) {
         await startIndoor(destinationId);
@@ -139,7 +141,7 @@ export function IndoorPage() {
     e.preventDefault();
     setError(null);
     try {
-      const res = await api.indoorSearchPlaces(query.trim(), buildingId ?? undefined, token);
+      const res = await campusApi.indoorSearchPlaces(query.trim(), buildingId ?? undefined, token);
       setPlaces(res);
       if (res.length === 0) setError('No indoor places match that search.');
     } catch (err) {
@@ -151,7 +153,7 @@ export function IndoorPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.indoorRoute(
+      const res = await campusApi.indoorRoute(
         {
           sourceAnchorCode: qr.trim(),
           destinationPlaceId: placeId,

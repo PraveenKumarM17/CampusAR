@@ -29,6 +29,8 @@ import type {
   MapBuilderSnapshot,
   IndoorFloorLayoutSnapshot,
   IndoorLayoutValidationResult,
+  UnifiedMapValidationResult,
+  MapVersionPublishResponse,
   Floor,
   FloorCorridor,
   FloorPoi,
@@ -710,7 +712,177 @@ export const api = {
       ),
     deleteIndoorHandoff: (id: string, token?: string | null) =>
       request<void>(`/admin/map-builder/indoor/graph/handoffs/${id}`, { method: 'DELETE' }, token),
+    validateVersion: (versionId: string, token?: string | null) =>
+      request<UnifiedMapValidationResult>(
+        `/admin/map-builder/versions/${encodeURIComponent(versionId)}/validate`,
+        {},
+        token,
+      ),
+    publishVersion: (versionId: string, token?: string | null) =>
+      request<MapVersionPublishResponse>(
+        `/admin/map-builder/versions/${encodeURIComponent(versionId)}/publish`,
+        { method: 'POST' },
+        token,
+      ),
   },
+  preview: (() => {
+    const base = (versionId: string, subpath: string) =>
+      `/admin/map-builder/preview/${encodeURIComponent(versionId)}${subpath}`;
+
+    return {
+      meta: (versionId: string, token?: string | null) =>
+        request<{
+          siteId: string;
+          previewVersion: import('@campusar/shared').SiteMapVersion;
+          publishedVersion: import('@campusar/shared').SiteMapVersion;
+        }>(base(versionId, '/meta'), {}, token),
+      buildings: (versionId: string, token?: string | null) =>
+        request<Building[]>(base(versionId, '/campus/buildings'), {}, token),
+      rooms: (versionId: string, token?: string | null, category?: string) =>
+        request<Room[]>(
+          base(versionId, `/campus/rooms${category ? `?category=${encodeURIComponent(category)}` : ''}`),
+          {},
+          token,
+        ),
+      nodes: (versionId: string, token?: string | null) =>
+        request<GraphNode[]>(base(versionId, '/campus/nodes'), {}, token),
+      places: (versionId: string, token?: string | null) =>
+        request<CampusPlace[]>(base(versionId, '/campus/places'), {}, token),
+      edges: (versionId: string, token?: string | null) =>
+        request<GraphEdge[]>(base(versionId, '/campus/edges'), {}, token),
+      areas: (versionId: string, token?: string | null) =>
+        request<SiteArea[]>(base(versionId, '/campus/areas'), {}, token),
+      search: (versionId: string, q: string, token?: string | null) =>
+        request<SearchResult[]>(
+          base(versionId, `/campus/search?q=${encodeURIComponent(q)}`),
+          {},
+          token,
+        ),
+      route: (
+        versionId: string,
+        body: RouteRequest & { accessibility?: Partial<AccessibilityPrefs> },
+        token?: string | null,
+      ) =>
+        request<RouteResponse>(
+          base(versionId, '/navigation/route'),
+          { method: 'POST', body: JSON.stringify(body) },
+          token,
+        ),
+      recalculate: (
+        versionId: string,
+        body: RouteRequest & { accessibility?: Partial<AccessibilityPrefs> },
+        token?: string | null,
+      ) =>
+        request<RouteResponse>(
+          base(versionId, '/navigation/recalculate'),
+          { method: 'POST', body: JSON.stringify(body) },
+          token,
+        ),
+      resolveNavigate: (
+        versionId: string,
+        from?: string | null,
+        to?: string | null,
+        token?: string | null,
+      ) => {
+        const params = new URLSearchParams();
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+        const qs = params.toString();
+        return request<NavigateResolveResponse>(
+          base(versionId, `/navigation/resolve${qs ? `?${qs}` : ''}`),
+          {},
+          token,
+        );
+      },
+      indoorBuildingContext: (versionId: string, buildingId: string, token?: string | null) =>
+        request<IndoorBuildingContext>(
+          base(versionId, `/indoor/buildings/${encodeURIComponent(buildingId)}/context`),
+          {},
+          token,
+        ),
+      indoorHandoff: (versionId: string, outdoorNodeId: string, token?: string | null) =>
+        request<IndoorHandoff | null>(
+          base(versionId, `/indoor/handoffs?outdoorNodeId=${encodeURIComponent(outdoorNodeId)}`),
+          {},
+          token,
+        ),
+      indoorSearchPlaces: (
+        versionId: string,
+        q: string,
+        buildingId?: string,
+        token?: string | null,
+      ) => {
+        const params = new URLSearchParams({ q });
+        if (buildingId) params.set('buildingId', buildingId);
+        return request<IndoorPlace[]>(
+          base(versionId, `/indoor/places/search?${params.toString()}`),
+          {},
+          token,
+        );
+      },
+      indoorResolveAnchor: (
+        versionId: string,
+        code: string,
+        token?: string | null,
+        expectedBuildingId?: string,
+      ) => {
+        const params = new URLSearchParams();
+        if (expectedBuildingId) params.set('buildingId', expectedBuildingId);
+        const qs = params.toString();
+        return request<{
+          anchor: {
+            id: string;
+            nodeId: string;
+            mapId: string;
+            floorId: string;
+            anchorCode: string;
+            buildingId: string;
+          };
+          map: { id: string; buildingId: string; name: string };
+          node: { id: string; name: string | null; floorId: string };
+        }>(
+          base(versionId, `/indoor/anchors/${encodeURIComponent(code)}${qs ? `?${qs}` : ''}`),
+          {},
+          token,
+        );
+      },
+      indoorRoute: (
+        versionId: string,
+        body: {
+          sourceNodeId?: string;
+          sourceAnchorCode?: string;
+          destinationPlaceId: string;
+          expectedBuildingId?: string;
+          preferences?: {
+            avoidStairs?: boolean;
+            preferElevator?: boolean;
+            wheelchairAccessible?: boolean;
+          };
+        },
+        token?: string | null,
+      ) =>
+        request<IndoorRouteResponse>(
+          base(versionId, '/indoor/route'),
+          { method: 'POST', body: JSON.stringify(body) },
+          token,
+        ),
+      indoorPlace: (
+        versionId: string,
+        id: string,
+        buildingId?: string,
+        token?: string | null,
+      ) => {
+        const params = new URLSearchParams();
+        if (buildingId) params.set('buildingId', buildingId);
+        const qs = params.toString();
+        return request<IndoorPlace>(
+          base(versionId, `/indoor/places/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`),
+          {},
+          token,
+        );
+      },
+    };
+  })(),
   indoorLayout: (buildingId: string, floorId?: string, token?: string | null) =>
     request<{
       buildingId: string;

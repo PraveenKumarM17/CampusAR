@@ -14,6 +14,7 @@ import {
 import { validateSiteMap } from '../../../application/mapValidation';
 import { validateIndoorLayout } from '../../../application/indoorLayoutValidation';
 import { validateMapVersion } from '../../../application/mapVersionValidationService';
+import { mapVersionPublishService } from '../../../application/mapVersionPublishService';
 import {
   graphEdgeCreateSchema,
   graphHandoffSchema,
@@ -28,6 +29,7 @@ import { resolveEditorDraftMapVersion } from '../../../application/mapVersionCon
 import { assertDraftWritable } from '../../../application/mapVersionGuard';
 import { AppError } from '../../../domain/errors';
 import { haversineMeters } from '../../../domain/routing/astar';
+import { mapVersionPreviewRouter } from './mapVersionPreviewRoutes';
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -75,6 +77,8 @@ async function assertBuildingInEditorSite(buildingId: string, siteId: string) {
 
 const mapEditorRouter = Router();
 mapEditorRouter.use(requireMapEditor);
+
+mapEditorRouter.use('/map-builder/preview/:versionId', mapVersionPreviewRouter);
 
 async function editorSiteStrict(req: AuthedRequest): Promise<string> {
   return resolveEditorSiteId(req);
@@ -156,6 +160,25 @@ mapEditorRouter.get('/map-builder/versions/:versionId/validate', async (req: Aut
       );
     }
     res.json(await validateMapVersion(siteId, version));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/versions/:versionId/publish', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const versionId = String(req.params.versionId);
+    await mapVersionService.getVersion(siteId, versionId);
+    const result = await mapVersionPublishService.publishDraft(
+      siteId,
+      versionId,
+      req.user?.sub ?? null,
+    );
+    if (!result.published) {
+      return res.status(409).json(result);
+    }
+    res.json(result);
   } catch (err) {
     next(err);
   }

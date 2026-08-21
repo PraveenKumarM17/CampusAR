@@ -14,7 +14,8 @@ import {
   MapPin,
 } from 'lucide-react';
 import type { Building, CampusPlace, GraphNode, IndoorHandoff, RouteResponse } from '@campusar/shared';
-import { api } from '../../lib/api';
+import { useCampusApi } from '../../hooks/useCampusApi';
+import { usePreviewStore } from '../../stores/previewStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAX_ZOOM, siteHasPublishedMap } from '../../lib/campus';
@@ -61,6 +62,8 @@ type MapPickMode = 'source' | 'destination';
 
 export function NavigatePage() {
   const token = useAuthStore((s) => s.accessToken);
+  const campusApi = useCampusApi();
+  const previewActive = usePreviewStore((s) => s.active);
   const { activeSiteId, mapCenter } = useActiveSite();
   const {
     sourceNodeId,
@@ -146,7 +149,7 @@ export function NavigatePage() {
   const routeNodeKey = route?.nodeIds.join(',') ?? '';
 
   useEffect(() => {
-    Promise.all([api.places(token), api.nodes(token), api.buildings(token)])
+    Promise.all([campusApi.places(token), campusApi.nodes(token), campusApi.buildings(token)])
       .then(([p, n, b]) => {
         setPlaces(p);
         setNodes(n);
@@ -157,18 +160,18 @@ export function NavigatePage() {
         setNodes([]);
         setBuildings([]);
       });
-  }, [token, activeSiteId]);
+  }, [token, activeSiteId, campusApi]);
 
   useEffect(() => {
     if (!destinationNodeId) {
       setIndoorHandoff(null);
       return;
     }
-    api
+    campusApi
       .indoorHandoff(destinationNodeId, token)
       .then((h) => setIndoorHandoff(h))
       .catch(() => setIndoorHandoff(null));
-  }, [destinationNodeId, token]);
+  }, [destinationNodeId, token, campusApi]);
 
   // Restore route from share URL once places are loaded
   useEffect(() => {
@@ -179,7 +182,7 @@ export function NavigatePage() {
     void (async () => {
       try {
         if (from || to) {
-          const result = await api.resolveNavigate(from, to, token);
+          const result = await campusApi.resolveNavigate(from, to, token);
           if (urlAppliedRef.current) return;
           if (!result.valid) {
             urlAppliedRef.current = true;
@@ -197,10 +200,10 @@ export function NavigatePage() {
         }
         if (building) {
           const ctx = await loadBuildingContext(building, (id) =>
-            api.indoorBuildingContext(id, token),
+            campusApi.indoorBuildingContext(id, token),
           );
           if (urlAppliedRef.current && !from && !to) return;
-          applyBuildingContext(buildingContextToNavPatch(ctx));
+          applyBuildingContext(buildingContextToNavPatch(ctx, { allowDraft: previewActive }));
         }
         urlAppliedRef.current = true;
       } catch {
@@ -208,7 +211,7 @@ export function NavigatePage() {
         setError('Could not validate shared route link.');
       }
     })();
-  }, [places.length, searchParams, setSource, setDestination, applyBuildingContext, token]);
+  }, [places.length, searchParams, setSource, setDestination, applyBuildingContext, token, campusApi, previewActive]);
 
   // Keep share URL in sync with selected endpoints
   useEffect(() => {
@@ -277,9 +280,9 @@ export function NavigatePage() {
   async function handleBuildingSelect(buildingId: string) {
     try {
       const ctx = await loadBuildingContext(buildingId, (id) =>
-        api.indoorBuildingContext(id, token),
+        campusApi.indoorBuildingContext(id, token),
       );
-      applyBuildingContext(buildingContextToNavPatch(ctx));
+      applyBuildingContext(buildingContextToNavPatch(ctx, { allowDraft: previewActive }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that building.');
     }
@@ -312,7 +315,7 @@ export function NavigatePage() {
       setError(null);
 
       try {
-        const fn = recalc ? api.recalculate : api.route;
+        const fn = recalc ? campusApi.recalculate : campusApi.route;
         const r = await fn(
           { sourceNodeId, destinationNodeId, accessibility, usePrediction },
           token,
@@ -337,7 +340,7 @@ export function NavigatePage() {
         }
       }
     },
-    [sourceNodeId, destinationNodeId, accessibility, usePrediction, token, voiceEnabled],
+    [sourceNodeId, destinationNodeId, accessibility, usePrediction, token, voiceEnabled, campusApi],
   );
 
   useEffect(() => {

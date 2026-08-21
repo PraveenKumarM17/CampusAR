@@ -18,6 +18,7 @@ import type {
   SearchResult,
 } from '@campusar/shared';
 import { api } from '../../lib/api';
+import { useCampusApi } from '../../hooks/useCampusApi';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
@@ -108,15 +109,16 @@ export function MapPage() {
   const [basemapMode, setBasemapMode] = useState<BasemapMode>('hybrid');
   const useGoogle = hasGoogleMapsKey();
   const live = useCampusLive();
+  const campusApi = useCampusApi();
   const { pose, error: gpsError, requestCompassPermission, refreshLocation, watching } =
     useGeolocation(true);
 
   useEffect(() => {
     Promise.all([
-      api.buildings(token),
-      api.rooms(token),
-      api.nodes(token),
-      api.edges(token),
+      campusApi.buildings(token),
+      campusApi.rooms(token),
+      campusApi.nodes(token),
+      campusApi.edges(token),
       api.zones(),
       api.categories(),
     ]).then(([b, r, n, e, z, c]) => {
@@ -134,7 +136,7 @@ export function MapPage() {
       setZones(z.filter((x) => x.active));
       setCategories(c);
     });
-  }, [token, activeSiteId]);
+  }, [token, activeSiteId, campusApi]);
 
   useEffect(() => {
     if (!live.crowd.length) return;
@@ -156,13 +158,13 @@ export function MapPage() {
       return;
     }
     const t = setTimeout(() => {
-      api
+      campusApi
         .search(query, token)
         .then(setResults)
         .catch(() => setResults([]));
     }, 250);
     return () => clearTimeout(t);
-  }, [query, token]);
+  }, [query, token, campusApi]);
 
   // Snap live GPS → nearest campus node for routing only (marker stays on raw GPS)
   useEffect(() => {
@@ -223,7 +225,7 @@ export function MapPage() {
 
   async function computeRoute(fromId: string, toId: string) {
     try {
-      const r = await api.route(
+      const r = await campusApi.route(
         { sourceNodeId: fromId, destinationNodeId: toId, usePrediction: true },
         token,
       );
@@ -243,7 +245,7 @@ export function MapPage() {
   async function startBuildingRoute(buildingId: string) {
     try {
       const ctx = await loadBuildingContext(buildingId, (id) =>
-        api.indoorBuildingContext(id, token),
+        campusApi.indoorBuildingContext(id, token),
       );
       applyBuildingContext(buildingContextToNavPatch(ctx));
       const entranceId = ctx.entrance?.outdoorNodeId;

@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { IndoorBuildingContext, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
+import { useCampusApi } from '../../hooks/useCampusApi';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
 import { useGeolocation } from '../../hooks/useGeolocation';
@@ -50,6 +51,7 @@ function TwinLoading() {
 
 export function DigitalTwinPage() {
   const token = useAuthStore((s) => s.accessToken);
+  const campusApi = useCampusApi();
   const { activeSiteId, latLon, label } = useActiveSite();
   const navigate = useNavigate();
   const live = useDigitalTwinLiveData();
@@ -233,7 +235,7 @@ export function DigitalTwinPage() {
         }
       }
       if (!selectedBuilding) return;
-      const ctx = indoor ?? (await api.indoorBuildingContext(selectedBuilding.id, token));
+      const ctx = indoor ?? (await campusApi.indoorBuildingContext(selectedBuilding.id, token));
       const patch = buildingContextToNavPatch(ctx);
       applyBuildingContext(patch);
       const dest = patch.outdoorEntranceNodeId;

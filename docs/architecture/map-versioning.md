@@ -172,9 +172,90 @@ Legacy endpoints remain: `GET /map-builder/validate` (outdoor only), `GET /map-b
 
 ---
 
-## Remaining (Step 3B+)
+## Step 3B — Authorized draft preview ✓
 
-- [ ] Unified validation against draft bundle (partially wired for outdoor/indoor layout)
-- [ ] Preview mode for editors on public UI
-- [ ] **Publish** — atomic swap of `sites.published_map_version_id`, archive prior published
+Editor-gated preview namespace: `/api/admin/map-builder/preview/:versionId/*`
+
+- Requires auth + `requireMapEditor` + `X-Site-Id`
+- **Draft versions only** — `422 PREVIEW_DRAFT_ONLY` for published/archived
+- Never falls back to published when a preview version is requested
+- Mirrors public campus/indoor/navigation read shapes for Map, Navigate, Indoor, Digital Twin
+
+Frontend: `previewStore`, `useCampusApi`, `PreviewBanner`, Map Builder **Preview Draft** action.
+
+---
+
+## Step 3C — Atomic draft publish ✓
+
+`POST /api/admin/map-builder/versions/:versionId/publish`
+
+### Authorization
+
+- Auth + `requireMapEditor` + editor site context (`X-Site-Id`)
+- **Draft only** — `422 PUBLISH_DRAFT_ONLY` for published/archived
+- Cross-site rejected — `422 CROSS_SITE_REFERENCE` / `404`
+
+### Validation gate
+
+Inside the publish transaction (after row lock):
+
+1. Re-run `validateMapVersion(siteId, draft)` on current DB state
+2. **Errors block** publish → `409` with `{ published: false, version, validation }`
+3. **Warnings do not block** publish
+
+Frontend validation is advisory only; server always re-validates.
+
+### Transaction sequence
+
+```
+BEGIN
+  SELECT sites … FOR UPDATE
+  SELECT site_map_versions (draft) … FOR UPDATE
+  validateMapVersion(draft)
+  IF errors → ROLLBACK → 409
+
+  Archive prior published version (status=archived, archived_at=NOW())
+  Demote prior indoor_maps to status=draft
+
+  Promote draft (status=published, published_at, published_by)
+  UPDATE sites.published_map_version_id = draftId
+  Promote draft indoor_maps to status=published
+COMMIT
+  → broadcast map_published (site-scoped, after commit)
+```
+
+On any failure: **full ROLLBACK** — pointer, published status, and draft status unchanged.
+
+### Version lifecycle
+
+```
+Published V1 → (edit) Draft V2 → (publish) → V1 archived, V2 published
+Next Map Builder session → getOrCreateDraftVersion → Draft V3 cloned from V2
+```
+
+Publishing is a **metadata/state transition only** — spatial UUIDs are not cloned or replaced.
+
+### Indoor map status
+
+On publish:
+
+- Draft version `indoor_maps` → `status = 'published'`
+- Former published version `indoor_maps` → `status = 'draft'`
+
+Public indoor reads still require published site version **and** `indoor_maps.status = 'published'`.
+
+### Preview after publish
+
+- Preview API rejects newly published version (`PREVIEW_DRAFT_ONLY`)
+- Frontend exits preview, clears caches, resets navigation state on successful publish
+
+### WebSocket
+
+After successful commit: `map_published` event with `{ siteId, versionId, versionNumber }` (site-scoped). Operational crowd/hazard events unchanged.
+
+---
+
+## Remaining
+
 - [ ] Rollback / version history UI
+- [ ] Billing / org-level publish audit dashboard

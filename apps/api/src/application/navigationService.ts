@@ -15,7 +15,7 @@ import {
   turnInstruction,
 } from '../domain/routing/astar';
 import { defaultCrowdPredictor } from '../domain/prediction/crowdPredictor';
-import { validateRouteEndpoints } from './navigationValidation';
+import { validateRouteEndpoints, validateRouteEndpointsForVersion } from './navigationValidation';
 import { analyticsRepository } from '../infrastructure/repositories/analyticsRepository';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
 import { mapVersionService } from './mapVersionService';
@@ -39,19 +39,35 @@ export const navigationService = {
     userId?: string | null;
     usePrediction?: boolean;
     siteId?: string;
+    /** Explicit map version for authorized draft preview routing. */
+    mapVersionId?: string;
   }): Promise<RouteResponse> {
-    const { source, destination } = await validateRouteEndpoints(
-      input.sourceNodeId,
-      input.destinationNodeId,
-      input.siteId,
-    );
     const prefs = normalizeAccessibility(input.accessibility);
     const usePrediction = input.usePrediction !== false;
     const weights = await campusRepository.getWeights();
-    const publishedVersion = input.siteId
-      ? await mapVersionService.getPublishedVersion(input.siteId)
-      : null;
-    const mapVersionId = publishedVersion?.id;
+
+    let mapVersionId = input.mapVersionId;
+    let source: RouteResponse['source'];
+    let destination: RouteResponse['destination'];
+
+    if (mapVersionId && input.siteId) {
+      ({ source, destination } = await validateRouteEndpointsForVersion(
+        input.sourceNodeId,
+        input.destinationNodeId,
+        input.siteId,
+        mapVersionId,
+      ));
+    } else {
+      ({ source, destination } = await validateRouteEndpoints(
+        input.sourceNodeId,
+        input.destinationNodeId,
+        input.siteId,
+      ));
+      const publishedVersion = input.siteId
+        ? await mapVersionService.getPublishedVersion(input.siteId)
+        : null;
+      mapVersionId = publishedVersion?.id;
+    }
     const { nodes, edges: rawEdges } = await campusRepository.getRoutingGraph(
       input.siteId,
       mapVersionId,

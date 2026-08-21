@@ -1,4 +1,5 @@
-import type { SiteMapVersion, SiteMapVersionStatus } from '@campusar/shared';
+import type { SiteMapVersion, SiteMapVersionStatus, UnifiedMapValidationResult } from '@campusar/shared';
+import { AppError } from '../../domain/errors';
 import { pool, query } from '../db/pool';
 import { clonePublishedMapToDraft } from '../../application/mapVersionCloneService';
 
@@ -195,6 +196,138 @@ export const mapVersionRepository = {
       await clonePublishedMapToDraft(client, siteId, publishedVersionId, draft.id);
       await client.query('COMMIT');
       return draft;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  async publishDraftInTransaction(
+    siteId: string,
+    draftVersionId: string,
+    userId: string | null,
+    validateDraft: (draft: SiteMapVersion) => Promise<UnifiedMapValidationResult>,
+    onStep?: (step: 'after-archive' | 'before-pointer-update') => void,
+  ): Promise<
+    | { published: true; version: SiteMapVersion; previousVersion: SiteMapVersion | null }
+    | { published: false; version: SiteMapVersion; validation: UnifiedMapValidationResult }
+  > {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows: lockedSite } = await client.query<{ id: string }>(
+        `SELECT id FROM sites WHERE id = $1 FOR UPDATE`,
+        [siteId],
+      );
+      if (!lockedSite[0]) {
+        await client.query('ROLLBACK');
+        throw new AppError('NOT_FOUND', 'Site not found', 404);
+      }
+
+      const { rows: draftRows } = await client.query<VersionRow>(
+        `SELECT * FROM site_map_versions WHERE id = $1 FOR UPDATE`,
+        [draftVersionId],
+      );
+      const draftRow = draftRows[0];
+      if (!draftRow) {
+        await client.query('ROLLBACK');
+        throw new AppError('NOT_FOUND', 'Map version not found', 404);
+      }
+      if (draftRow.site_id !== siteId) {
+        await client.query('ROLLBACK');
+        throw new AppError(
+          'CROSS_SITE_REFERENCE',
+          'Map version does not belong to the active site',
+          422,
+        );
+      }
+      if (draftRow.status !== 'draft') {
+        await client.query('ROLLBACK');
+        throw new AppError(
+          'PUBLISH_DRAFT_ONLY',
+          'Only draft map versions can be published',
+          422,
+          { versionId: draftVersionId, status: draftRow.status },
+        );
+      }
+
+      const draft = mapVersionRow(draftRow);
+      const validation = await validateDraft(draft);
+      if (validation.summary.errors > 0) {
+        await client.query('ROLLBACK');
+        return { published: false, version: draft, validation };
+      }
+
+      const { rows: publishedRows } = await client.query<VersionRow>(
+        `SELECT * FROM site_map_versions WHERE site_id = $1 AND status = 'published' FOR UPDATE`,
+        [siteId],
+      );
+      const previousPublished = publishedRows[0] ? mapVersionRow(publishedRows[0]) : null;
+
+      let previousVersion: SiteMapVersion | null = null;
+
+      if (previousPublished && previousPublished.id !== draftVersionId) {
+        const { rows: archivedRows } = await client.query<VersionRow>(
+          `UPDATE site_map_versions
+           SET status = 'archived', archived_at = NOW(), updated_at = NOW()
+           WHERE id = $1 AND status = 'published'
+           RETURNING *`,
+          [previousPublished.id],
+        );
+        previousVersion = archivedRows[0] ? mapVersionRow(archivedRows[0]) : null;
+        await client.query(
+          `UPDATE indoor_maps
+           SET status = 'draft', updated_at = NOW()
+           WHERE map_version_id = $1 AND status = 'published'`,
+          [previousPublished.id],
+        );
+      }
+
+      onStep?.('after-archive');
+
+      const { rows: promoted } = await client.query<VersionRow>(
+        `UPDATE site_map_versions
+         SET status = 'published',
+             published_at = NOW(),
+             published_by = $2,
+             updated_at = NOW()
+         WHERE id = $1 AND status = 'draft'
+         RETURNING *`,
+        [draftVersionId, userId],
+      );
+      if (!promoted[0]) {
+        await client.query('ROLLBACK');
+        throw new AppError(
+          'PUBLISH_CONFLICT',
+          'Draft version is no longer publishable — it may have been published concurrently',
+          409,
+        );
+      }
+
+      onStep?.('before-pointer-update');
+
+      await client.query(
+        `UPDATE sites SET published_map_version_id = $2 WHERE id = $1`,
+        [siteId, draftVersionId],
+      );
+
+      await client.query(
+        `UPDATE indoor_maps
+         SET status = 'published', updated_at = NOW()
+         WHERE map_version_id = $1`,
+        [draftVersionId],
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        published: true,
+        version: mapVersionRow(promoted[0]),
+        previousVersion,
+      };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

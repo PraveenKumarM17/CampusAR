@@ -26,6 +26,16 @@ export function hasPublishedIndoorMap(ctx: IndoorBuildingContext | null | undefi
   return ctx?.indoorMap?.status === 'published';
 }
 
+/** Preview mode accepts draft indoor maps returned by authorized preview APIs. */
+export function hasIndoorMapInContext(
+  ctx: IndoorBuildingContext | null | undefined,
+  options?: { allowDraft?: boolean },
+): boolean {
+  if (!ctx?.indoorMap) return false;
+  if (options?.allowDraft) return true;
+  return ctx.indoorMap.status === 'published';
+}
+
 export interface BuildingNavPatch {
   selectedBuildingId: string;
   selectedBuildingName: string;
@@ -40,8 +50,11 @@ export interface BuildingNavPatch {
   transitionStatus: IndoorTransitionStatus;
 }
 
-export function buildingContextToNavPatch(ctx: IndoorBuildingContext): BuildingNavPatch {
-  const indoor = hasPublishedIndoorMap(ctx);
+export function buildingContextToNavPatch(
+  ctx: IndoorBuildingContext,
+  options?: { allowDraft?: boolean },
+): BuildingNavPatch {
+  const indoor = hasIndoorMapInContext(ctx, options);
   const entranceId = ctx.entrance?.outdoorNodeId ?? null;
   return {
     selectedBuildingId: ctx.building.id,

@@ -21,6 +21,8 @@ import { DIGITAL_TWIN_PATH } from '../features/digitalTwin/types/digitalTwin';
 import { useSiteBootstrap } from '../hooks/useSiteBootstrap';
 import { useActiveSite } from '../hooks/useActiveSite';
 import { useMapEditorAccess } from '../hooks/useMapEditorAccess';
+import { PreviewBanner } from './PreviewBanner';
+import { syncPreviewSite } from '../stores/previewStore';
 
 const navLinks = [
   { to: '/map', label: 'Map', icon: Map },
@@ -55,6 +57,7 @@ export function AppShell() {
   useEffect(() => {
     if (previousSiteId.current && activeSiteId && previousSiteId.current !== activeSiteId) {
       resetForSiteChange();
+      syncPreviewSite(activeSiteId);
     }
     previousSiteId.current = activeSiteId;
   }, [activeSiteId, resetForSiteChange]);
@@ -197,6 +200,7 @@ export function AppShell() {
           ))}
         </nav>
       </header>
+      <PreviewBanner />
       <main className="mx-auto max-w-7xl px-4 py-6">
         <Outlet />
       </main>

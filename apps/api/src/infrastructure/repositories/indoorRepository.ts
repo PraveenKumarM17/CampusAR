@@ -399,6 +399,20 @@ export const indoorRepository = {
     return rows.map(placeFromRow);
   },
 
+  async listPlacesByBuildingForVersion(buildingId: string, mapVersionId: string): Promise<IndoorPlace[]> {
+    const { rows } = await query(
+      `SELECT p.* FROM indoor_places p
+       JOIN indoor_maps m ON m.id = p.map_id
+       WHERE p.building_id = $1
+         AND p.map_version_id = $2
+         AND p.active = TRUE AND p.searchable = TRUE
+         AND m.active = TRUE
+       ORDER BY p.name`,
+      [buildingId, mapVersionId],
+    );
+    return rows.map(placeFromRow);
+  },
+
   async searchPlaces(q: string, buildingId?: string): Promise<IndoorPlace[]> {
     const { rows } = await query(
       `SELECT p.* FROM indoor_places p
@@ -410,6 +424,26 @@ export const indoorRepository = {
        ORDER BY length(p.name), p.name
        LIMIT 40`,
       [q.trim(), buildingId ?? null],
+    );
+    return rows.map(placeFromRow);
+  },
+
+  async searchPlacesForVersion(
+    q: string,
+    mapVersionId: string,
+    buildingId?: string,
+  ): Promise<IndoorPlace[]> {
+    const { rows } = await query(
+      `SELECT p.* FROM indoor_places p
+       JOIN indoor_maps m ON m.id = p.map_id
+       WHERE p.active = TRUE AND p.searchable = TRUE
+         AND m.active = TRUE
+         AND p.map_version_id = $2
+         AND ($3::uuid IS NULL OR p.building_id = $3)
+         AND p.name ILIKE '%' || $1 || '%'
+       ORDER BY length(p.name), p.name
+       LIMIT 40`,
+      [q.trim(), mapVersionId, buildingId ?? null],
     );
     return rows.map(placeFromRow);
   },
@@ -522,6 +556,29 @@ export const indoorRepository = {
     };
   },
 
+  async getHandoffByBuildingForVersion(
+    buildingId: string,
+    mapVersionId: string,
+  ): Promise<IndoorHandoff | null> {
+    const { rows } = await query(
+      `SELECT h.* FROM indoor_handoffs h
+       WHERE h.building_id = $1 AND h.active = TRUE AND h.map_version_id = $2
+       LIMIT 1`,
+      [buildingId, mapVersionId],
+    );
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      id: r.id as string,
+      outdoorNodeId: r.outdoor_node_id as string,
+      indoorNodeId: r.indoor_node_id as string,
+      buildingId: r.building_id as string,
+      mapId: r.map_id as string,
+      prompt: r.prompt as string,
+      active: Boolean(r.active),
+    };
+  },
+
   async getHandoffByOutdoorNode(outdoorNodeId: string): Promise<IndoorHandoff | null> {
     const { rows } = await query(
       `SELECT * FROM indoor_handoffs WHERE outdoor_node_id = $1 AND active = TRUE`,
@@ -538,6 +595,46 @@ export const indoorRepository = {
       prompt: r.prompt as string,
       active: Boolean(r.active),
     };
+  },
+
+  async getHandoffByOutdoorNodeForVersion(
+    outdoorNodeId: string,
+    mapVersionId: string,
+  ): Promise<IndoorHandoff | null> {
+    const { rows } = await query(
+      `SELECT * FROM indoor_handoffs
+       WHERE outdoor_node_id = $1 AND active = TRUE AND map_version_id = $2`,
+      [outdoorNodeId, mapVersionId],
+    );
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      id: r.id as string,
+      outdoorNodeId: r.outdoor_node_id as string,
+      indoorNodeId: r.indoor_node_id as string,
+      buildingId: r.building_id as string,
+      mapId: r.map_id as string,
+      prompt: r.prompt as string,
+      active: Boolean(r.active),
+    };
+  },
+
+  async getPlaceForVersion(id: string, mapVersionId: string): Promise<IndoorPlace | null> {
+    const { rows } = await query(
+      `SELECT * FROM indoor_places WHERE id = $1 AND map_version_id = $2`,
+      [id, mapVersionId],
+    );
+    return rows[0] ? placeFromRow(rows[0]) : null;
+  },
+
+  async getAnchorByCodeForVersion(code: string, mapVersionId: string): Promise<IndoorAnchor | null> {
+    const { rows } = await query(
+      `SELECT a.* FROM indoor_anchors a
+       JOIN indoor_maps m ON m.id = a.map_id
+       WHERE upper(a.anchor_code) = upper($1) AND a.active = TRUE AND a.map_version_id = $2 AND m.active = TRUE`,
+      [code.trim(), mapVersionId],
+    );
+    return rows[0] ? anchorFromRow(rows[0]) : null;
   },
 
   async createHandoff(input: Omit<IndoorHandoff, 'id'>): Promise<IndoorHandoff> {

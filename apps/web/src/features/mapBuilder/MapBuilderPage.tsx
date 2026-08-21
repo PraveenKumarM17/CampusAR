@@ -24,18 +24,37 @@ import {
   Save,
   Shapes,
   Trash2,
+  Eye,
+  Upload,
+  Loader2,
 } from 'lucide-react';
-import type { Building, GeoPoint, GraphEdge, GraphNode, MapValidationResult, SiteArea } from '@campusar/shared';
+import type {
+  Building,
+  GeoPoint,
+  GraphEdge,
+  GraphNode,
+  MapBuilderSnapshot,
+  MapValidationIssue,
+  SiteArea,
+  UnifiedMapValidationResult,
+} from '@campusar/shared';
 import { api, ApiError } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useActiveSite } from '../../hooks/useActiveSite';
 import { useMapEditorAccess } from '../../hooks/useMapEditorAccess';
 import { useSiteStore } from '../../stores/siteStore';
+import { usePreviewStore } from '../../stores/previewStore';
+import { useNavStore } from '../../stores/themeStore';
+import { clearBuildingContextCache } from '../../lib/buildingNavigation';
+import {
+  publishBlockedByValidation,
+  publishConfirmMessage,
+} from './mapBuilderPublish';
 import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAX_ZOOM, siteMapCenter } from '../../lib/campus';
 import { haversineMeters } from '../../lib/geo';
 import { BasemapModeSwitcher, RealBasemapTiles, type BasemapMode } from '../../components/maps/RealBasemap';
 import { RecenterOnSite } from '../../components/maps/GpsTracker';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { EmptySiteNotice } from '../../components/EmptySiteNotice';
 import { EditableFootprintLayer } from './EditableFootprintLayer';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
@@ -152,9 +171,13 @@ function MapClickLayer({
 export function MapBuilderPage() {
   const token = useAuthStore((s) => s.accessToken);
   const { canEdit, loading: accessLoading } = useMapEditorAccess();
-  const { site, label } = useActiveSite();
+  const { site, label, activeSiteId } = useActiveSite();
   const sites = useSiteStore((s) => s.sites);
   const setActiveSiteId = useSiteStore((s) => s.setActiveSiteId);
+  const navigate = useNavigate();
+  const enterPreview = usePreviewStore((s) => s.enterPreview);
+  const exitPreview = usePreviewStore((s) => s.exitPreview);
+  const resetNavForSiteChange = useNavStore((s) => s.resetForSiteChange);
 
   const [tool, setTool] = useState<BuilderTool>('select');
   const [basemap, setBasemap] = useState<BasemapMode>('streets');
@@ -167,7 +190,14 @@ export function MapBuilderPage() {
   const [entranceBuildingId, setEntranceBuildingId] = useState<string>('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [validation, setValidation] = useState<MapValidationResult | null>(null);
+  const [validation, setValidation] = useState<UnifiedMapValidationResult | null>(null);
+  const [draftVersion, setDraftVersion] = useState<MapBuilderSnapshot['version'] | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewNote, setPreviewNote] = useState<string | null>(null);
+  const [validateBusy, setValidateBusy] = useState(false);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const dirtyRef = useRef(false);
@@ -223,6 +253,51 @@ export function MapBuilderPage() {
     setSaveStatus('unsaved');
   }, []);
 
+  const refreshValidation = useCallback(async () => {
+    if (!token || !draftVersion?.id) return;
+    try {
+      const val = await api.mapBuilder.validateVersion(draftVersion.id, token);
+      setValidation(val);
+    } catch {
+      /* keep prior validation snapshot */
+    }
+  }, [token, draftVersion?.id]);
+
+  const handleValidationIssue = useCallback((issue: MapValidationIssue) => {
+    if (!issue.resourceId || !issue.resourceType) return;
+    switch (issue.resourceType) {
+      case 'building':
+        setSelection({ kind: 'building', id: issue.resourceId });
+        break;
+      case 'node':
+      case 'entrance':
+        setSelection({ kind: 'node', id: issue.resourceId });
+        break;
+      case 'edge':
+        setSelection({ kind: 'edge', id: issue.resourceId });
+        break;
+      case 'area':
+        setSelection({ kind: 'area', id: issue.resourceId });
+        break;
+      default:
+        break;
+    }
+  }, []);
+
+  const handleValidateDraft = useCallback(async () => {
+    if (!token || !draftVersion) return;
+    setValidateBusy(true);
+    setPublishSuccess(null);
+    try {
+      const val = await api.mapBuilder.validateVersion(draftVersion.id, token);
+      setValidation(val);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Validation failed');
+    } finally {
+      setValidateBusy(false);
+    }
+  }, [token, draftVersion]);
+
   const reload = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -233,9 +308,10 @@ export function MapBuilderPage() {
       setNodes(snap.nodes);
       setEdges(snap.edges);
       setAreas(snap.areas);
+      setDraftVersion(snap.version);
       dirtyRef.current = false;
       setSaveStatus('idle');
-      const val = await api.mapBuilder.validate(token);
+      const val = await api.mapBuilder.validateVersion(snap.version.id, token);
       setValidation(val);
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Failed to load site map data');
@@ -243,6 +319,33 @@ export function MapBuilderPage() {
       setLoading(false);
     }
   }, [token]);
+
+  const handlePublishDraft = useCallback(async () => {
+    if (!token || !draftVersion) return;
+    setPublishBusy(true);
+    setPublishDialogOpen(false);
+    setError(null);
+    setPublishSuccess(null);
+    try {
+      const result = await api.mapBuilder.publishVersion(draftVersion.id, token);
+      if (!result.published) {
+        setValidation(result.validation);
+        setError(
+          `Publish blocked: ${result.validation.summary.errors} validation error(s). Fix issues before publishing.`,
+        );
+        return;
+      }
+      setPublishSuccess(`Version ${result.version.versionNumber} is now published.`);
+      clearBuildingContextCache();
+      resetNavForSiteChange();
+      exitPreview();
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Publish failed');
+    } finally {
+      setPublishBusy(false);
+    }
+  }, [token, draftVersion, reload, exitPreview, resetNavForSiteChange]);
 
   useEffect(() => {
     setSelection(null);
@@ -269,14 +372,14 @@ export function MapBuilderPage() {
       setGeometryEdit(null);
       dirtyRef.current = false;
       setSaveStatus('saved');
-      void api.mapBuilder.validate(token).then(setValidation);
+      void refreshValidation();
       return true;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save footprint');
       setSaveStatus('error');
       return false;
     }
-  }, [geometryEdit, token]);
+  }, [geometryEdit, token, refreshValidation]);
 
   const cancelGeometryEdit = useCallback(() => {
     setGeometryEdit(null);
@@ -343,7 +446,7 @@ export function MapBuilderPage() {
           setAttachFootprintBuildingId(null);
           setSelection({ kind: 'building', id: updated.id });
           setSaveStatus('saved');
-          void api.mapBuilder.validate(token).then(setValidation);
+          void refreshValidation();
         } catch (err) {
           setError(err instanceof ApiError ? err.message : 'Could not save footprint');
           setSaveStatus('error');
@@ -360,7 +463,7 @@ export function MapBuilderPage() {
       }
       setTool('select');
     },
-    [tool, markDirty, attachFootprintBuildingId, token, buildings],
+    [tool, markDirty, attachFootprintBuildingId, token, buildings, refreshValidation],
   );
 
   const handleMapClick = async (lat: number, lon: number) => {
@@ -406,7 +509,7 @@ export function MapBuilderPage() {
         setSelection({ kind: 'node', id: created.id });
         setSaveStatus('saved');
       }
-      void api.mapBuilder.validate(token).then(setValidation);
+      void refreshValidation();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Save failed');
       setSaveStatus('error');
@@ -452,7 +555,7 @@ export function MapBuilderPage() {
       setEdges((prev) => [...prev, edge]);
       setSelection({ kind: 'edge', id: edge.id });
       setSaveStatus('saved');
-      void api.mapBuilder.validate(token).then(setValidation);
+      void refreshValidation();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create walkway');
       setSaveStatus('error');
@@ -485,7 +588,7 @@ export function MapBuilderPage() {
       setSelection({ kind: 'building', id: created.id });
       setSaveStatus('saved');
       dirtyRef.current = false;
-      void api.mapBuilder.validate(token).then(setValidation);
+      void refreshValidation();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save building');
       setSaveStatus('error');
@@ -504,7 +607,7 @@ export function MapBuilderPage() {
       setSelection({ kind: 'area', id: created.id });
       setSaveStatus('saved');
       dirtyRef.current = false;
-      void api.mapBuilder.validate(token).then(setValidation);
+      void refreshValidation();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save area');
       setSaveStatus('error');
@@ -542,7 +645,7 @@ export function MapBuilderPage() {
       }
       setSelection(null);
       setSaveStatus('saved');
-      void api.mapBuilder.validate(token).then(setValidation);
+      void refreshValidation();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Delete failed');
       setSaveStatus('error');
@@ -775,7 +878,7 @@ export function MapBuilderPage() {
                         const snap = await api.mapBuilder.snapshot(token);
                         setEdges(snap.edges);
                         setSaveStatus('saved');
-                        void api.mapBuilder.validate(token).then(setValidation);
+                        void refreshValidation();
                       } catch (err) {
                         setError(err instanceof ApiError ? err.message : 'Could not move node');
                         setSaveStatus('error');
@@ -825,7 +928,7 @@ export function MapBuilderPage() {
                   setNodes((prev) => prev.map((n) => (n.id === id ? updated : n)));
                 }
                 setSaveStatus('saved');
-                void api.mapBuilder.validate(token).then(setValidation);
+                void refreshValidation();
               } catch (err) {
                 setError(err instanceof ApiError ? err.message : 'Update failed');
                 setSaveStatus('error');
@@ -834,7 +937,70 @@ export function MapBuilderPage() {
             onDelete={deleteSelected}
           />
           {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-          <ValidationPanel validation={validation} />
+          {publishSuccess ? <p className="mt-3 text-sm font-semibold text-accent">{publishSuccess}</p> : null}
+          <div className="mt-6 space-y-3 border-t border-line pt-4">
+            <button
+              type="button"
+              className="btn-secondary inline-flex w-full items-center justify-center gap-2"
+              disabled={!draftVersion || validateBusy}
+              onClick={() => void handleValidateDraft()}
+            >
+              {validateBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+              {validateBusy ? 'Validating…' : 'Validate Draft'}
+            </button>
+            <button
+              type="button"
+              className="btn-primary inline-flex w-full items-center justify-center gap-2"
+              disabled={!draftVersion || previewBusy}
+              onClick={() => {
+                if (!token || !draftVersion || !activeSiteId) return;
+                setPreviewBusy(true);
+                setPreviewNote(null);
+                void (async () => {
+                  try {
+                    const val = await api.mapBuilder.validateVersion(draftVersion.id, token);
+                    setValidation(val);
+                    if (val.summary.errors > 0) {
+                      setPreviewNote(
+                        `Draft has ${val.summary.errors} validation error(s). Preview shows incomplete data — fix before publishing.`,
+                      );
+                    } else if (val.summary.warnings > 0) {
+                      setPreviewNote(
+                        `Draft has ${val.summary.warnings} warning(s). Preview is available.`,
+                      );
+                    }
+                    enterPreview({
+                      versionId: draftVersion.id,
+                      versionNumber: draftVersion.versionNumber,
+                      siteId: activeSiteId,
+                      validation: val,
+                    });
+                    navigate('/map');
+                  } catch (err) {
+                    setPreviewNote(
+                      err instanceof ApiError ? err.message : 'Could not start preview',
+                    );
+                  } finally {
+                    setPreviewBusy(false);
+                  }
+                })();
+              }}
+            >
+              <Eye className="h-4 w-4" />
+              {previewBusy ? 'Starting preview…' : 'Preview Draft'}
+            </button>
+            {previewNote ? <p className="text-xs text-muted">{previewNote}</p> : null}
+            <button
+              type="button"
+              className="btn-primary inline-flex w-full items-center justify-center gap-2 bg-accent-success hover:opacity-90"
+              disabled={!draftVersion || publishBusy || publishBlockedByValidation(validation)}
+              onClick={() => setPublishDialogOpen(true)}
+            >
+              {publishBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {publishBusy ? 'Publishing…' : 'Publish Map'}
+            </button>
+          </div>
+          <ValidationPanel validation={validation} onSelectIssue={handleValidationIssue} />
         </aside>
       </div>
       {unsavedDialog ? (
@@ -846,6 +1012,36 @@ export function MapBuilderPage() {
           onDiscard={() => unsavedDialog.onResolve('discard')}
           onSave={() => unsavedDialog.onResolve('save')}
         />
+      ) : null}
+      {publishDialogOpen && draftVersion ? (
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-lg border border-line bg-paper-raised p-5 shadow-lg"
+          >
+            <h2 className="text-lg font-semibold text-ink">Publish this map version?</h2>
+            <p className="mt-2 whitespace-pre-line text-sm text-muted">
+              {publishConfirmMessage(
+                draftVersion.versionNumber,
+                validation?.summary.warnings ?? 0,
+              )}
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setPublishDialogOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={publishBusy}
+                onClick={() => void handlePublishDraft()}
+              >
+                Publish Version {draftVersion.versionNumber}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -1112,8 +1308,16 @@ function EntityForm({
   );
 }
 
-function ValidationPanel({ validation }: { validation: MapValidationResult | null }) {
+function ValidationPanel({
+  validation,
+  onSelectIssue,
+}: {
+  validation: UnifiedMapValidationResult | null;
+  onSelectIssue?: (issue: MapValidationIssue) => void;
+}) {
   if (!validation) return null;
+  const errors = validation.summary.errors;
+  const warnings = validation.summary.warnings;
   return (
     <div className="mt-6 border-t border-line pt-4">
       <p className="flex items-center gap-2 text-sm font-semibold text-ink">
@@ -1121,15 +1325,25 @@ function ValidationPanel({ validation }: { validation: MapValidationResult | nul
         Validation
       </p>
       <p className="mt-1 text-xs text-muted">
-        {validation.errorCount} errors · {validation.warningCount} warnings
+        {validation.valid ? 'Valid' : 'Invalid'} · {errors} errors · {warnings} warnings
       </p>
       <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto text-xs">
         {validation.issues.map((issue, i) => (
-          <li
-            key={`${issue.code}-${i}`}
-            className={issue.level === 'error' ? 'text-danger' : 'text-amber-700 dark:text-amber-400'}
-          >
-            <span className="font-semibold uppercase">{issue.level}</span> {issue.message}
+          <li key={`${issue.code}-${issue.resourceId ?? i}`}>
+            <button
+              type="button"
+              className={`w-full text-left ${issue.level === 'error' ? 'text-danger' : 'text-amber-700 dark:text-amber-400'} ${issue.resourceId ? 'hover:underline' : ''}`}
+              disabled={!issue.resourceId || !onSelectIssue}
+              onClick={() => onSelectIssue?.(issue)}
+            >
+              <span className="font-semibold uppercase">{issue.level}</span>{' '}
+              <span className="font-mono text-[10px]">{issue.code}</span> {issue.message}
+              {issue.resourceType && issue.resourceId ? (
+                <span className="mt-0.5 block text-ink-faint">
+                  {issue.resourceType} · {issue.resourceId.slice(0, 8)}…
+                </span>
+              ) : null}
+            </button>
           </li>
         ))}
       </ul>

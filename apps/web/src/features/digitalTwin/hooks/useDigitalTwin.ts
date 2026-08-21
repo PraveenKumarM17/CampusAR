@@ -9,8 +9,12 @@ import type {
   GraphNode,
 } from '@campusar/shared';
 import { api } from '../../../lib/api';
+import { useCampusApi } from '../../../hooks/useCampusApi';
+import { usePreviewStore } from '../../../stores/previewStore';
 
 export function useDigitalTwinSnapshot(token: string | null, siteId?: string | null) {
+  const campusApi = useCampusApi();
+  const previewActive = usePreviewStore((s) => s.active);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
@@ -25,9 +29,9 @@ export function useDigitalTwinSnapshot(token: string | null, siteId?: string | n
     setLoading(true);
     setError(null);
     Promise.all([
-      api.buildings(token),
-      api.nodes(token),
-      api.edges(token),
+      campusApi.buildings(token),
+      campusApi.nodes(token),
+      campusApi.edges(token),
       api.zones(),
       api.iotCrowd().catch(() => [] as CrowdLevel[]),
       api.exits().catch(() => [] as EmergencyExit[]),
@@ -46,11 +50,11 @@ export function useDigitalTwinSnapshot(token: string | null, siteId?: string | n
         setError(err instanceof Error ? err.message : 'Unable to load campus data.');
       })
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, campusApi]);
 
   useEffect(() => {
     reload();
-  }, [reload, siteId]);
+  }, [reload, siteId, previewActive]);
 
   return {
     buildings,

@@ -154,6 +154,19 @@ export interface UnifiedMapValidationResult {
   issues: MapValidationIssue[];
 }
 
+/** Result of POST /api/admin/map-builder/versions/:versionId/publish (Step 3C). */
+export type MapVersionPublishResponse =
+  | {
+      published: true;
+      version: SiteMapVersion;
+      previousVersion: SiteMapVersion | null;
+    }
+  | {
+      published: false;
+      version: SiteMapVersion;
+      validation: UnifiedMapValidationResult;
+    };
+
 export interface MapBuilderSnapshot {
   siteId: string;
   version: SiteMapVersion;
@@ -484,7 +497,13 @@ export interface IotStatus {
   tickCount: number;
 }
 
-export type WsMessageType = 'crowd' | 'sensors' | 'hazard' | 'iot_status' | 'ping';
+export type WsMessageType =
+  | 'crowd'
+  | 'sensors'
+  | 'hazard'
+  | 'iot_status'
+  | 'ping'
+  | 'map_published';
 
 export interface WsMessage<T = unknown> {
   type: WsMessageType;

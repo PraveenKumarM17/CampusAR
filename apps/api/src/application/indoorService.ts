@@ -582,4 +582,213 @@ export const indoorService = {
       instructions: steps.map((s) => s.instruction),
     };
   },
+
+  async getBuildingContextForVersion(buildingId: string, siteId: string, mapVersionId: string) {
+    const building = await campusRepository.getBuildingById(buildingId);
+    if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
+
+    const buildingVersion = await campusRepository.getBuildingMapVersionId(buildingId);
+    if (buildingVersion !== mapVersionId) {
+      throw new AppError('NOT_FOUND', 'Building not found', 404);
+    }
+    if (building.siteId !== siteId) {
+      throw new AppError('CROSS_SITE_REFERENCE', 'Building does not belong to the active site', 422);
+    }
+
+    const indoorMap = await indoorRepository.getPrimaryMapForBuildingVersion(buildingId, mapVersionId);
+    const [floors, handoff, outdoorEntrance, places] = await Promise.all([
+      campusRepository.listFloors(buildingId, siteId, mapVersionId),
+      indoorRepository.getHandoffByBuildingForVersion(buildingId, mapVersionId),
+      campusRepository.findOutdoorEntrance(buildingId, mapVersionId),
+      indoorMap
+        ? indoorRepository.listPlacesByBuildingForVersion(buildingId, mapVersionId)
+        : Promise.resolve([]),
+    ]);
+
+    const outdoorNodeId = handoff?.outdoorNodeId ?? outdoorEntrance?.id ?? null;
+    const outdoorNode = outdoorNodeId
+      ? await campusRepository.getNodeById(outdoorNodeId)
+      : outdoorEntrance;
+
+    const anchors = indoorMap
+      ? (await indoorRepository.listAnchors(indoorMap.id)).map((a) => ({
+          anchorCode: a.anchorCode,
+          floorId: a.floorId,
+          nodeId: a.nodeId,
+        }))
+      : [];
+
+    const quickPlaces = places
+      .filter((p) => p.category === 'room' || p.category === 'facility' || p.category === 'cabin')
+      .slice(0, 6);
+    const fallbackQuick = quickPlaces.length > 0 ? quickPlaces : places.slice(0, 6);
+
+    return {
+      building: { id: building.id, name: building.name, code: building.code },
+      indoorMap: indoorMap
+        ? { id: indoorMap.id, name: indoorMap.name, status: indoorMap.status }
+        : null,
+      entrance: outdoorNode
+        ? {
+            outdoorNodeId: outdoorNode.id,
+            indoorNodeId: handoff?.indoorNodeId ?? null,
+            name: outdoorNode.name,
+          }
+        : null,
+      floors,
+      placeCount: places.length,
+      quickPlaces: fallbackQuick,
+      anchors,
+    };
+  },
+
+  async getPreviewPlace(id: string, mapVersionId: string, expectedBuildingId?: string) {
+    const place = await indoorRepository.getPlaceForVersion(id, mapVersionId);
+    if (!place || !place.active) {
+      throw new AppError('NOT_FOUND', 'Indoor destination was not found or is no longer available', 404);
+    }
+    const map = await indoorRepository.getMap(place.mapId);
+    if (!map || !map.active) {
+      throw new AppError('NOT_FOUND', 'Indoor destination was not found or is no longer available', 404);
+    }
+    if (expectedBuildingId && place.buildingId !== expectedBuildingId) {
+      const expected = await campusRepository.getBuildingById(expectedBuildingId);
+      const actual = await campusRepository.getBuildingById(place.buildingId);
+      throw new AppError(
+        'PLACE_BUILDING_MISMATCH',
+        indoorPlaceBuildingError(expected?.name ?? 'this building', actual?.name ?? 'another building'),
+        422,
+        { expectedBuildingId, actualBuildingId: place.buildingId },
+      );
+    }
+    return place;
+  },
+
+  async listPreviewPlaces(buildingId: string, siteId: string, mapVersionId: string) {
+    const building = await campusRepository.getBuildingById(buildingId);
+    if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
+    const buildingVersion = await campusRepository.getBuildingMapVersionId(buildingId);
+    if (buildingVersion !== mapVersionId || building.siteId !== siteId) {
+      throw new AppError('NOT_FOUND', 'Building not found', 404);
+    }
+    return indoorRepository.listPlacesByBuildingForVersion(buildingId, mapVersionId);
+  },
+
+  async searchPreviewPlaces(q: string, siteId: string, mapVersionId: string, buildingId?: string) {
+    if (buildingId) {
+      const building = await campusRepository.getBuildingById(buildingId);
+      if (!building || building.siteId !== siteId) {
+        throw new AppError('NOT_FOUND', 'Building not found', 404);
+      }
+      const buildingVersion = await campusRepository.getBuildingMapVersionId(buildingId);
+      if (buildingVersion !== mapVersionId) {
+        throw new AppError('NOT_FOUND', 'Building not found', 404);
+      }
+    }
+    return indoorRepository.searchPlacesForVersion(q, mapVersionId, buildingId);
+  },
+
+  async resolvePreviewAnchor(code: string, mapVersionId: string, expectedBuildingId?: string) {
+    const anchor = await indoorRepository.getAnchorByCodeForVersion(code, mapVersionId);
+    if (!anchor) throw new AppError('NOT_FOUND', 'Indoor anchor not found', 404);
+    const map = await indoorRepository.getMap(anchor.mapId);
+    if (!map || !map.active) {
+      throw new AppError('NOT_FOUND', 'Indoor map is not available for this marker', 404);
+    }
+    if (expectedBuildingId && anchor.buildingId !== expectedBuildingId) {
+      const expected = await campusRepository.getBuildingById(expectedBuildingId);
+      const actual = await campusRepository.getBuildingById(anchor.buildingId);
+      throw new AppError(
+        'ANCHOR_BUILDING_MISMATCH',
+        indoorAnchorBuildingError(expected?.name ?? 'this building', actual?.name ?? 'another building'),
+        422,
+        { expectedBuildingId, actualBuildingId: anchor.buildingId },
+      );
+    }
+    const node = await indoorRepository.getNode(anchor.nodeId);
+    return { anchor, map, node };
+  },
+
+  async routeForVersion(
+    body: z.infer<typeof indoorRouteSchema>,
+    mapVersionId: string,
+  ) {
+    const prefs: IndoorRoutePreferences = {
+      ...DEFAULT_INDOOR_PREFERENCES,
+      ...body.preferences,
+    };
+    let sourceId = body.sourceNodeId ?? null;
+    if (body.sourceAnchorCode) {
+      const resolved = await this.resolvePreviewAnchor(
+        body.sourceAnchorCode,
+        mapVersionId,
+        body.expectedBuildingId,
+      );
+      sourceId = resolved.anchor.nodeId;
+    }
+    if (!sourceId) throw new AppError('VALIDATION_ERROR', 'A source location is required', 400);
+
+    const source = await indoorRepository.getNode(sourceId);
+    if (!source || !source.active) throw new AppError('NOT_FOUND', 'Source indoor node not found', 404);
+
+    const place = await indoorRepository.getPlaceForVersion(body.destinationPlaceId, mapVersionId);
+    if (!place || !place.active || !place.nodeId) {
+      throw new AppError('NOT_FOUND', 'Destination place is missing or has no graph node', 404);
+    }
+    if (place.mapId !== source.mapId) {
+      throw new AppError('MAP_MISMATCH', 'Source and destination are not on the same indoor map', 422);
+    }
+    if (place.buildingId !== source.buildingId) {
+      const expected = await campusRepository.getBuildingById(source.buildingId);
+      const actual = await campusRepository.getBuildingById(place.buildingId);
+      throw new AppError(
+        'PLACE_BUILDING_MISMATCH',
+        indoorPlaceBuildingError(expected?.name ?? 'this building', actual?.name ?? 'another building'),
+        422,
+        { expectedBuildingId: source.buildingId, actualBuildingId: place.buildingId },
+      );
+    }
+    if (body.expectedBuildingId && place.buildingId !== body.expectedBuildingId) {
+      const expected = await campusRepository.getBuildingById(body.expectedBuildingId);
+      const actual = await campusRepository.getBuildingById(place.buildingId);
+      throw new AppError(
+        'PLACE_BUILDING_MISMATCH',
+        indoorPlaceBuildingError(expected?.name ?? 'this building', actual?.name ?? 'another building'),
+        422,
+        { expectedBuildingId: body.expectedBuildingId, actualBuildingId: place.buildingId },
+      );
+    }
+
+    const map = await indoorRepository.getMap(source.mapId);
+    if (!map || !map.active) {
+      throw new AppError('NOT_FOUND', 'Indoor map is not available', 404);
+    }
+    const versionMap = await indoorRepository.getPrimaryMapForBuildingVersion(map.buildingId, mapVersionId);
+    if (!versionMap || versionMap.id !== map.id) {
+      throw new AppError('CROSS_VERSION_REFERENCE', 'Indoor map does not belong to the preview version', 422);
+    }
+
+    const [nodes, edges] = await Promise.all([
+      indoorRepository.listNodes(source.mapId),
+      indoorRepository.listEdges(source.mapId),
+    ]);
+    const result = routeIndoorGraph(source.id, place.nodeId, nodes, edges, prefs);
+    if (!result) {
+      throw new AppError('NO_ROUTE', 'No indoor route found for the selected preferences', 422);
+    }
+    const usedEdges = edges.filter((e) => result.edgeIds.includes(e.id));
+    const steps = buildIndoorSteps(result.nodeIds, result.edgeIds, nodes, usedEdges);
+    return {
+      mapId: map.id,
+      buildingId: map.buildingId,
+      sourceNodeId: source.id,
+      destinationPlaceId: place.id,
+      destinationNodeId: place.nodeId,
+      nodes: steps,
+      edges: usedEdges,
+      totalDistanceM: result.totalDistanceM,
+      estimatedTimeMinutes: etaMinutes(result.totalDistanceM),
+      instructions: steps.map((s) => s.instruction),
+    };
+  },
 };

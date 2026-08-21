@@ -113,6 +113,51 @@ export async function validateRouteEndpoints(
   return { source, destination };
 }
 
+/** Validates route endpoints against an explicit authorized map version (preview). */
+export async function validateRouteEndpointsForVersion(
+  sourceNodeId: string,
+  destinationNodeId: string,
+  siteId: string,
+  mapVersionId: string,
+): Promise<{ source: RoutePlaceSummary; destination: RoutePlaceSummary }> {
+  if (sourceNodeId === destinationNodeId) {
+    throw new AppError('SAME_NODE', 'Source and destination must be different', 400, {
+      sourceNodeId,
+      destinationNodeId,
+    });
+  }
+
+  const [sourceNode, destinationNode] = await Promise.all([
+    campusRepository.getNodeById(sourceNodeId),
+    campusRepository.getNodeById(destinationNodeId),
+  ]);
+
+  const source = assertNavigableEndpoint('sourceNodeId', sourceNodeId, sourceNode);
+  const destination = assertNavigableEndpoint(
+    'destinationNodeId',
+    destinationNodeId,
+    destinationNode,
+  );
+  assertSameSite(sourceNode?.siteId, destinationNode?.siteId);
+  if (sourceNode?.siteId && sourceNode.siteId !== siteId) {
+    throw new AppError('CROSS_SITE_ROUTE', 'Start and destination must belong to the requested site', 422);
+  }
+  const [fromVersion, toVersion] = await Promise.all([
+    campusRepository.getNodeMapVersionId(sourceNodeId),
+    campusRepository.getNodeMapVersionId(destinationNodeId),
+  ]);
+  if (fromVersion !== mapVersionId || toVersion !== mapVersionId) {
+    throw new AppError(
+      'CROSS_VERSION_REFERENCE',
+      'Route endpoints must belong to the preview map version',
+      422,
+      { mapVersionId, fromVersion, toVersion },
+    );
+  }
+
+  return { source, destination };
+}
+
 /** Validates share-link node IDs without throwing. */
 export async function resolveShareEndpoints(
   fromId: string | null,
