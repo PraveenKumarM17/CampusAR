@@ -15,7 +15,16 @@ import {
   updateNodeSchema,
   updatePlaceSchema,
 } from '../../../application/indoorService';
-import { optionalAuth, requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
+import {
+  assertIndoorBuildingEditable,
+  assertIndoorEdgeEditable,
+  assertIndoorMapEditable,
+  assertIndoorNodeEditable,
+  assertIndoorPlaceEditable,
+  canViewIndoorDrafts,
+} from '../../../application/indoorEditorGuard';
+import { optionalAuth, requireAuth, type AuthedRequest } from '../middleware/auth';
+import { requireMapEditor } from '../middleware/mapEditorAuth';
 
 export const indoorRouter = Router();
 
@@ -23,16 +32,17 @@ indoorRouter.get('/maps', optionalAuth, async (req, res, next) => {
   try {
     const buildingId = typeof req.query.buildingId === 'string' ? req.query.buildingId : undefined;
     const maps = await indoorRepository.listMaps(buildingId);
-    const admin = (req as AuthedRequest).user?.role === 'admin';
+    const admin = canViewIndoorDrafts(req as AuthedRequest);
     res.json(admin ? maps : maps.filter((m) => m.status === 'published'));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.post('/maps', requireAuth, requireRole('admin'), async (req: AuthedRequest, res, next) => {
+indoorRouter.post('/maps', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = createMapSchema.parse(req.body);
+    await assertIndoorBuildingEditable(req, body.buildingId);
     res.status(201).json(await indoorService.createMap(body, req.user?.sub ?? null));
   } catch (err) {
     next(err);
@@ -41,42 +51,46 @@ indoorRouter.post('/maps', requireAuth, requireRole('admin'), async (req: Authed
 
 indoorRouter.get('/maps/:id', optionalAuth, async (req: AuthedRequest, res, next) => {
   try {
-    const admin = req.user?.role === 'admin';
+    const admin = canViewIndoorDrafts(req);
     res.json(await indoorService.getBundle(String(req.params.id), admin));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.put('/maps/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.put('/maps/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = updateMapSchema.parse(req.body);
+    await assertIndoorMapEditable(req, String(req.params.id));
     res.json(await indoorService.updateMap(String(req.params.id), body));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.post('/nodes', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.post('/nodes', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = createNodeSchema.parse(req.body);
+    await assertIndoorMapEditable(req, body.mapId);
     res.status(201).json(await indoorService.createNode(body));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.put('/nodes/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.put('/nodes/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = updateNodeSchema.parse(req.body);
+    await assertIndoorNodeEditable(req, String(req.params.id));
     res.json(await indoorService.updateNode(String(req.params.id), body));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.delete('/nodes/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.delete('/nodes/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
+    await assertIndoorNodeEditable(req, String(req.params.id));
     await indoorService.deleteNode(String(req.params.id));
     res.status(204).send();
   } catch (err) {
@@ -84,26 +98,29 @@ indoorRouter.delete('/nodes/:id', requireAuth, requireRole('admin'), async (req,
   }
 });
 
-indoorRouter.post('/edges', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.post('/edges', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = createEdgeSchema.parse(req.body);
+    await assertIndoorMapEditable(req, body.mapId);
     res.status(201).json(await indoorService.createEdge(body));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.put('/edges/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.put('/edges/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = updateEdgeSchema.parse(req.body);
+    await assertIndoorEdgeEditable(req, String(req.params.id));
     res.json(await indoorService.updateEdge(String(req.params.id), body));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.delete('/edges/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.delete('/edges/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
+    await assertIndoorEdgeEditable(req, String(req.params.id));
     await indoorService.deleteEdge(String(req.params.id));
     res.status(204).send();
   } catch (err) {
@@ -111,9 +128,10 @@ indoorRouter.delete('/edges/:id', requireAuth, requireRole('admin'), async (req,
   }
 });
 
-indoorRouter.post('/places', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.post('/places', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = createPlaceSchema.parse(req.body);
+    await assertIndoorMapEditable(req, body.mapId);
     res.status(201).json(await indoorService.createPlace(body));
   } catch (err) {
     next(err);
@@ -160,18 +178,20 @@ indoorRouter.get('/places/:id', optionalAuth, async (req, res, next) => {
   }
 });
 
-indoorRouter.put('/places/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.put('/places/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = updatePlaceSchema.parse(req.body);
+    await assertIndoorPlaceEditable(req, String(req.params.id));
     res.json(await indoorService.updatePlace(String(req.params.id), body));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.post('/anchors', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.post('/anchors', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = createAnchorSchema.parse(req.body);
+    await assertIndoorMapEditable(req, body.mapId);
     res.status(201).json(await indoorService.createAnchor(body));
   } catch (err) {
     next(err);
@@ -188,9 +208,11 @@ indoorRouter.get('/anchors/:code', optionalAuth, async (req, res, next) => {
   }
 });
 
-indoorRouter.post('/handoffs', requireAuth, requireRole('admin'), async (req, res, next) => {
+indoorRouter.post('/handoffs', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
   try {
     const body = createHandoffSchema.parse(req.body);
+    const indoor = await indoorRepository.getNode(body.indoorNodeId);
+    if (indoor) await assertIndoorBuildingEditable(req, indoor.buildingId);
     res.status(201).json(await indoorService.createHandoff(body));
   } catch (err) {
     next(err);

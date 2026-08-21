@@ -109,7 +109,7 @@ export interface MapValidationIssue {
   level: MapValidationLevel;
   code: string;
   message: string;
-  resourceType?: 'building' | 'node' | 'edge' | 'entrance' | 'area' | 'floor' | 'room' | 'corridor' | 'poi';
+  resourceType?: 'building' | 'node' | 'edge' | 'entrance' | 'area' | 'floor' | 'room' | 'corridor' | 'poi' | 'place' | 'handoff';
   resourceId?: string;
 }
 
@@ -196,6 +196,30 @@ export interface IndoorFloorLayoutSnapshot {
   corridors: FloorCorridor[];
   pois: FloorPoi[];
 }
+
+export interface IndoorGraphEditorSnapshot extends IndoorFloorLayoutSnapshot {
+  draftMap: IndoorMap | null;
+  publishedMap: IndoorMap | null;
+  editMapId: string | null;
+  nodes: IndoorNode[];
+  edges: IndoorEdge[];
+  places: IndoorPlace[];
+  anchors: IndoorAnchor[];
+  handoffs: IndoorHandoff[];
+  outdoorEntrances: GraphNode[];
+  /** roomId → linked navigation nodeId */
+  roomLinks: Record<string, string | null>;
+}
+
+export type IndoorGraphTool =
+  | 'select'
+  | 'node'
+  | 'connect'
+  | 'entrance'
+  | 'stairs'
+  | 'elevator'
+  | 'room_entrance'
+  | 'handoff';
 
 export interface IndoorLayoutValidationResult {
   errors: MapValidationIssue[];

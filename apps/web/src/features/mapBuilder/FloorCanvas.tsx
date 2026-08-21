@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
-import type { FloorCorridor, FloorPoi, LocalVec2, Room } from '@campusar/shared';
+import type { FloorCorridor, FloorPoi, IndoorEdge, IndoorNode, LocalVec2, Room } from '@campusar/shared';
 import {
   boundsFromRings,
+  localVec3ToPlan,
+  nodeKindColor,
   rectFromDrag,
   ringToSvgPoints,
   type IndoorTool,
@@ -26,13 +28,19 @@ type Props = {
   rooms: Room[];
   corridors: FloorCorridor[];
   pois: FloorPoi[];
+  nodes?: IndoorNode[];
+  edges?: IndoorEdge[];
+  connectFromId?: string | null;
+  roomLinks?: Record<string, string | null>;
   selectedId: string | null;
-  selectedKind: 'room' | 'corridor' | 'poi' | null;
+  selectedKind: 'room' | 'corridor' | 'poi' | 'node' | 'edge' | null;
   draftRect: LocalVec2[] | null;
   onDraftRect: (ring: LocalVec2[] | null) => void;
-  onSelect: (kind: 'room' | 'corridor' | 'poi', id: string) => void;
+  onSelect: (kind: 'room' | 'corridor' | 'poi' | 'node' | 'edge', id: string) => void;
   onClearSelect: () => void;
   onPoiPlace: (point: LocalVec2) => void;
+  onGraphPoint?: (point: LocalVec2) => void;
+  onNodeDragEnd?: (nodeId: string, point: LocalVec2) => void;
 };
 
 export function FloorCanvas({
@@ -40,6 +48,10 @@ export function FloorCanvas({
   rooms,
   corridors,
   pois,
+  nodes = [],
+  edges = [],
+  connectFromId,
+  roomLinks = {},
   selectedId,
   selectedKind,
   draftRect,
@@ -47,13 +59,18 @@ export function FloorCanvas({
   onSelect,
   onClearSelect,
   onPoiPlace,
+  onGraphPoint,
+  onNodeDragEnd,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const dragStart = useRef<LocalVec2 | null>(null);
+  const nodeDragId = useRef<string | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(28);
   const panning = useRef(false);
   const panOrigin = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+
+  const nodePoints = new Map(nodes.map((n) => [n.id, localVec3ToPlan({ x: n.localX, y: n.localY, z: n.localZ })]));
 
   const rings = [
     ...rooms.map((r) => r.localGeometry ?? []),
@@ -63,6 +80,8 @@ export function FloorCanvas({
   const bounds = boundsFromRings(rings);
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
+
+  const isGraphTool = ['node', 'connect', 'entrance', 'stairs', 'elevator', 'room_entrance', 'handoff'].includes(tool);
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -77,13 +96,22 @@ export function FloorCanvas({
       panOrigin.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
       return;
     }
+    const pt = clientToLocal(svg, e.clientX, e.clientY);
     if (tool === 'select') {
+      const target = (e.target as SVGElement).dataset;
+      if (target.nodeId) {
+        nodeDragId.current = target.nodeId;
+        return;
+      }
       onClearSelect();
       return;
     }
-    const pt = clientToLocal(svg, e.clientX, e.clientY);
     if (tool === 'poi') {
       onPoiPlace(pt);
+      return;
+    }
+    if (isGraphTool && onGraphPoint) {
+      onGraphPoint(pt);
       return;
     }
     dragStart.current = pt;
@@ -100,13 +128,20 @@ export function FloorCanvas({
       });
       return;
     }
+    if (nodeDragId.current && tool === 'select') return;
     if (!dragStart.current || (tool !== 'room' && tool !== 'corridor')) return;
     const pt = clientToLocal(svg, e.clientX, e.clientY);
     const rect = rectFromDrag(dragStart.current, pt);
     if (rect.length) onDraftRect(rect);
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    const svg = svgRef.current;
+    if (nodeDragId.current && svg && onNodeDragEnd) {
+      const pt = clientToLocal(svg, e.clientX, e.clientY);
+      onNodeDragEnd(nodeDragId.current, pt);
+      nodeDragId.current = null;
+    }
     panning.current = false;
     dragStart.current = null;
   };
@@ -168,11 +203,11 @@ export function FloorCanvas({
                 points={ringToSvgPoints(r.localGeometry)}
                 fill={selectedKind === 'room' && selectedId === r.id ? '#60a5fa' : '#3b82f6'}
                 fillOpacity={0.35}
-                stroke="#1d4ed8"
-                strokeWidth={0.08}
+                stroke={roomLinks[r.id] ? '#7c3aed' : '#1d4ed8'}
+                strokeWidth={roomLinks[r.id] ? 0.12 : 0.08}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (tool === 'select') onSelect('room', r.id);
+                  if (tool === 'select' || tool === 'room_entrance' || tool === 'handoff') onSelect('room', r.id);
                 }}
               />
               <text x={r.localGeometry[0].x + 0.3} y={r.localGeometry[0].y + 0.8} fontSize={0.6} fill="#1e3a8a">
@@ -181,6 +216,58 @@ export function FloorCanvas({
             </g>
           ) : null,
         )}
+
+        {edges.map((edge) => {
+          const from = nodePoints.get(edge.fromNodeId);
+          const to = nodePoints.get(edge.toNodeId);
+          if (!from || !to) return null;
+          const selected = selectedKind === 'edge' && selectedId === edge.id;
+          return (
+            <line
+              key={edge.id}
+              x1={from.x}
+              y1={from.y}
+              x2={to.x}
+              y2={to.y}
+              stroke={selected ? '#dc2626' : edge.kind === 'elevator' ? '#0891b2' : '#475569'}
+              strokeWidth={selected ? 0.14 : 0.1}
+              strokeDasharray={edge.kind === 'stairs' ? '0.2 0.15' : undefined}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (tool === 'select') onSelect('edge', edge.id);
+              }}
+            />
+          );
+        })}
+
+        {nodes.map((n) => {
+          const pt = localVec3ToPlan({ x: n.localX, y: n.localY, z: n.localZ });
+          const colors = nodeKindColor(n.kind);
+          const selected = selectedKind === 'node' && selectedId === n.id;
+          const pending = connectFromId === n.id;
+          return (
+            <g key={n.id}>
+              <circle
+                data-node-id={n.id}
+                cx={pt.x}
+                cy={pt.y}
+                r={selected || pending ? 0.45 : 0.32}
+                fill={colors.fill}
+                stroke={pending ? '#dc2626' : colors.stroke}
+                strokeWidth={selected || pending ? 0.1 : 0.06}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (tool === 'select' || tool === 'connect' || tool === 'handoff') onSelect('node', n.id);
+                }}
+              />
+              {n.name ? (
+                <text x={pt.x + 0.4} y={pt.y + 0.15} fontSize={0.45} fill={colors.stroke}>
+                  {n.name}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
 
         {pois.map((p) => (
           <g

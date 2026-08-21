@@ -11,6 +11,7 @@ import type {
 import { query } from '../db/pool';
 import { AppError } from '../../domain/errors';
 import { campusRepository } from './campusRepository';
+import { indoorRepository } from './indoorRepository';
 import {
   validateLocalPoint,
   validateLocalPolygon,
@@ -314,7 +315,14 @@ export const floorLayoutRepository = {
       }
       return null;
     }
-    return mapRoomRow(rows[0] as Record<string, unknown>);
+    const updated = mapRoomRow(rows[0] as Record<string, unknown>);
+    if (input.name) {
+      const draft = await indoorRepository.getDraftMapByBuilding(updated.buildingId);
+      const published = await indoorRepository.getPublishedMapByBuilding(updated.buildingId);
+      const mapId = draft?.id ?? published?.id;
+      if (mapId) await indoorRepository.syncPlaceNameForRoom(mapId, id, input.name);
+    }
+    return updated;
   },
 
   async countRoomDependencies(id: string): Promise<{ nodeLink: boolean; indoorPlaces: number }> {

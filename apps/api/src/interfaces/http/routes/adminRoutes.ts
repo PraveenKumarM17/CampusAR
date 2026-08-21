@@ -13,6 +13,14 @@ import {
 } from '../../../application/siteContext';
 import { validateSiteMap } from '../../../application/mapValidation';
 import { validateIndoorLayout } from '../../../application/indoorLayoutValidation';
+import {
+  graphEdgeCreateSchema,
+  graphHandoffSchema,
+  graphNodeFromPlanSchema,
+  graphNodeMoveSchema,
+  graphRoomLinkSchema,
+  indoorGraphEditorService,
+} from '../../../application/indoorGraphEditorService';
 import { floorLayoutRepository } from '../../../infrastructure/repositories/floorLayoutRepository';
 import { AppError } from '../../../domain/errors';
 import { haversineMeters } from '../../../domain/routing/astar';
@@ -672,6 +680,129 @@ mapEditorRouter.delete('/map-builder/indoor/pois/:id', async (req: AuthedRequest
     if (!poi) return res.status(404).json({ code: 'NOT_FOUND', message: 'POI not found' });
     await assertBuildingInEditorSite(poi.buildingId, siteId);
     await floorLayoutRepository.deletePoi(id);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/map-builder/indoor/graph/snapshot', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const buildingId = z.string().uuid().parse(req.query.buildingId);
+    await assertBuildingInEditorSite(buildingId, siteId);
+    res.json(await indoorGraphEditorService.loadGraphSnapshot(buildingId, siteId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/indoor/graph/ensure-map', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = z.object({ buildingId: z.string().uuid() }).parse(req.body);
+    await assertBuildingInEditorSite(body.buildingId, siteId);
+    res.status(201).json(
+      await indoorGraphEditorService.ensureDraftMap(body.buildingId, siteId, req.user?.sub ?? null),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/indoor/graph/nodes', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = graphNodeFromPlanSchema.parse(req.body);
+    await assertBuildingInEditorSite(body.buildingId, siteId);
+    res.status(201).json(
+      await indoorGraphEditorService.createNodeFromPlan(siteId, body, req.user?.sub ?? null),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.put('/map-builder/indoor/graph/nodes/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = graphNodeMoveSchema.parse(req.body);
+    res.json(await indoorGraphEditorService.moveNodeFromPlan(siteId, String(req.params.id), body));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/map-builder/indoor/graph/nodes/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    await indoorGraphEditorService.deleteNode(siteId, String(req.params.id));
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/indoor/graph/edges', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = graphEdgeCreateSchema.parse(req.body);
+    await assertBuildingInEditorSite(body.buildingId, siteId);
+    res.status(201).json(await indoorGraphEditorService.createEdge(siteId, body, req.user?.sub ?? null));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/map-builder/indoor/graph/edges/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    await indoorGraphEditorService.deleteEdge(siteId, String(req.params.id));
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/indoor/graph/rooms/link', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = graphRoomLinkSchema.parse(req.body);
+    await assertBuildingInEditorSite(body.buildingId, siteId);
+    res.status(201).json(await indoorGraphEditorService.linkRoom(siteId, body, req.user?.sub ?? null));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/map-builder/indoor/graph/rooms/:roomId/link', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const buildingId = z.string().uuid().parse(req.query.buildingId);
+    const mapId = typeof req.query.mapId === 'string' ? req.query.mapId : undefined;
+    await assertBuildingInEditorSite(buildingId, siteId);
+    await indoorGraphEditorService.unlinkRoom(siteId, buildingId, String(req.params.roomId), mapId);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/indoor/graph/handoffs', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const body = graphHandoffSchema.parse(req.body);
+    await assertBuildingInEditorSite(body.buildingId, siteId);
+    res.status(201).json(await indoorGraphEditorService.createHandoff(siteId, body, req.user?.sub ?? null));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.delete('/map-builder/indoor/graph/handoffs/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    await indoorGraphEditorService.deleteHandoff(siteId, String(req.params.id));
     res.status(204).send();
   } catch (err) {
     next(err);

@@ -605,6 +605,111 @@ export const api = {
       ),
     deletePoi: (id: string, token?: string | null) =>
       request<void>(`/admin/map-builder/indoor/pois/${id}`, { method: 'DELETE' }, token),
+    indoorGraphSnapshot: (buildingId: string, token?: string | null) =>
+      request<import('@campusar/shared').IndoorGraphEditorSnapshot>(
+        `/admin/map-builder/indoor/graph/snapshot?buildingId=${encodeURIComponent(buildingId)}`,
+        {},
+        token,
+      ),
+    ensureIndoorGraphMap: (buildingId: string, token?: string | null) =>
+      request<import('@campusar/shared').IndoorMap>(
+        '/admin/map-builder/indoor/graph/ensure-map',
+        { method: 'POST', body: JSON.stringify({ buildingId }) },
+        token,
+      ),
+    createIndoorGraphNode: (
+      body: {
+        buildingId: string;
+        floorId: string;
+        planX: number;
+        planY: number;
+        mapId?: string;
+        kind?: import('@campusar/shared').IndoorNodeKind;
+        name?: string | null;
+      },
+      token?: string | null,
+    ) =>
+      request<import('@campusar/shared').IndoorNode>(
+        '/admin/map-builder/indoor/graph/nodes',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    moveIndoorGraphNode: (
+      id: string,
+      body: { planX: number; planY: number },
+      token?: string | null,
+    ) =>
+      request<import('@campusar/shared').IndoorNode>(
+        `/admin/map-builder/indoor/graph/nodes/${id}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteIndoorGraphNode: (id: string, token?: string | null) =>
+      request<void>(`/admin/map-builder/indoor/graph/nodes/${id}`, { method: 'DELETE' }, token),
+    createIndoorGraphEdge: (
+      body: {
+        buildingId: string;
+        fromNodeId: string;
+        toNodeId: string;
+        mapId?: string;
+        kind?: import('@campusar/shared').IndoorEdgeKind;
+        bidirectional?: boolean;
+        wheelchairAccessible?: boolean;
+      },
+      token?: string | null,
+    ) =>
+      request<import('@campusar/shared').IndoorEdge>(
+        '/admin/map-builder/indoor/graph/edges',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteIndoorGraphEdge: (id: string, token?: string | null) =>
+      request<void>(`/admin/map-builder/indoor/graph/edges/${id}`, { method: 'DELETE' }, token),
+    linkRoomToGraph: (
+      body: {
+        buildingId: string;
+        roomId: string;
+        mapId?: string;
+        nodeId?: string | null;
+        createEntrance?: boolean;
+        planX?: number;
+        planY?: number;
+      },
+      token?: string | null,
+    ) =>
+      request<import('@campusar/shared').IndoorPlace>(
+        '/admin/map-builder/indoor/graph/rooms/link',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    unlinkRoomFromGraph: (
+      buildingId: string,
+      roomId: string,
+      mapId?: string,
+      token?: string | null,
+    ) =>
+      request<void>(
+        `/admin/map-builder/indoor/graph/rooms/${roomId}/link?buildingId=${encodeURIComponent(buildingId)}${mapId ? `&mapId=${encodeURIComponent(mapId)}` : ''}`,
+        { method: 'DELETE' },
+        token,
+      ),
+    createIndoorHandoff: (
+      body: {
+        buildingId: string;
+        outdoorNodeId: string;
+        indoorNodeId: string;
+        mapId?: string;
+        prompt?: string;
+      },
+      token?: string | null,
+    ) =>
+      request<import('@campusar/shared').IndoorHandoff>(
+        '/admin/map-builder/indoor/graph/handoffs',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    deleteIndoorHandoff: (id: string, token?: string | null) =>
+      request<void>(`/admin/map-builder/indoor/graph/handoffs/${id}`, { method: 'DELETE' }, token),
   },
   indoorLayout: (buildingId: string, floorId?: string, token?: string | null) =>
     request<{

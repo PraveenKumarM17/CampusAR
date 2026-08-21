@@ -2,21 +2,26 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { Link, Navigate, useParams } from 'react-router-dom';
 import {
   Building2,
+  CircleDot,
   DoorOpen,
+  GitBranch,
   Layers,
+  Link2,
   MapPin,
   MousePointer2,
   Route,
   Save,
   Shapes,
   Trash2,
+  ArrowUpDown,
 } from 'lucide-react';
 import type {
   Building,
   Floor,
   FloorPoiCategory,
-  IndoorFloorLayoutSnapshot,
+  IndoorGraphEditorSnapshot,
   IndoorLayoutValidationResult,
+  IndoorNodeKind,
   LocalVec2,
   RoomCategory,
 } from '@campusar/shared';
@@ -38,11 +43,21 @@ import {
   type UnsavedChoice,
 } from './indoorLayoutUtils';
 
-const TOOLS: { id: IndoorTool; label: string; icon: typeof MousePointer2 }[] = [
+const LAYOUT_TOOLS: { id: IndoorTool; label: string; icon: typeof MousePointer2 }[] = [
   { id: 'select', label: 'Select', icon: MousePointer2 },
   { id: 'room', label: 'Room', icon: Shapes },
   { id: 'corridor', label: 'Corridor', icon: Route },
   { id: 'poi', label: 'POI', icon: MapPin },
+];
+
+const GRAPH_TOOLS: { id: IndoorTool; label: string; icon: typeof MousePointer2; nodeKind?: IndoorNodeKind }[] = [
+  { id: 'node', label: 'Nav node', icon: CircleDot, nodeKind: 'corridor' },
+  { id: 'connect', label: 'Connect', icon: GitBranch },
+  { id: 'entrance', label: 'Entrance', icon: DoorOpen, nodeKind: 'entrance' },
+  { id: 'room_entrance', label: 'Room link', icon: Link2, nodeKind: 'room_entrance' },
+  { id: 'stairs', label: 'Stairs', icon: ArrowUpDown, nodeKind: 'stairs' },
+  { id: 'elevator', label: 'Elevator', icon: Layers, nodeKind: 'elevator' },
+  { id: 'handoff', label: 'Handoff', icon: Link2 },
 ];
 
 const ROOM_CATEGORIES: RoomCategory[] = [
@@ -75,11 +90,13 @@ export function IndoorMapBuilderPage() {
 
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [buildingId, setBuildingId] = useState<string | null>(routeBuildingId ?? null);
-  const [snapshot, setSnapshot] = useState<IndoorFloorLayoutSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<IndoorGraphEditorSnapshot | null>(null);
   const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null);
   const [tool, setTool] = useState<IndoorTool>('select');
-  const [selectedKind, setSelectedKind] = useState<'room' | 'corridor' | 'poi' | null>(null);
+  const [selectedKind, setSelectedKind] = useState<'room' | 'corridor' | 'poi' | 'node' | 'edge' | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [connectFromId, setConnectFromId] = useState<string | null>(null);
+  const [pendingHandoffOutdoorId, setPendingHandoffOutdoorId] = useState<string | null>(null);
   const [draftRect, setDraftRect] = useState<LocalVec2[] | null>(null);
   const [pendingTool, setPendingTool] = useState<IndoorTool | null>(null);
   const [editSession, setEditSession] = useState<LayoutEditSession | null>(null);
@@ -114,6 +131,16 @@ export function IndoorMapBuilderPage() {
     () => (snapshot?.pois ?? []).filter((p) => p.floorId === selectedFloorId),
     [snapshot, selectedFloorId],
   );
+  const floorNodes = useMemo(
+    () => (snapshot?.nodes ?? []).filter((n) => n.floorId === selectedFloorId && n.active),
+    [snapshot, selectedFloorId],
+  );
+  const floorEdges = useMemo(() => {
+    const ids = new Set(floorNodes.map((n) => n.id));
+    return (snapshot?.edges ?? []).filter(
+      (e) => e.active && ids.has(e.fromNodeId) && ids.has(e.toNodeId),
+    );
+  }, [snapshot, floorNodes]);
 
   const requestUnsavedChoice = useCallback(
     (title: string, message: string): Promise<UnsavedChoice> =>
@@ -145,7 +172,7 @@ export function IndoorMapBuilderPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.mapBuilder.indoorSnapshot(buildingId, token);
+      const data = await api.mapBuilder.indoorGraphSnapshot(buildingId, token);
       setSnapshot(data);
       setSelectedFloorId((prev) => prev ?? data.floors[0]?.id ?? null);
       dirtyRef.current = false;
@@ -299,15 +326,155 @@ export function IndoorMapBuilderPage() {
     }
   }
 
+  async function ensureGraphMap() {
+    if (!token || !buildingId) return null;
+    if (snapshot?.editMapId) return snapshot.editMapId;
+    const map = await api.mapBuilder.ensureIndoorGraphMap(buildingId, token);
+    return map.id;
+  }
+
+  async function handleGraphPoint(pt: LocalVec2) {
+    if (!token || !buildingId || !selectedFloorId) return;
+    const mapId = await ensureGraphMap();
+    if (!mapId) return;
+    try {
+      if (tool === 'connect') return;
+      if (tool === 'handoff') return;
+      const graphTool = GRAPH_TOOLS.find((t) => t.id === tool);
+      const kind = graphTool?.nodeKind ?? 'corridor';
+      await api.mapBuilder.createIndoorGraphNode(
+        {
+          buildingId,
+          floorId: selectedFloorId,
+          planX: pt.x,
+          planY: pt.y,
+          mapId,
+          kind,
+        },
+        token,
+      );
+      await reloadSnapshot();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not create navigation node');
+    }
+  }
+
+  async function handleNodeSelect(nodeId: string) {
+    if (tool === 'connect') {
+      if (!connectFromId) {
+        setConnectFromId(nodeId);
+        setSelectedKind('node');
+        setSelectedId(nodeId);
+        return;
+      }
+      if (connectFromId === nodeId) {
+        setConnectFromId(null);
+        return;
+      }
+      if (!token || !buildingId) return;
+      try {
+        const fromNode = snapshot?.nodes.find((n) => n.id === connectFromId);
+        const toNode = snapshot?.nodes.find((n) => n.id === nodeId);
+        const crossFloor = fromNode && toNode && fromNode.floorId !== toNode.floorId;
+        let kind: 'walk' | 'stairs' | 'elevator' | 'ramp' = 'walk';
+        if (crossFloor) {
+          const connectorKinds = new Set(['stairs', 'elevator', 'ramp']);
+          if (connectorKinds.has(fromNode.kind)) kind = fromNode.kind as typeof kind;
+          else if (connectorKinds.has(toNode.kind)) kind = toNode.kind as typeof kind;
+          else kind = 'elevator';
+        }
+        await api.mapBuilder.createIndoorGraphEdge(
+          {
+            buildingId,
+            fromNodeId: connectFromId,
+            toNodeId: nodeId,
+            mapId: snapshot?.editMapId ?? undefined,
+            kind,
+            wheelchairAccessible: kind === 'walk' || kind === 'elevator' || kind === 'ramp',
+          },
+          token,
+        );
+        setConnectFromId(null);
+        await reloadSnapshot();
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Could not connect nodes');
+      }
+      return;
+    }
+    if (tool === 'handoff' && pendingHandoffOutdoorId) {
+      if (!token || !buildingId) return;
+      try {
+        await api.mapBuilder.createIndoorHandoff(
+          {
+            buildingId,
+            outdoorNodeId: pendingHandoffOutdoorId,
+            indoorNodeId: nodeId,
+            mapId: snapshot?.editMapId ?? undefined,
+          },
+          token,
+        );
+        setPendingHandoffOutdoorId(null);
+        setTool('select');
+        await reloadSnapshot();
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Could not create handoff');
+      }
+      return;
+    }
+    setSelectedKind('node');
+    setSelectedId(nodeId);
+  }
+
+  async function handleNodeDragEnd(nodeId: string, pt: LocalVec2) {
+    if (!token) return;
+    try {
+      await api.mapBuilder.moveIndoorGraphNode(nodeId, { planX: pt.x, planY: pt.y }, token);
+      await reloadSnapshot();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not move node');
+    }
+  }
+
+  async function linkSelectedRoom() {
+    if (!token || !buildingId || selectedKind !== 'room' || !selectedId) return;
+    try {
+      await api.mapBuilder.linkRoomToGraph(
+        { buildingId, roomId: selectedId, mapId: snapshot?.editMapId ?? undefined, createEntrance: true },
+        token,
+      );
+      await reloadSnapshot();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not link room');
+    }
+  }
+
+  async function unlinkSelectedRoom() {
+    if (!token || !buildingId || selectedKind !== 'room' || !selectedId) return;
+    try {
+      await api.mapBuilder.unlinkRoomFromGraph(
+        buildingId,
+        selectedId,
+        snapshot?.editMapId ?? undefined,
+        token,
+      );
+      await reloadSnapshot();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not unlink room');
+    }
+  }
+
   async function deleteSelected() {
     if (!token || !selectedId || !selectedKind) return;
     if (!window.confirm('Delete this item?')) return;
     try {
       if (selectedKind === 'room') await api.mapBuilder.deleteRoom(selectedId, token);
       else if (selectedKind === 'corridor') await api.mapBuilder.deleteCorridor(selectedId, token);
-      else await api.mapBuilder.deletePoi(selectedId, token);
+      else if (selectedKind === 'poi') await api.mapBuilder.deletePoi(selectedId, token);
+      else if (selectedKind === 'node') await api.mapBuilder.deleteIndoorGraphNode(selectedId, token);
+      else if (selectedKind === 'edge') await api.mapBuilder.deleteIndoorGraphEdge(selectedId, token);
       setSelectedId(null);
       setSelectedKind(null);
+      setConnectFromId(null);
       await reloadSnapshot();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Delete failed');
@@ -353,6 +520,8 @@ export function IndoorMapBuilderPage() {
   const selectedRoom = floorRooms.find((r) => r.id === selectedId);
   const selectedCorridor = floorCorridors.find((c) => c.id === selectedId);
   const selectedPoi = floorPois.find((p) => p.id === selectedId);
+  const selectedNode = floorNodes.find((n) => n.id === selectedId);
+  const selectedEdge = floorEdges.find((e) => e.id === selectedId);
   const shapeTool = pendingTool ?? tool;
 
   return (
@@ -416,7 +585,7 @@ export function IndoorMapBuilderPage() {
 
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-wrap gap-1">
-            {TOOLS.map((t) => (
+            {LAYOUT_TOOLS.map((t) => (
               <button
                 key={t.id}
                 type="button"
@@ -426,18 +595,49 @@ export function IndoorMapBuilderPage() {
                 onClick={() => {
                   setTool(t.id);
                   if (t.id === 'room' || t.id === 'corridor') setPendingTool(t.id);
+                  setConnectFromId(null);
+                  setPendingHandoffOutdoorId(null);
                 }}
               >
                 <t.icon className="h-3.5 w-3.5" /> {t.label}
               </button>
             ))}
           </div>
+          <div className="flex flex-wrap gap-1 border-t border-line pt-2">
+            <span className="self-center text-xs font-semibold text-muted">Graph</span>
+            {GRAPH_TOOLS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-sm ${
+                  tool === t.id ? 'bg-violet-600 text-white' : 'border border-line bg-paper-raised'
+                }`}
+                onClick={() => {
+                  setTool(t.id);
+                  setConnectFromId(null);
+                  setPendingHandoffOutdoorId(null);
+                }}
+              >
+                <t.icon className="h-3.5 w-3.5" /> {t.label}
+              </button>
+            ))}
+          </div>
+          {connectFromId && (
+            <p className="text-xs text-violet-700">Connect: select the second node to link.</p>
+          )}
+          {pendingHandoffOutdoorId && (
+            <p className="text-xs text-violet-700">Handoff: select the indoor entrance node.</p>
+          )}
           {selectedFloorId ? (
             <FloorCanvas
               tool={tool}
               rooms={floorRooms}
               corridors={floorCorridors}
               pois={floorPois}
+              nodes={floorNodes}
+              edges={floorEdges}
+              connectFromId={connectFromId}
+              roomLinks={snapshot?.roomLinks}
               selectedId={selectedId}
               selectedKind={selectedKind}
               draftRect={editSession?.draftGeometry ?? draftRect}
@@ -446,8 +646,11 @@ export function IndoorMapBuilderPage() {
                 else setDraftRect(ring);
               }}
               onSelect={(kind, id) => {
-                setSelectedKind(kind);
-                setSelectedId(id);
+                if (kind === 'node') void handleNodeSelect(id);
+                else {
+                  setSelectedKind(kind);
+                  setSelectedId(id);
+                }
               }}
               onClearSelect={() => {
                 setSelectedKind(null);
@@ -460,6 +663,8 @@ export function IndoorMapBuilderPage() {
                   (form.elements.namedItem('localY') as HTMLInputElement).value = String(pt.y);
                 }
               }}
+              onGraphPoint={(pt) => void handleGraphPoint(pt)}
+              onNodeDragEnd={(nodeId, pt) => void handleNodeDragEnd(nodeId, pt)}
             />
           ) : (
             <p className="flex flex-1 items-center justify-center text-muted">
@@ -516,7 +721,20 @@ export function IndoorMapBuilderPage() {
               <h3 className="text-sm font-semibold">{selectedRoom.name}</h3>
               <p className="text-xs text-muted">
                 {selectedRoom.code} · {selectedRoom.category}
+                {snapshot?.roomLinks[selectedRoom.id] ? ' · linked' : ''}
               </p>
+              <button
+                type="button"
+                className="btn-secondary w-full text-sm"
+                onClick={() => void linkSelectedRoom()}
+              >
+                Link to navigation
+              </button>
+              {snapshot?.roomLinks[selectedRoom.id] && (
+                <button type="button" className="btn-secondary w-full text-sm" onClick={() => void unlinkSelectedRoom()}>
+                  Unlink navigation
+                </button>
+              )}
               <button
                 type="button"
                 className="btn-secondary w-full text-sm"
@@ -558,6 +776,71 @@ export function IndoorMapBuilderPage() {
               </button>
             </div>
           )}
+
+          {selectedNode && (
+            <div className="space-y-2 border-t border-line pt-2">
+              <h3 className="text-sm font-semibold">{selectedNode.name ?? 'Navigation node'}</h3>
+              <p className="text-xs text-muted">{selectedNode.kind}</p>
+              <button type="button" className="btn-danger w-full text-sm" onClick={() => void deleteSelected()}>
+                Delete node
+              </button>
+            </div>
+          )}
+
+          {selectedEdge && (
+            <div className="space-y-2 border-t border-line pt-2">
+              <h3 className="text-sm font-semibold">Edge</h3>
+              <p className="text-xs text-muted">
+                {selectedEdge.kind} · {selectedEdge.distanceM.toFixed(1)} m
+              </p>
+              <button type="button" className="btn-danger w-full text-sm" onClick={() => void deleteSelected()}>
+                Delete edge
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-2 border-t border-line pt-2">
+            <h3 className="text-sm font-semibold">Outdoor → indoor handoffs</h3>
+            {(snapshot?.handoffs ?? []).length === 0 && (
+              <p className="text-xs text-muted">No handoffs configured.</p>
+            )}
+            {(snapshot?.handoffs ?? []).map((h) => {
+              const outdoor = snapshot?.outdoorEntrances.find((e) => e.id === h.outdoorNodeId);
+              return (
+                <div key={h.id} className="flex items-center justify-between gap-2 text-xs">
+                  <span>{outdoor?.name ?? h.outdoorNodeId.slice(0, 8)}</span>
+                  <button
+                    type="button"
+                    className="text-red-600"
+                    onClick={() =>
+                      void api.mapBuilder.deleteIndoorHandoff(h.id, token).then(() => reloadSnapshot())
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+              );
+            })}
+            <p className="text-xs text-muted">Use Handoff tool: pick outdoor entrance, then indoor node.</p>
+            <ul className="space-y-1">
+              {(snapshot?.outdoorEntrances ?? []).map((e) => (
+                <li key={e.id}>
+                  <button
+                    type="button"
+                    className={`w-full rounded px-2 py-1 text-left text-xs ${
+                      pendingHandoffOutdoorId === e.id ? 'bg-violet-100' : 'hover:bg-paper'
+                    }`}
+                    onClick={() => {
+                      setPendingHandoffOutdoorId(e.id);
+                      setTool('handoff');
+                    }}
+                  >
+                    {e.name ?? e.id.slice(0, 8)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
 
           <form id="poi-form" className="space-y-2 border-t border-line pt-2" onSubmit={(e) => void savePoi(e)}>
             <h3 className="flex items-center gap-1 text-sm font-semibold">

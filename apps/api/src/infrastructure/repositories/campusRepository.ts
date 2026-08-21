@@ -432,23 +432,22 @@ export const campusRepository = {
   },
 
   async findOutdoorEntrance(buildingId: string): Promise<GraphNode | null> {
+    const list = await this.listBuildingEntrances(buildingId);
+    return list[0] ?? null;
+  },
+
+  async listBuildingEntrances(buildingId: string): Promise<GraphNode[]> {
     const { rows } = await query(
       `SELECT * FROM nodes
        WHERE building_id = $1
          AND active = TRUE
-         AND name IS NOT NULL AND trim(name) <> ''
+         AND kind IN ('entrance', 'exit')
        ORDER BY
-         CASE kind
-           WHEN 'entrance' THEN 0
-           WHEN 'exit' THEN 1
-           ELSE 2
-         END,
-         name
-       LIMIT 1`,
+         CASE kind WHEN 'entrance' THEN 0 WHEN 'exit' THEN 1 ELSE 2 END,
+         name NULLS LAST`,
       [buildingId],
     );
-    if (!rows[0]) return null;
-    return this.mapNodeRow(rows[0] as Record<string, unknown>);
+    return rows.map((r) => this.mapNodeRow(r as Record<string, unknown>));
   },
 
   mapNodeRow(r: Record<string, unknown>): GraphNode {

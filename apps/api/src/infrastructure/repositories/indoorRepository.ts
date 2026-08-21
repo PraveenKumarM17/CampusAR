@@ -557,6 +557,93 @@ export const indoorRepository = {
     };
   },
 
+  async getDraftMapByBuilding(buildingId: string): Promise<IndoorMap | null> {
+    const { rows } = await query<MapRow>(
+      `SELECT * FROM indoor_maps
+       WHERE building_id = $1 AND active = TRUE AND status = 'draft'
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [buildingId],
+    );
+    return rows[0] ? mapFromRow(rows[0]) : null;
+  },
+
+  async listHandoffsByMap(mapId: string): Promise<IndoorHandoff[]> {
+    const { rows } = await query(
+      `SELECT * FROM indoor_handoffs WHERE map_id = $1 AND active = TRUE ORDER BY outdoor_node_id`,
+      [mapId],
+    );
+    return rows.map((r) => ({
+      id: r.id as string,
+      outdoorNodeId: r.outdoor_node_id as string,
+      indoorNodeId: r.indoor_node_id as string,
+      buildingId: r.building_id as string,
+      mapId: r.map_id as string,
+      prompt: r.prompt as string,
+      active: Boolean(r.active),
+    }));
+  },
+
+  async softDeleteHandoff(id: string): Promise<boolean> {
+    const { rowCount } = await query(`UPDATE indoor_handoffs SET active = FALSE WHERE id = $1`, [id]);
+    return (rowCount ?? 0) > 0;
+  },
+
+  async findPlaceByRoomId(mapId: string, roomId: string): Promise<IndoorPlace | null> {
+    const { rows } = await query(
+      `SELECT * FROM indoor_places
+       WHERE map_id = $1 AND active = TRUE AND metadata->>'roomId' = $2
+       LIMIT 1`,
+      [mapId, roomId],
+    );
+    return rows[0] ? placeFromRow(rows[0] as Record<string, unknown>) : null;
+  },
+
+  async findEdgeBetween(mapId: string, fromNodeId: string, toNodeId: string): Promise<IndoorEdge | null> {
+    const { rows } = await query(
+      `SELECT * FROM indoor_edges
+       WHERE map_id = $1 AND active = TRUE
+         AND (
+           (from_node_id = $2 AND to_node_id = $3)
+           OR (from_node_id = $3 AND to_node_id = $2 AND bidirectional = TRUE)
+         )
+       LIMIT 1`,
+      [mapId, fromNodeId, toNodeId],
+    );
+    return rows[0] ? edgeFromRow(rows[0] as Record<string, unknown>) : null;
+  },
+
+  async syncPlaceNameForRoom(mapId: string, roomId: string, name: string): Promise<void> {
+    await query(
+      `UPDATE indoor_places SET name = $3
+       WHERE map_id = $1 AND active = TRUE AND metadata->>'roomId' = $2`,
+      [mapId, roomId, name],
+    );
+  },
+
+  async deactivatePlaceByRoomId(mapId: string, roomId: string): Promise<void> {
+    await query(
+      `UPDATE indoor_places SET active = FALSE
+       WHERE map_id = $1 AND metadata->>'roomId' = $2`,
+      [mapId, roomId],
+    );
+  },
+
+  async getHandoffById(id: string): Promise<IndoorHandoff | null> {
+    const { rows } = await query(`SELECT * FROM indoor_handoffs WHERE id = $1`, [id]);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      id: r.id as string,
+      outdoorNodeId: r.outdoor_node_id as string,
+      indoorNodeId: r.indoor_node_id as string,
+      buildingId: r.building_id as string,
+      mapId: r.map_id as string,
+      prompt: r.prompt as string,
+      active: Boolean(r.active),
+    };
+  },
+
   async loadBundle(mapId: string, includeInactive = false): Promise<IndoorMapBundle | null> {
     const map = await this.getMap(mapId);
     if (!map || (!includeInactive && !map.active)) return null;

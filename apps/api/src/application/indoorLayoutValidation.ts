@@ -2,6 +2,7 @@ import type { IndoorLayoutValidationResult, MapValidationIssue } from '@campusar
 import { floorLayoutRepository } from '../infrastructure/repositories/floorLayoutRepository';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
 import { validateLocalPolygon, ringsOverlap } from './floorLayoutValidation';
+import { validateIndoorGraph } from './indoorGraphValidation';
 
 function push(issues: MapValidationIssue[], issue: MapValidationIssue) {
   issues.push(issue);
@@ -144,6 +145,9 @@ export async function validateIndoorLayout(
       }
     }
   }
+
+  const graphIssues = await validateIndoorGraph(buildingId, siteId);
+  issues.push(...graphIssues);
 
   return summarize(issues);
 }
