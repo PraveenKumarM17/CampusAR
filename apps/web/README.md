@@ -19,12 +19,15 @@ VITE_MAP_ENGINE=maplibre
 VITE_MAPLIBRE_STYLE_URL=https://demotiles.maplibre.org/style.json
 ```
 
-Pages currently behind the flag:
+Pages currently behind the flag (map canvas consumers):
 
 - `MapBuilderPage` (draw + edit)
 - `MapPage` / `NavigatePage` (read + navigation consumers)
 
-`ArPage` is still Leaflet/Google-only and is intentionally not migrated yet.
+`ArPage` is **not** a map-canvas page: it is camera + compass overlay (turn arrow, distance,
+guide doll) driven by GPS/DeviceOrientation math and published route APIs. It does not import
+Leaflet or MapLibre, does not use draft preview, and does not need `ensureMapLibreWorker()`.
+`MAP_ENGINE` only affects the Map/Navigate pages you use to pick source/destination before opening AR.
 
 Default `MAPLIBRE_STYLE_URL` uses MapLibre’s public demo tiles (`demotiles.maplibre.org`). That is fine for local development, but **not** a production basemap (no SLA; can rate-limit). Set `VITE_MAPLIBRE_STYLE_URL` to a real provider (MapTiler, Stadia, self-hosted) before shipping MapLibre as default.
 
