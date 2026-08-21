@@ -137,6 +137,14 @@ function publishPath(versionId: string) {
   return `/api/admin/map-builder/versions/${versionId}/publish`;
 }
 
+function diffPath(versionId: string) {
+  return `/api/admin/map-builder/versions/${versionId}/diff`;
+}
+
+function rollbackPath(versionId: string) {
+  return `/api/admin/map-builder/versions/${versionId}/rollback`;
+}
+
 describe('atomic draft publish workflow (Step 3C)', () => {
   beforeAll(async () => {
     if (canUseDb) await seedSites();
@@ -420,5 +428,59 @@ describe('atomic draft publish workflow (Step 3C)', () => {
     const buildings = await request(app).get('/api/campus/buildings').set('X-Site-Id', RNSIT_SITE);
     expect(buildings.status).toBe(200);
     expect(buildings.body.length).toBeGreaterThan(0);
+  });
+
+  it.skipIf(!canUseDb)('publish exposes diff, stores publish log, and supports rollback draft creation', async () => {
+    const token = await loginAdmin();
+    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_PUB };
+    const draftId = await createPublishableDraft(SITE_PUB, token);
+
+    const renamed = `Diff Rename ${Date.now()}`;
+    const snap = await request(app).get('/api/admin/map-builder/snapshot').set(headers);
+    const firstBuilding = snap.body.buildings[0];
+    if (firstBuilding) {
+      const upd = await request(app)
+        .put(`/api/admin/buildings/${firstBuilding.id}`)
+        .set(headers)
+        .send({ name: renamed });
+      expect(upd.status).toBe(200);
+    }
+    const created = await request(app)
+      .post('/api/admin/buildings')
+      .set(headers)
+      .send({
+        name: `Diff New ${Date.now()}`,
+        code: `D${Date.now().toString().slice(-5)}`,
+        description: null,
+        latitude: 13.02,
+        longitude: 77.56,
+        floorsCount: 1,
+      });
+    expect(created.status).toBe(201);
+
+    const diff = await request(app).get(diffPath(draftId)).set(headers);
+    expect(diff.status).toBe(200);
+    expect(diff.body.versionId).toBe(draftId);
+    expect(diff.body.summary.added).toBeGreaterThanOrEqual(1);
+
+    const publish = await request(app).post(publishPath(draftId)).set(headers);
+    expect(publish.status).toBe(200);
+    expect(publish.body.published).toBe(true);
+
+    const logs = await pool.query(
+      `SELECT published_version_id, diff_summary FROM map_version_publish_log WHERE published_version_id = $1`,
+      [draftId],
+    );
+    expect(logs.rows.length).toBe(1);
+    expect(Number(logs.rows[0].diff_summary?.added?.count ?? 0)).toBeGreaterThanOrEqual(1);
+
+    const history = await request(app).get('/api/admin/map-builder/history').set(headers);
+    expect(history.status).toBe(200);
+    expect(history.body.some((x: { publishedVersionId: string }) => x.publishedVersionId === draftId)).toBe(true);
+
+    const rollback = await request(app).post(rollbackPath(draftId)).set(headers);
+    expect(rollback.status).toBe(201);
+    expect(rollback.body.status).toBe('draft');
+    expect(rollback.body.basedOnVersionId).toBe(draftId);
   });
 });

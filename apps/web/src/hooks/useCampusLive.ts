@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CrowdLevel, DangerZone, IotStatus, SensorReading, WsMessage } from '@campusar/shared';
 import { resolveWebSocketUrl } from '../lib/clientUrls';
 import { liveEventBelongsToSite } from '../lib/liveEvents';
+import { usePreviewStore } from '../stores/previewStore';
 import { useSiteStore } from '../stores/siteStore';
 
 export interface CampusLiveState {
@@ -28,16 +29,46 @@ export function useCampusLive(): CampusLiveState {
     let ws: WebSocket | null = null;
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | null = null;
+    let connectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function teardownSocket(socket: WebSocket | null) {
+      if (!socket) return;
+      socket.onmessage = null;
+      socket.onerror = null;
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.onopen = null;
+        socket.onclose = null;
+        socket.close();
+        return;
+      }
+      if (socket.readyState === WebSocket.CONNECTING) {
+        // Avoid "closed before connection established" — close after the handshake completes.
+        socket.onopen = () => socket.close();
+        socket.onclose = null;
+        return;
+      }
+      socket.onopen = null;
+      socket.onclose = null;
+    }
 
     function connect() {
       if (closed) return;
+      teardownSocket(ws);
       ws = new WebSocket(resolveWebSocketUrl(import.meta.env.VITE_WS_URL, window.location));
-      ws.onopen = () => setConnected(true);
+      ws.onopen = () => {
+        if (closed) {
+          teardownSocket(ws);
+          return;
+        }
+        setConnected(true);
+      };
       ws.onclose = () => {
         setConnected(false);
         if (!closed) retry = setTimeout(connect, 3000);
       };
-      ws.onerror = () => ws?.close();
+      ws.onerror = () => {
+        /* onclose handles reconnect; avoid duplicate close noise */
+      };
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(String(ev.data)) as WsMessage;
@@ -66,6 +97,11 @@ export function useCampusLive(): CampusLiveState {
             }
           } else if (msg.type === 'iot_status') {
             setStatus(msg.payload as IotStatus);
+          } else if (msg.type === 'map_published') {
+            const preview = usePreviewStore.getState();
+            if (preview.active && liveEventBelongsToSite(msg.siteId, siteIdRef.current)) {
+              preview.exitPreview();
+            }
           }
         } catch {
           /* ignore malformed */
@@ -73,11 +109,15 @@ export function useCampusLive(): CampusLiveState {
       };
     }
 
-    connect();
+    // Defer connect so React Strict Mode dev double-mount cleanup cancels before opening.
+    connectTimer = setTimeout(connect, 0);
     return () => {
       closed = true;
+      if (connectTimer) clearTimeout(connectTimer);
       if (retry) clearTimeout(retry);
-      ws?.close();
+      teardownSocket(ws);
+      ws = null;
+      setConnected(false);
     };
   }, []);
 

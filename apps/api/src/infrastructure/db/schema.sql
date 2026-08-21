@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS organization_memberships (
 
 CREATE TABLE IF NOT EXISTS buildings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stable_id UUID NOT NULL DEFAULT gen_random_uuid(),
   site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
   map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -85,7 +86,9 @@ CREATE TABLE IF NOT EXISTS buildings (
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
   floors_count INT NOT NULL DEFAULT 1,
+  floor_height_m DOUBLE PRECISION NOT NULL DEFAULT 3.5,
   footprint_geom GEOGRAPHY(POLYGON, 4326),
+  geometry_hash TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   geom GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (
     ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
@@ -104,6 +107,7 @@ CREATE TABLE IF NOT EXISTS floors (
 
 CREATE TABLE IF NOT EXISTS nodes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stable_id UUID NOT NULL DEFAULT gen_random_uuid(),
   site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
   map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT,
@@ -113,6 +117,7 @@ CREATE TABLE IF NOT EXISTS nodes (
   building_id UUID REFERENCES buildings(id) ON DELETE SET NULL,
   kind TEXT NOT NULL CHECK (kind IN ('outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit')),
   active BOOLEAN NOT NULL DEFAULT TRUE,
+  geometry_hash TEXT,
   geom GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (
     ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
   ) STORED
@@ -166,6 +171,7 @@ CREATE INDEX IF NOT EXISTS floor_pois_floor_idx ON floor_pois (floor_id);
 
 CREATE TABLE IF NOT EXISTS edges (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stable_id UUID NOT NULL DEFAULT gen_random_uuid(),
   site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
   map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   from_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
@@ -176,7 +182,8 @@ CREATE TABLE IF NOT EXISTS edges (
   blocked BOOLEAN NOT NULL DEFAULT FALSE,
   safety_score DOUBLE PRECISION NOT NULL DEFAULT 0.9 CHECK (safety_score BETWEEN 0 AND 1),
   crowd_score DOUBLE PRECISION NOT NULL DEFAULT 0.2 CHECK (crowd_score BETWEEN 0 AND 1),
-  accessibility_score DOUBLE PRECISION NOT NULL DEFAULT 0.9 CHECK (accessibility_score BETWEEN 0 AND 1)
+  accessibility_score DOUBLE PRECISION NOT NULL DEFAULT 0.9 CHECK (accessibility_score BETWEEN 0 AND 1),
+  geometry_hash TEXT
 );
 
 CREATE INDEX IF NOT EXISTS edges_from_idx ON edges(from_node_id);
@@ -325,20 +332,46 @@ CREATE INDEX IF NOT EXISTS floors_building_version_idx ON floors (building_id, m
 
 CREATE TABLE IF NOT EXISTS site_areas (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stable_id UUID NOT NULL DEFAULT gen_random_uuid(),
   site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('parking', 'open_area', 'restricted', 'assembly')),
   footprint_geom GEOGRAPHY(POLYGON, 4326) NOT NULL,
+  geometry_hash TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE buildings ADD COLUMN IF NOT EXISTS stable_id UUID NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS stable_id UUID NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE edges ADD COLUMN IF NOT EXISTS stable_id UUID NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE site_areas ADD COLUMN IF NOT EXISTS stable_id UUID NOT NULL DEFAULT gen_random_uuid();
+
 CREATE INDEX IF NOT EXISTS site_areas_site_idx ON site_areas (site_id);
 CREATE INDEX IF NOT EXISTS site_areas_site_version_idx ON site_areas (site_id, map_version_id);
 CREATE INDEX IF NOT EXISTS site_areas_geom_idx ON site_areas USING GIST (footprint_geom);
+CREATE INDEX IF NOT EXISTS buildings_stable_id_idx ON buildings (stable_id);
+CREATE INDEX IF NOT EXISTS nodes_stable_id_idx ON nodes (stable_id);
+CREATE INDEX IF NOT EXISTS edges_stable_id_idx ON edges (stable_id);
+CREATE INDEX IF NOT EXISTS site_areas_stable_id_idx ON site_areas (stable_id);
 CREATE INDEX IF NOT EXISTS analytics_searches_query_idx ON analytics_searches (query);
 CREATE INDEX IF NOT EXISTS analytics_nav_created_idx ON analytics_navigations (created_at);
+
+CREATE TABLE IF NOT EXISTS map_version_publish_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  published_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
+  previous_version_id UUID REFERENCES site_map_versions(id) ON DELETE SET NULL,
+  published_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  diff_summary JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS map_version_publish_log_site_idx
+  ON map_version_publish_log (site_id, published_at DESC);
+CREATE INDEX IF NOT EXISTS map_version_publish_log_version_idx
+  ON map_version_publish_log (published_version_id);
 
 -- Indoor AR graphs use a local meter frame relative to a QR/floor origin.
 -- They are NOT interchangeable with outdoor WGS84 nodes.

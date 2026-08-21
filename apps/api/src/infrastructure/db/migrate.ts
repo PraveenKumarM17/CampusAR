@@ -80,6 +80,18 @@ async function migrate() {
   const versioningSpatialSql = fs.readFileSync(versioningSpatialPath, 'utf8');
   await pool.query(versioningSpatialSql);
 
+  const migrationsDir = path.join(__dirname, 'migrations');
+  if (fs.existsSync(migrationsDir)) {
+    const migrationFiles = fs
+      .readdirSync(migrationsDir)
+      .filter((f) => f.endsWith('.sql'))
+      .sort();
+    for (const file of migrationFiles) {
+      const migrationSql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+      await pool.query(migrationSql);
+    }
+  }
+
   console.log('Schema applied');
   await pool.end();
 }

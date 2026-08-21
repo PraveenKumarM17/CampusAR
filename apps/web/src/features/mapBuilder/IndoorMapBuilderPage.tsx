@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
   Building2,
   CircleDot,
@@ -9,11 +9,13 @@ import {
   Link2,
   MapPin,
   MousePointer2,
+  Ruler,
   Route,
   Save,
   Shapes,
   Trash2,
   ArrowUpDown,
+  Camera,
 } from 'lucide-react';
 import type {
   Building,
@@ -25,7 +27,7 @@ import type {
   LocalVec2,
   RoomCategory,
 } from '@campusar/shared';
-import { FLOOR_PLAN_COORDINATE_SYSTEM } from '@campusar/shared';
+import { DEFAULT_FLOOR_HEIGHT_M, FLOOR_PLAN_COORDINATE_SYSTEM } from '@campusar/shared';
 import { api, ApiError } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useActiveSite } from '../../hooks/useActiveSite';
@@ -35,6 +37,7 @@ import { EmptySiteNotice } from '../../components/EmptySiteNotice';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 import { MapBuilderNav } from './MapBuilderNav';
 import { FloorCanvas } from './FloorCanvas';
+import { IndoorArMeasurePanel } from './IndoorArMeasurePanel';
 import {
   cloneRing,
   ringsEqual,
@@ -42,9 +45,16 @@ import {
   type LayoutEditSession,
   type UnsavedChoice,
 } from './indoorLayoutUtils';
+import {
+  floorElevationM,
+  formatMeasureDistance,
+  geometryFromMeasurePoints,
+  polylineLength2D,
+} from './indoorArMeasure';
 
 const LAYOUT_TOOLS: { id: IndoorTool; label: string; icon: typeof MousePointer2 }[] = [
   { id: 'select', label: 'Select', icon: MousePointer2 },
+  { id: 'measure', label: 'Measure', icon: Ruler },
   { id: 'room', label: 'Room', icon: Shapes },
   { id: 'corridor', label: 'Corridor', icon: Route },
   { id: 'poi', label: 'POI', icon: MapPin },
@@ -83,12 +93,14 @@ const POI_CATEGORIES: FloorPoiCategory[] = [
 
 export function IndoorMapBuilderPage() {
   const { buildingId: routeBuildingId } = useParams<{ buildingId?: string }>();
+  const navigate = useNavigate();
   const token = useAuthStore((s) => s.accessToken);
   const { canEdit, loading: accessLoading } = useMapEditorAccess();
-  const { label } = useActiveSite();
+  const { label, activeSiteId } = useActiveSite();
   const sites = useSiteStore((s) => s.sites);
 
   const [buildings, setBuildings] = useState<Building[]>([]);
+  const [buildingsReady, setBuildingsReady] = useState(false);
   const [buildingId, setBuildingId] = useState<string | null>(routeBuildingId ?? null);
   const [snapshot, setSnapshot] = useState<IndoorGraphEditorSnapshot | null>(null);
   const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null);
@@ -98,6 +110,11 @@ export function IndoorMapBuilderPage() {
   const [connectFromId, setConnectFromId] = useState<string | null>(null);
   const [pendingHandoffOutdoorId, setPendingHandoffOutdoorId] = useState<string | null>(null);
   const [draftRect, setDraftRect] = useState<LocalVec2[] | null>(null);
+  const [measurePoints, setMeasurePoints] = useState<LocalVec2[]>([]);
+  const [measureSaveAs, setMeasureSaveAs] = useState<'room' | 'corridor'>('room');
+  const [arPanelOpen, setArPanelOpen] = useState(false);
+  const [floorHeightM, setFloorHeightM] = useState(DEFAULT_FLOOR_HEIGHT_M);
+  const [floorHeightBusy, setFloorHeightBusy] = useState(false);
   const [pendingTool, setPendingTool] = useState<IndoorTool | null>(null);
   const [editSession, setEditSession] = useState<LayoutEditSession | null>(null);
   const [validation, setValidation] = useState<IndoorLayoutValidationResult | null>(null);
@@ -112,12 +129,23 @@ export function IndoorMapBuilderPage() {
 
   const hasUnsavedEdit =
     editSession !== null && !ringsEqual(editSession.originalGeometry, editSession.draftGeometry);
-  const hasUnsaved = dirtyRef.current || hasUnsavedEdit || Boolean(draftRect?.length);
+  const hasUnsaved =
+    dirtyRef.current || hasUnsavedEdit || Boolean(draftRect?.length) || measurePoints.length > 0;
 
   const buildingName = useMemo(() => {
     const b = buildings.find((x) => x.id === buildingId);
     return b?.name ?? buildingId;
   }, [buildings, buildingId]);
+
+  const activeBuilding = useMemo(
+    () => buildings.find((x) => x.id === buildingId) ?? null,
+    [buildings, buildingId],
+  );
+
+  useEffect(() => {
+    if (activeBuilding?.floorHeightM) setFloorHeightM(activeBuilding.floorHeightM);
+    else setFloorHeightM(DEFAULT_FLOOR_HEIGHT_M);
+  }, [activeBuilding?.id, activeBuilding?.floorHeightM]);
 
   const floorRooms = useMemo(
     () => (snapshot?.rooms ?? []).filter((r) => r.floorId === selectedFloorId),
@@ -165,6 +193,7 @@ export function IndoorMapBuilderPage() {
     if (!token) return;
     const snap = await api.mapBuilder.snapshot(token);
     setBuildings(snap.buildings);
+    setBuildingsReady(true);
   }, [token]);
 
   const reloadSnapshot = useCallback(async () => {
@@ -177,24 +206,41 @@ export function IndoorMapBuilderPage() {
       setSelectedFloorId((prev) => prev ?? data.floors[0]?.id ?? null);
       dirtyRef.current = false;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load indoor layout');
+      if (err instanceof ApiError && err.status === 404) {
+        setError('That building is not in the current site map. Choose one from the list.');
+        navigate('/admin/map-builder/indoor', { replace: true });
+        return;
+      }
+      setError(err instanceof ApiError ? err.message : 'Failed to load indoor layout');
     } finally {
       setLoading(false);
     }
-  }, [token, buildingId]);
+  }, [token, buildingId, navigate]);
 
   useEffect(() => {
-    if (!token || !canEdit) return;
-    reloadBuildings().catch(() => undefined);
-  }, [token, canEdit, reloadBuildings]);
+    if (accessLoading || !canEdit || !token || !activeSiteId) {
+      setBuildingsReady(false);
+      return;
+    }
+    reloadBuildings().catch(() => {
+      setBuildings([]);
+      setBuildingsReady(true);
+    });
+  }, [accessLoading, canEdit, token, activeSiteId, reloadBuildings]);
 
   useEffect(() => {
-    if (routeBuildingId) setBuildingId(routeBuildingId);
+    setBuildingId(routeBuildingId ?? null);
   }, [routeBuildingId]);
 
   useEffect(() => {
-    if (buildingId) reloadSnapshot().catch(() => undefined);
-  }, [buildingId, reloadSnapshot]);
+    if (accessLoading || !canEdit || !buildingsReady || !buildingId) return;
+    if (!buildings.some((b) => b.id === buildingId)) {
+      setError('That building is not in the current site map. Choose one from the list.');
+      navigate('/admin/map-builder/indoor', { replace: true });
+      return;
+    }
+    reloadSnapshot().catch(() => undefined);
+  }, [accessLoading, canEdit, buildingsReady, buildingId, buildings, reloadSnapshot, navigate]);
 
   const saveGeometryEdit = useCallback(async () => {
     if (!token || !editSession) return false;
@@ -241,6 +287,7 @@ export function IndoorMapBuilderPage() {
     }
     cancelGeometryEdit();
     setDraftRect(null);
+    setMeasurePoints([]);
     dirtyRef.current = false;
     action();
   }
@@ -263,6 +310,45 @@ export function IndoorMapBuilderPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create floor');
     }
+  }
+
+  async function saveFloorHeight(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!token || !buildingId || !activeBuilding) return;
+    setFloorHeightBusy(true);
+    setError(null);
+    try {
+      const updated = await api.mapBuilder.updateBuilding(
+        buildingId,
+        { floorHeightM, expectedUpdatedAt: activeBuilding.updatedAt },
+        token,
+      );
+      setBuildings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+      setFloorHeightM(updated.floorHeightM ?? DEFAULT_FLOOR_HEIGHT_M);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save floor height');
+    } finally {
+      setFloorHeightBusy(false);
+    }
+  }
+
+  function applyMeasureToDraft() {
+    const ring = geometryFromMeasurePoints(measurePoints);
+    if (!ring.length) {
+      setError('Need at least 2 measure points with 0.25 m minimum span.');
+      return;
+    }
+    setDraftRect(ring);
+    setPendingTool(measureSaveAs);
+    setTool(measureSaveAs);
+    setMeasurePoints([]);
+    setError(null);
+  }
+
+  function applyArMeasurePoints(planPoints: LocalVec2[]) {
+    setMeasurePoints(planPoints);
+    setTool('measure');
+    setArPanelOpen(false);
   }
 
   async function saveDraftShape(e: FormEvent<HTMLFormElement>) {
@@ -500,6 +586,9 @@ export function IndoorMapBuilderPage() {
           </div>
           <MapBuilderNav mode="indoor" />
         </div>
+        {error && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>
+        )}
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {buildings.map((b) => (
             <Link
@@ -569,6 +658,9 @@ export function IndoorMapBuilderPage() {
                   }
                 >
                   {f.level}: {f.name}
+                  <span className="block text-[10px] font-normal text-muted">
+                    elev. {formatMeasureDistance(floorElevationM(f.level, floorHeightM))}
+                  </span>
                 </button>
               </li>
             ))}
@@ -579,6 +671,26 @@ export function IndoorMapBuilderPage() {
             <input name="name" className="input w-full text-sm" placeholder="Display name" required />
             <button type="submit" className="btn-primary w-full text-sm">
               Create floor
+            </button>
+          </form>
+
+          <form className="space-y-2 border-t border-line pt-3" onSubmit={(e) => void saveFloorHeight(e)}>
+            <p className="text-xs font-semibold text-muted">Floor height factor (m)</p>
+            <p className="text-[11px] text-muted">
+              Elevation = level × height. Level 2 at 3.5 m → {formatMeasureDistance(floorElevationM(2, floorHeightM))}.
+            </p>
+            <input
+              type="number"
+              step="0.1"
+              min="2"
+              max="20"
+              className="input w-full text-sm"
+              value={floorHeightM}
+              onChange={(e) => setFloorHeightM(Number(e.target.value))}
+              required
+            />
+            <button type="submit" className="btn-secondary w-full text-sm" disabled={floorHeightBusy}>
+              {floorHeightBusy ? 'Saving…' : 'Save height factor'}
             </button>
           </form>
         </aside>
@@ -595,6 +707,7 @@ export function IndoorMapBuilderPage() {
                 onClick={() => {
                   setTool(t.id);
                   if (t.id === 'room' || t.id === 'corridor') setPendingTool(t.id);
+                  if (t.id !== 'measure') setMeasurePoints([]);
                   setConnectFromId(null);
                   setPendingHandoffOutdoorId(null);
                 }}
@@ -602,6 +715,13 @@ export function IndoorMapBuilderPage() {
                 <t.icon className="h-3.5 w-3.5" /> {t.label}
               </button>
             ))}
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded-md border border-line bg-paper-raised px-2 py-1 text-sm"
+              onClick={() => setArPanelOpen(true)}
+            >
+              <Camera className="h-3.5 w-3.5" /> AR Measure
+            </button>
           </div>
           <div className="flex flex-wrap gap-1 border-t border-line pt-2">
             <span className="self-center text-xs font-semibold text-muted">Graph</span>
@@ -622,6 +742,15 @@ export function IndoorMapBuilderPage() {
               </button>
             ))}
           </div>
+          {tool === 'measure' && (
+            <p className="text-xs text-emerald-700">
+              Tap floor-plan corners to measure. Segment distances use AR-Measure vector math (
+              {measurePoints.length > 1
+                ? `total ${formatMeasureDistance(polylineLength2D(measurePoints))}`
+                : '2+ points'}
+              ).
+            </p>
+          )}
           {connectFromId && (
             <p className="text-xs text-violet-700">Connect: select the second node to link.</p>
           )}
@@ -641,10 +770,12 @@ export function IndoorMapBuilderPage() {
               selectedId={selectedId}
               selectedKind={selectedKind}
               draftRect={editSession?.draftGeometry ?? draftRect}
+              measurePoints={tool === 'measure' ? measurePoints : []}
               onDraftRect={(ring) => {
                 if (editSession) setEditSession({ ...editSession, draftGeometry: ring ?? [] });
                 else setDraftRect(ring);
               }}
+              onMeasurePoint={(pt) => setMeasurePoints((prev) => [...prev, pt])}
               onSelect={(kind, id) => {
                 if (kind === 'node') void handleNodeSelect(id);
                 else {
@@ -674,6 +805,34 @@ export function IndoorMapBuilderPage() {
         </div>
 
         <aside className="w-72 shrink-0 space-y-3 overflow-y-auto rounded-lg border border-line bg-paper-raised p-3">
+          {tool === 'measure' && measurePoints.length > 0 && !draftRect?.length && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">Measured shape</h3>
+              <p className="text-xs text-muted">
+                {measurePoints.length} point(s) ·{' '}
+                {measurePoints.length > 1
+                  ? formatMeasureDistance(polylineLength2D(measurePoints))
+                  : 'add another point'}
+              </p>
+              <select
+                className="input w-full text-sm"
+                value={measureSaveAs}
+                onChange={(e) => setMeasureSaveAs(e.target.value as 'room' | 'corridor')}
+              >
+                <option value="room">Save as room</option>
+                <option value="corridor">Save as corridor</option>
+              </select>
+              <div className="flex gap-2">
+                <button type="button" className="btn-primary flex-1 text-sm" onClick={applyMeasureToDraft}>
+                  Build &amp; save…
+                </button>
+                <button type="button" className="btn-secondary text-sm" onClick={() => setMeasurePoints([])}>
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+
           {draftRect && draftRect.length >= 3 && !editSession && (
             <form className="space-y-2" onSubmit={(e) => void saveDraftShape(e)}>
               <h3 className="text-sm font-semibold">Save new {shapeTool}</h3>
@@ -884,6 +1043,14 @@ export function IndoorMapBuilderPage() {
         onDiscard={() => unsavedDialog?.onResolve('discard')}
         onSave={() => void saveGeometryEdit().then((ok) => unsavedDialog?.onResolve(ok ? 'save' : 'stay'))}
       />
+
+      {arPanelOpen && (
+        <IndoorArMeasurePanel
+          onClose={() => setArPanelOpen(false)}
+          onApplyPlanPoints={applyArMeasurePoints}
+          onSuggestFloorHeight={(h) => setFloorHeightM(h)}
+        />
+      )}
     </div>
   );
 }

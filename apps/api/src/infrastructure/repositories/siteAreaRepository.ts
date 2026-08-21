@@ -2,11 +2,13 @@ import type { SiteArea, SiteAreaType } from '@campusar/shared';
 import { AppError } from '../../domain/errors';
 import { footprintFromGeoJson, ringToWkt, type LatLng } from '../../application/geometry';
 import { query } from '../db/pool';
+import { ringGeometryHash } from '../../application/geometryHash';
 
 function mapAreaRow(r: Record<string, unknown>): SiteArea {
   const footprint = footprintFromGeoJson(r.footprint_geojson) ?? [];
   return {
     id: r.id as string,
+    stableId: r.stable_id as string,
     siteId: r.site_id as string,
     name: r.name as string,
     type: r.type as SiteAreaType,
@@ -27,7 +29,7 @@ async function validatePolygon(wkt: string): Promise<void> {
 export const siteAreaRepository = {
   async listBySite(siteId: string, mapVersionId: string): Promise<SiteArea[]> {
     const { rows } = await query(
-      `SELECT id, site_id, name, type,
+      `SELECT id, stable_id, site_id, name, type,
               CASE WHEN footprint_geom IS NOT NULL
                 THEN ST_AsGeoJSON(footprint_geom)::json
                 ELSE NULL END AS footprint_geojson
@@ -47,7 +49,7 @@ export const siteAreaRepository = {
 
   async getById(id: string): Promise<SiteArea | null> {
     const { rows } = await query(
-      `SELECT id, site_id, name, type,
+      `SELECT id, stable_id, site_id, name, type,
               CASE WHEN footprint_geom IS NOT NULL
                 THEN ST_AsGeoJSON(footprint_geom)::json
                 ELSE NULL END AS footprint_geojson
@@ -68,11 +70,11 @@ export const siteAreaRepository = {
     const wkt = ringToWkt(input.footprint);
     await validatePolygon(wkt);
     const { rows } = await query(
-      `INSERT INTO site_areas (site_id, name, type, footprint_geom, map_version_id)
-       VALUES ($1, $2, $3, ST_GeogFromText($4)::geography, $5)
-       RETURNING id, site_id, name, type,
+      `INSERT INTO site_areas (site_id, name, type, footprint_geom, map_version_id, geometry_hash)
+       VALUES ($1, $2, $3, ST_GeogFromText($4)::geography, $5, $6)
+       RETURNING id, stable_id, site_id, name, type,
          ST_AsGeoJSON(footprint_geom)::json AS footprint_geojson`,
-      [input.siteId, input.name, input.type, wkt, input.mapVersionId],
+      [input.siteId, input.name, input.type, wkt, input.mapVersionId, ringGeometryHash(input.footprint)],
     );
     return mapAreaRow(rows[0] as Record<string, unknown>);
   },
@@ -89,10 +91,11 @@ export const siteAreaRepository = {
            name = COALESCE($2, name),
            type = COALESCE($3, type),
            footprint_geom = COALESCE(ST_GeogFromText($4)::geography, footprint_geom),
-           updated_at = NOW()
+          geometry_hash = $5,
+          updated_at = NOW()
          WHERE id = $1
-         RETURNING id, site_id, name, type, ST_AsGeoJSON(footprint_geom)::json AS footprint_geojson`,
-        [id, input.name ?? null, input.type ?? null, wkt],
+         RETURNING id, stable_id, site_id, name, type, ST_AsGeoJSON(footprint_geom)::json AS footprint_geojson`,
+        [id, input.name ?? null, input.type ?? null, wkt, ringGeometryHash(input.footprint)],
       );
       if (!rows[0]) return null;
       return mapAreaRow(rows[0] as Record<string, unknown>);
@@ -103,7 +106,7 @@ export const siteAreaRepository = {
          type = COALESCE($3, type),
          updated_at = NOW()
        WHERE id = $1
-       RETURNING id, site_id, name, type, ST_AsGeoJSON(footprint_geom)::json AS footprint_geojson`,
+       RETURNING id, stable_id, site_id, name, type, ST_AsGeoJSON(footprint_geom)::json AS footprint_geojson`,
       [id, input.name ?? null, input.type ?? null],
     );
     if (!rows[0]) return null;

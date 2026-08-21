@@ -42,6 +42,7 @@ import type {
 import { useAuthStore } from '../stores/authStore';
 import { joinApiUrl, resolveApiBaseUrl } from './clientUrls';
 import { useSiteStore } from '../stores/siteStore';
+import { usePreviewStore } from '../stores/previewStore';
 import type { Site } from '@campusar/shared';
 
 /** Same-origin `/api` by default (Vite proxy in dev, nginx in Docker). */
@@ -137,7 +138,15 @@ async function request<T>(
         : res.status === 401
           ? 'Session expired — sign in again as organization admin.'
           : 'Request failed';
-    throw new ApiError(data.code ?? 'ERROR', data.message ?? fallback, res.status, data.details);
+    const code = data.code ?? 'ERROR';
+    if (
+      path.includes('/map-builder/preview/') &&
+      usePreviewStore.getState().active &&
+      ((res.status === 422 && code === 'PREVIEW_DRAFT_ONLY') || res.status === 404)
+    ) {
+      usePreviewStore.getState().exitPreview();
+    }
+    throw new ApiError(code, data.message ?? fallback, res.status, data.details);
   }
   return data as T;
 }

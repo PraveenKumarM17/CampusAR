@@ -73,6 +73,38 @@ export const mapVersionService = {
     return { publishedVersion, draftVersion };
   },
 
+  async listPublishHistory(siteId: string) {
+    await this.getPublishedVersion(siteId);
+    const logs = await mapVersionRepository.listPublishHistory(siteId);
+    const versions = await mapVersionRepository.listBySite(siteId);
+    const byId = new Map(versions.map((v) => [v.id, v]));
+    return logs.map((log) => ({
+      ...log,
+      version: byId.get(log.publishedVersionId) ?? null,
+      previousVersion: log.previousVersionId ? (byId.get(log.previousVersionId) ?? null) : null,
+    }));
+  },
+
+  async rollbackToVersion(siteId: string, sourceVersionId: string, userId: string | null): Promise<SiteMapVersion> {
+    const source = await this.getVersion(siteId, sourceVersionId);
+    const existingDraft = await this.getDraftVersion(siteId);
+    if (existingDraft) {
+      throw new AppError(
+        'DRAFT_ALREADY_EXISTS',
+        'A draft version already exists for this site. Publish or archive it before rollback.',
+        409,
+      );
+    }
+    const versionNumber = await mapVersionRepository.nextVersionNumber(siteId);
+    return mapVersionRepository.createDraftInTransaction(
+      siteId,
+      userId,
+      source.id,
+      versionNumber,
+      source.id,
+    );
+  },
+
   /** Reject access to draft versions for non-editor contexts. */
   assertPublicReadable(version: SiteMapVersion): void {
     if (version.status !== 'published') {

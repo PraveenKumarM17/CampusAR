@@ -64,14 +64,15 @@ export async function clonePublishedMapToDraft(
     buildings.set(b.id, newId);
     await client.query(
       `INSERT INTO buildings (
-         id, site_id, name, code, description, latitude, longitude, floors_count,
-         footprint_geom, updated_at, map_version_id
+         id, stable_id, site_id, name, code, description, latitude, longitude, floors_count,
+         footprint_geom, updated_at, map_version_id, geometry_hash
        ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8,
-         $9, NOW(), $10
+         $1, $2, $3, $4, $5, $6, $7, $8, $9,
+         $10, NOW(), $11, $12
        )`,
       [
         newId,
+        b.stable_id,
         b.site_id,
         b.name,
         b.code,
@@ -81,6 +82,7 @@ export async function clonePublishedMapToDraft(
         b.floors_count,
         b.footprint_geom,
         draftVersionId,
+        b.geometry_hash,
       ],
     );
   }
@@ -113,10 +115,11 @@ export async function clonePublishedMapToDraft(
     nodes.set(n.id, newId);
     await client.query(
       `INSERT INTO nodes (
-         id, site_id, name, latitude, longitude, floor_id, building_id, kind, active, map_version_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+         id, stable_id, site_id, name, latitude, longitude, floor_id, building_id, kind, active, map_version_id, geometry_hash
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [
         newId,
+        n.stable_id,
         n.site_id,
         n.name,
         n.latitude,
@@ -126,6 +129,7 @@ export async function clonePublishedMapToDraft(
         n.kind,
         n.active,
         draftVersionId,
+        n.geometry_hash,
       ],
     );
   }
@@ -217,11 +221,12 @@ export async function clonePublishedMapToDraft(
   for (const e of edgeRows) {
     await client.query(
       `INSERT INTO edges (
-         id, site_id, from_node_id, to_node_id, distance_m, kind, bidirectional, blocked,
-         safety_score, crowd_score, accessibility_score, map_version_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+         id, stable_id, site_id, from_node_id, to_node_id, distance_m, kind, bidirectional, blocked,
+         safety_score, crowd_score, accessibility_score, map_version_id, geometry_hash
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [
         randomUUID(),
+        e.stable_id,
         e.site_id,
         nodes.remap(e.from_node_id),
         nodes.remap(e.to_node_id),
@@ -233,6 +238,7 @@ export async function clonePublishedMapToDraft(
         e.crowd_score,
         e.accessibility_score,
         draftVersionId,
+        e.geometry_hash,
       ],
     );
   }
@@ -245,9 +251,9 @@ export async function clonePublishedMapToDraft(
   );
   for (const a of areaRows) {
     await client.query(
-      `INSERT INTO site_areas (id, site_id, name, type, footprint_geom, created_at, updated_at, map_version_id)
-       VALUES ($1,$2,$3,$4,$5,NOW(),NOW(),$6)`,
-      [randomUUID(), a.site_id, a.name, a.type, a.footprint_geom, draftVersionId],
+      `INSERT INTO site_areas (id, stable_id, site_id, name, type, footprint_geom, created_at, updated_at, map_version_id, geometry_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW(),$7,$8)`,
+      [randomUUID(), a.stable_id, a.site_id, a.name, a.type, a.footprint_geom, draftVersionId, a.geometry_hash],
     );
   }
 

@@ -36,3 +36,6 @@ CREATE TABLE IF NOT EXISTS floor_pois (
 
 CREATE INDEX IF NOT EXISTS floor_corridors_floor_idx ON floor_corridors (floor_id);
 CREATE INDEX IF NOT EXISTS floor_pois_floor_idx ON floor_pois (floor_id);
+
+-- Per-building floor height factor for indoor elevation (level × floor_height_m).
+ALTER TABLE buildings ADD COLUMN IF NOT EXISTS floor_height_m DOUBLE PRECISION NOT NULL DEFAULT 3.5;

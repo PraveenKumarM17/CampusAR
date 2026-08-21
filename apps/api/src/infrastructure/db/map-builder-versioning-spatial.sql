@@ -9,6 +9,14 @@ ALTER TABLE buildings ADD COLUMN IF NOT EXISTS map_version_id UUID REFERENCES si
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS map_version_id UUID REFERENCES site_map_versions(id) ON DELETE CASCADE;
 ALTER TABLE edges ADD COLUMN IF NOT EXISTS map_version_id UUID REFERENCES site_map_versions(id) ON DELETE CASCADE;
 ALTER TABLE site_areas ADD COLUMN IF NOT EXISTS map_version_id UUID REFERENCES site_map_versions(id) ON DELETE CASCADE;
+ALTER TABLE buildings ADD COLUMN IF NOT EXISTS stable_id UUID NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE buildings ADD COLUMN IF NOT EXISTS geometry_hash TEXT;
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS stable_id UUID NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS geometry_hash TEXT;
+ALTER TABLE edges ADD COLUMN IF NOT EXISTS stable_id UUID NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE edges ADD COLUMN IF NOT EXISTS geometry_hash TEXT;
+ALTER TABLE site_areas ADD COLUMN IF NOT EXISTS stable_id UUID NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE site_areas ADD COLUMN IF NOT EXISTS geometry_hash TEXT;
 ALTER TABLE floors ADD COLUMN IF NOT EXISTS map_version_id UUID REFERENCES site_map_versions(id) ON DELETE CASCADE;
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS map_version_id UUID REFERENCES site_map_versions(id) ON DELETE CASCADE;
 ALTER TABLE floor_corridors ADD COLUMN IF NOT EXISTS map_version_id UUID REFERENCES site_map_versions(id) ON DELETE CASCADE;
@@ -140,6 +148,10 @@ CREATE INDEX IF NOT EXISTS buildings_site_version_idx ON buildings (site_id, map
 CREATE INDEX IF NOT EXISTS nodes_site_version_idx ON nodes (site_id, map_version_id);
 CREATE INDEX IF NOT EXISTS edges_site_version_idx ON edges (site_id, map_version_id);
 CREATE INDEX IF NOT EXISTS site_areas_site_version_idx ON site_areas (site_id, map_version_id);
+CREATE INDEX IF NOT EXISTS buildings_stable_id_idx ON buildings (stable_id);
+CREATE INDEX IF NOT EXISTS nodes_stable_id_idx ON nodes (stable_id);
+CREATE INDEX IF NOT EXISTS edges_stable_id_idx ON edges (stable_id);
+CREATE INDEX IF NOT EXISTS site_areas_stable_id_idx ON site_areas (stable_id);
 CREATE INDEX IF NOT EXISTS floors_building_version_idx ON floors (building_id, map_version_id);
 CREATE INDEX IF NOT EXISTS indoor_maps_building_version_idx ON indoor_maps (building_id, map_version_id);
 CREATE INDEX IF NOT EXISTS indoor_nodes_map_version_idx ON indoor_nodes (map_id, map_version_id);
@@ -148,6 +160,21 @@ CREATE INDEX IF NOT EXISTS indoor_nodes_map_version_idx ON indoor_nodes (map_id,
 DROP INDEX IF EXISTS buildings_site_code_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS buildings_version_code_idx ON buildings (map_version_id, code)
   WHERE map_version_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS map_version_publish_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  published_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
+  previous_version_id UUID REFERENCES site_map_versions(id) ON DELETE SET NULL,
+  published_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  diff_summary JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS map_version_publish_log_site_idx
+  ON map_version_publish_log (site_id, published_at DESC);
+CREATE INDEX IF NOT EXISTS map_version_publish_log_version_idx
+  ON map_version_publish_log (published_version_id);
 
 -- indoor_anchors: version-scoped anchor codes (draft clones get distinct codes)
 ALTER TABLE indoor_anchors DROP CONSTRAINT IF EXISTS indoor_anchors_anchor_code_key;

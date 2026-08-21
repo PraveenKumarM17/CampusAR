@@ -6,10 +6,15 @@ import { api, ApiError } from '../lib/api';
 export function useMapEditorAccess(): { canEdit: boolean; loading: boolean } {
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.accessToken);
+  const hydrated = useAuthStore((s) => s.hydrated);
   const [canEdit, setCanEdit] = useState(user?.role === 'admin');
-  const [loading, setLoading] = useState(user?.role !== 'admin');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!hydrated) {
+      setLoading(true);
+      return;
+    }
     if (!user || !token) {
       setCanEdit(false);
       setLoading(false);
@@ -38,7 +43,7 @@ export function useMapEditorAccess(): { canEdit: boolean; loading: boolean } {
     return () => {
       cancelled = true;
     };
-  }, [user, token]);
+  }, [hydrated, user, token]);
 
-  return { canEdit, loading };
+  return { canEdit, loading: !hydrated || loading };
 }

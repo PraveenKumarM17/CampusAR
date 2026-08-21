@@ -65,6 +65,7 @@ import {
   type GeometryEditSession,
   type UnsavedChoice,
 } from './mapBuilderUtils';
+import { MAP_ENGINE } from '../../lib/mapEngine';
 
 type BuilderTool = 'select' | 'building' | 'walkway' | 'node' | 'entrance' | 'poi' | 'area';
 
@@ -669,6 +670,9 @@ export function MapBuilderPage() {
           <p className="text-xs text-muted">{label}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded border border-line bg-paper px-2 py-1 text-[11px] font-semibold uppercase text-ink-mute">
+            Engine: {MAP_ENGINE}
+          </span>
           <MapBuilderNav mode="outdoor" />
           {sites.length > 1 ? (
             <select

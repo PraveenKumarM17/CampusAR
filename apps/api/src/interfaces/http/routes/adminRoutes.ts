@@ -15,6 +15,7 @@ import { validateSiteMap } from '../../../application/mapValidation';
 import { validateIndoorLayout } from '../../../application/indoorLayoutValidation';
 import { validateMapVersion } from '../../../application/mapVersionValidationService';
 import { mapVersionPublishService } from '../../../application/mapVersionPublishService';
+import { mapVersionDiffService } from '../../../application/mapVersionDiffService';
 import {
   graphEdgeCreateSchema,
   graphHandoffSchema,
@@ -165,6 +166,37 @@ mapEditorRouter.get('/map-builder/versions/:versionId/validate', async (req: Aut
   }
 });
 
+mapEditorRouter.get('/map-builder/versions/:versionId/diff', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const versionId = String(req.params.versionId);
+    const version = await mapVersionService.getVersion(siteId, versionId);
+    const baseVersionId = version.basedOnVersionId;
+    res.json(await mapVersionDiffService.computeDiff(version.id, baseVersionId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/map-builder/history', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    res.json(await mapVersionService.listPublishHistory(siteId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.post('/map-builder/versions/:versionId/rollback', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const sourceVersionId = String(req.params.versionId);
+    res.status(201).json(await mapVersionService.rollbackToVersion(siteId, sourceVersionId, req.user?.sub ?? null));
+  } catch (err) {
+    next(err);
+  }
+});
+
 mapEditorRouter.post('/map-builder/versions/:versionId/publish', async (req: AuthedRequest, res, next) => {
   try {
     const siteId = await editorSiteStrict(req);
@@ -241,6 +273,7 @@ mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
         latitude: z.number().optional(),
         longitude: z.number().optional(),
         floorsCount: z.number().int().positive().optional(),
+        floorHeightM: z.number().positive().max(20).optional(),
         footprint: footprintSchema.nullable().optional(),
         expectedUpdatedAt: z.string().datetime().optional(),
       })
@@ -250,6 +283,7 @@ mapEditorRouter.put('/buildings/:id', async (req: AuthedRequest, res, next) => {
       code: body.code,
       description: body.description,
       floorsCount: body.floorsCount,
+      floorHeightM: body.floorHeightM,
       footprint: body.footprint === null ? [] : body.footprint,
       expectedUpdatedAt: body.expectedUpdatedAt,
       latitude: body.latitude,
