@@ -115,7 +115,19 @@ WHERE o.slug = 'rnsit'
 ON CONFLICT (user_id, organization_id) DO NOTHING;
 
 ALTER TABLE buildings DROP CONSTRAINT IF EXISTS buildings_code_key;
-CREATE UNIQUE INDEX IF NOT EXISTS buildings_site_code_idx ON buildings (site_id, code);
+DROP INDEX IF EXISTS buildings_site_code_idx;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'buildings' AND column_name = 'map_version_id'
+  ) THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS buildings_version_code_idx ON buildings (map_version_id, code)
+      WHERE map_version_id IS NOT NULL;
+  ELSE
+    CREATE UNIQUE INDEX IF NOT EXISTS buildings_site_code_idx ON buildings (site_id, code);
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS buildings_site_idx ON buildings (site_id);
 CREATE INDEX IF NOT EXISTS nodes_site_idx ON nodes (site_id);
 CREATE INDEX IF NOT EXISTS edges_site_idx ON edges (site_id);

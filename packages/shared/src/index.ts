@@ -143,6 +143,17 @@ export interface MapValidationResult {
   warningCount: number;
 }
 
+/** Unified draft map validation (Phase 2.5E Step 3A). */
+export interface UnifiedMapValidationResult {
+  version: Pick<SiteMapVersion, 'id' | 'versionNumber' | 'status' | 'label'>;
+  valid: boolean;
+  summary: {
+    errors: number;
+    warnings: number;
+  };
+  issues: MapValidationIssue[];
+}
+
 export interface MapBuilderSnapshot {
   siteId: string;
   version: SiteMapVersion;

@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS organization_memberships (
 CREATE TABLE IF NOT EXISTS buildings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   code TEXT NOT NULL,
   description TEXT,
@@ -94,6 +95,7 @@ CREATE TABLE IF NOT EXISTS buildings (
 CREATE TABLE IF NOT EXISTS floors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   level INT NOT NULL,
   name TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -103,6 +105,7 @@ CREATE TABLE IF NOT EXISTS floors (
 CREATE TABLE IF NOT EXISTS nodes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT,
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
@@ -119,6 +122,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   floor_id UUID NOT NULL REFERENCES floors(id) ON DELETE CASCADE,
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   code TEXT NOT NULL,
   category TEXT NOT NULL CHECK (category IN (
@@ -136,6 +140,7 @@ CREATE TABLE IF NOT EXISTS floor_corridors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   floor_id UUID NOT NULL REFERENCES floors(id) ON DELETE RESTRICT,
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT,
   category TEXT NOT NULL DEFAULT 'corridor',
   local_geometry JSONB NOT NULL,
@@ -147,6 +152,7 @@ CREATE TABLE IF NOT EXISTS floor_pois (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   floor_id UUID NOT NULL REFERENCES floors(id) ON DELETE RESTRICT,
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   category TEXT NOT NULL DEFAULT 'other',
   local_x DOUBLE PRECISION NOT NULL,
@@ -161,6 +167,7 @@ CREATE INDEX IF NOT EXISTS floor_pois_floor_idx ON floor_pois (floor_id);
 CREATE TABLE IF NOT EXISTS edges (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   site_id UUID REFERENCES sites(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   from_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   to_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   distance_m DOUBLE PRECISION NOT NULL CHECK (distance_m > 0),
@@ -310,11 +317,16 @@ CREATE INDEX IF NOT EXISTS buildings_footprint_geom_idx ON buildings USING GIST 
   WHERE footprint_geom IS NOT NULL;
 CREATE INDEX IF NOT EXISTS edges_site_idx ON edges (site_id);
 CREATE INDEX IF NOT EXISTS danger_zones_geom_idx ON danger_zones USING GIST (geom);
-CREATE UNIQUE INDEX IF NOT EXISTS buildings_site_code_idx ON buildings (site_id, code);
+CREATE UNIQUE INDEX IF NOT EXISTS buildings_version_code_idx ON buildings (map_version_id, code);
+CREATE INDEX IF NOT EXISTS buildings_site_version_idx ON buildings (site_id, map_version_id);
+CREATE INDEX IF NOT EXISTS nodes_site_version_idx ON nodes (site_id, map_version_id);
+CREATE INDEX IF NOT EXISTS edges_site_version_idx ON edges (site_id, map_version_id);
+CREATE INDEX IF NOT EXISTS floors_building_version_idx ON floors (building_id, map_version_id);
 
 CREATE TABLE IF NOT EXISTS site_areas (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('parking', 'open_area', 'restricted', 'assembly')),
   footprint_geom GEOGRAPHY(POLYGON, 4326) NOT NULL,
@@ -323,6 +335,7 @@ CREATE TABLE IF NOT EXISTS site_areas (
 );
 
 CREATE INDEX IF NOT EXISTS site_areas_site_idx ON site_areas (site_id);
+CREATE INDEX IF NOT EXISTS site_areas_site_version_idx ON site_areas (site_id, map_version_id);
 CREATE INDEX IF NOT EXISTS site_areas_geom_idx ON site_areas USING GIST (footprint_geom);
 CREATE INDEX IF NOT EXISTS analytics_searches_query_idx ON analytics_searches (query);
 CREATE INDEX IF NOT EXISTS analytics_nav_created_idx ON analytics_navigations (created_at);
@@ -332,6 +345,7 @@ CREATE INDEX IF NOT EXISTS analytics_nav_created_idx ON analytics_navigations (c
 CREATE TABLE IF NOT EXISTS indoor_maps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
   origin_anchor_id UUID,
@@ -348,6 +362,7 @@ CREATE TABLE IF NOT EXISTS indoor_maps (
 CREATE TABLE IF NOT EXISTS indoor_nodes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   map_id UUID NOT NULL REFERENCES indoor_maps(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
   floor_id UUID NOT NULL REFERENCES floors(id) ON DELETE CASCADE,
   anchor_id UUID,
@@ -368,6 +383,7 @@ CREATE TABLE IF NOT EXISTS indoor_nodes (
 CREATE TABLE IF NOT EXISTS indoor_edges (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   map_id UUID NOT NULL REFERENCES indoor_maps(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
   from_floor_id UUID NOT NULL REFERENCES floors(id) ON DELETE CASCADE,
   to_floor_id UUID NOT NULL REFERENCES floors(id) ON DELETE CASCADE,
@@ -384,6 +400,7 @@ CREATE TABLE IF NOT EXISTS indoor_edges (
 CREATE TABLE IF NOT EXISTS indoor_places (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   map_id UUID NOT NULL REFERENCES indoor_maps(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
   floor_id UUID REFERENCES floors(id) ON DELETE SET NULL,
   node_id UUID REFERENCES indoor_nodes(id) ON DELETE SET NULL,
@@ -400,10 +417,11 @@ CREATE TABLE IF NOT EXISTS indoor_places (
 CREATE TABLE IF NOT EXISTS indoor_anchors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   map_id UUID NOT NULL REFERENCES indoor_maps(id) ON DELETE CASCADE,
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
   floor_id UUID NOT NULL REFERENCES floors(id) ON DELETE CASCADE,
   node_id UUID NOT NULL REFERENCES indoor_nodes(id) ON DELETE CASCADE,
-  anchor_code TEXT NOT NULL UNIQUE,
+  anchor_code TEXT NOT NULL,
   physical_marker_type TEXT NOT NULL DEFAULT 'qr',
   local_x DOUBLE PRECISION NOT NULL DEFAULT 0,
   local_y DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -413,6 +431,7 @@ CREATE TABLE IF NOT EXISTS indoor_anchors (
 
 CREATE TABLE IF NOT EXISTS indoor_handoffs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_version_id UUID NOT NULL REFERENCES site_map_versions(id) ON DELETE CASCADE,
   outdoor_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   indoor_node_id UUID NOT NULL REFERENCES indoor_nodes(id) ON DELETE CASCADE,
   building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
@@ -423,7 +442,9 @@ CREATE TABLE IF NOT EXISTS indoor_handoffs (
 );
 
 CREATE INDEX IF NOT EXISTS indoor_maps_building_idx ON indoor_maps (building_id) WHERE active = TRUE;
+CREATE INDEX IF NOT EXISTS indoor_maps_building_version_idx ON indoor_maps (building_id, map_version_id);
 CREATE INDEX IF NOT EXISTS indoor_nodes_map_idx ON indoor_nodes (map_id) WHERE active = TRUE;
+CREATE INDEX IF NOT EXISTS indoor_nodes_map_version_idx ON indoor_nodes (map_id, map_version_id);
 CREATE INDEX IF NOT EXISTS indoor_nodes_floor_idx ON indoor_nodes (floor_id) WHERE active = TRUE;
 CREATE INDEX IF NOT EXISTS indoor_edges_map_idx ON indoor_edges (map_id) WHERE active = TRUE;
 CREATE INDEX IF NOT EXISTS indoor_edges_from_idx ON indoor_edges (from_node_id);
@@ -431,6 +452,9 @@ CREATE INDEX IF NOT EXISTS indoor_edges_to_idx ON indoor_edges (to_node_id);
 CREATE INDEX IF NOT EXISTS indoor_places_map_idx ON indoor_places (map_id) WHERE active = TRUE;
 CREATE INDEX IF NOT EXISTS indoor_places_search_idx ON indoor_places (building_id, name) WHERE searchable = TRUE AND active = TRUE;
 CREATE INDEX IF NOT EXISTS indoor_anchors_code_idx ON indoor_anchors (anchor_code) WHERE active = TRUE;
+CREATE UNIQUE INDEX IF NOT EXISTS indoor_anchors_version_code_idx
+  ON indoor_anchors (map_version_id, anchor_code)
+  WHERE active = TRUE;
 CREATE INDEX IF NOT EXISTS indoor_handoffs_outdoor_idx ON indoor_handoffs (outdoor_node_id) WHERE active = TRUE;
 
 -- Allow fire hazard type on existing databases created before the CHECK expansion

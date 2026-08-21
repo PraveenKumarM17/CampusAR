@@ -13,6 +13,7 @@ import {
 } from '../../../application/siteContext';
 import { validateSiteMap } from '../../../application/mapValidation';
 import { validateIndoorLayout } from '../../../application/indoorLayoutValidation';
+import { validateMapVersion } from '../../../application/mapVersionValidationService';
 import {
   graphEdgeCreateSchema,
   graphHandoffSchema,
@@ -137,6 +138,24 @@ mapEditorRouter.get('/map-builder/snapshot', async (req: AuthedRequest, res, nex
       edges,
       areas,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+mapEditorRouter.get('/map-builder/versions/:versionId/validate', async (req: AuthedRequest, res, next) => {
+  try {
+    const siteId = await editorSiteStrict(req);
+    const versionId = String(req.params.versionId);
+    const version = await mapVersionService.getVersion(siteId, versionId);
+    if (version.status !== 'draft') {
+      throw new AppError(
+        'VALIDATION_DRAFT_ONLY',
+        'Only draft map versions can be validated through this workflow',
+        422,
+      );
+    }
+    res.json(await validateMapVersion(siteId, version));
   } catch (err) {
     next(err);
   }

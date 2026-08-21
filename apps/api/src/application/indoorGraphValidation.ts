@@ -28,6 +28,18 @@ export async function validateIndoorGraph(
   const building = await campusRepository.getBuildingById(buildingId);
   if (!building || building.siteId !== siteId) return issues;
 
+  const buildingVersion = await campusRepository.getBuildingMapVersionId(buildingId);
+  if (buildingVersion !== mapVersionId) {
+    push(issues, {
+      level: 'error',
+      code: 'CROSS_VERSION_REFERENCE',
+      message: `Building "${building.name}" belongs to a different map version.`,
+      resourceType: 'building',
+      resourceId: buildingId,
+    });
+    return issues;
+  }
+
   const draftMap = await indoorRepository.getDraftMapByBuilding(buildingId, mapVersionId);
   const publishedMap = await indoorRepository.getPublishedMapByBuilding(buildingId, mapVersionId);
   const map = draftMap ?? publishedMap;
@@ -216,7 +228,16 @@ export async function validateIndoorGraph(
       });
     }
     const outdoor = await campusRepository.getNodeById(handoff.outdoorNodeId);
-    if (!outdoor || !outdoor.active) {
+    const outdoorVersion = await campusRepository.getNodeMapVersionId(handoff.outdoorNodeId);
+    if (outdoorVersion !== mapVersionId) {
+      push(issues, {
+        level: 'error',
+        code: 'CROSS_VERSION_REFERENCE',
+        message: 'Handoff outdoor entrance belongs to a different map version.',
+        resourceType: 'handoff',
+        resourceId: handoff.id,
+      });
+    } else if (!outdoor || !outdoor.active) {
       push(issues, {
         level: 'error',
         code: 'INVALID_HANDOFF',

@@ -25,6 +25,17 @@ export async function validateIndoorLayout(
     });
     return summarize(issues);
   }
+  const buildingVersion = await campusRepository.getBuildingMapVersionId(buildingId);
+  if (buildingVersion !== mapVersionId) {
+    push(issues, {
+      level: 'error',
+      code: 'CROSS_VERSION_REFERENCE',
+      message: `Building "${building.name}" belongs to a different map version.`,
+      resourceType: 'building',
+      resourceId: buildingId,
+    });
+    return summarize(issues);
+  }
   if (building.siteId !== siteId) {
     push(issues, {
       level: 'error',

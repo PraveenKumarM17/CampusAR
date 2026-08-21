@@ -2,6 +2,21 @@ import { randomUUID } from 'crypto';
 import type { PoolClient } from 'pg';
 import { AppError } from '../domain/errors';
 
+/** @internal Integration tests inject a failure after this clone step. */
+export type CloneTestFailureStep = 'after-buildings' | 'after-nodes' | 'after-edges';
+
+let cloneTestFailureAfter: CloneTestFailureStep | null = null;
+
+export function setCloneTestFailureAfter(step: CloneTestFailureStep | null): void {
+  cloneTestFailureAfter = step;
+}
+
+function maybeInjectCloneTestFailure(step: CloneTestFailureStep): void {
+  if (cloneTestFailureAfter === step) {
+    throw new AppError('CLONE_TEST_FAILURE', `Injected clone failure ${step}`, 500);
+  }
+}
+
 class IdMap {
   private readonly map = new Map<string, string>();
 
@@ -69,6 +84,7 @@ export async function clonePublishedMapToDraft(
       ],
     );
   }
+  maybeInjectCloneTestFailure('after-buildings');
 
   // 2. Floors
   const { rows: floorRows } = await client.query(
@@ -113,6 +129,7 @@ export async function clonePublishedMapToDraft(
       ],
     );
   }
+  maybeInjectCloneTestFailure('after-nodes');
 
   // 4. Rooms
   const { rows: roomRows } = await client.query(
@@ -219,6 +236,7 @@ export async function clonePublishedMapToDraft(
       ],
     );
   }
+  maybeInjectCloneTestFailure('after-edges');
 
   // 8. Site areas
   const { rows: areaRows } = await client.query(

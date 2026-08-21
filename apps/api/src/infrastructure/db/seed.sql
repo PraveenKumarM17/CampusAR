@@ -1,9 +1,13 @@
 -- RNSIT Channasandra campus seed (Bengaluru)
 -- Demo passwords: admin123 / student123
 
+UPDATE sites SET published_map_version_id = NULL WHERE published_map_version_id IS NOT NULL;
+
 TRUNCATE sos_events, analytics_navigations, analytics_searches, notification_reads,
   notifications, emergency_exits, emergency_contacts, events, crowd_levels,
-  sensor_readings, danger_zones, edges, rooms, nodes, floors, buildings,
+  sensor_readings, danger_zones, indoor_handoffs, indoor_anchors, indoor_places,
+  indoor_edges, indoor_nodes, indoor_maps, floor_pois, floor_corridors,
+  edges, rooms, nodes, floors, buildings, site_areas, site_map_versions,
   organization_memberships, sites, organizations, users, route_weights
 CASCADE;
 
@@ -16,6 +20,14 @@ INSERT INTO organizations (id, name, slug, type) VALUES
 INSERT INTO sites (id, organization_id, name, slug, latitude, longitude, timezone, status) VALUES
   ('c0000001-0000-4000-8000-000000000010', 'c0000001-0000-4000-8000-000000000001',
    'RNSIT Main Campus', 'rnsit-main', 12.9014, 77.5184, 'Asia/Kolkata', 'active');
+
+INSERT INTO site_map_versions (id, site_id, version_number, status, label, published_at) VALUES
+  ('e1000001-0000-4000-8000-000000000001', 'c0000001-0000-4000-8000-000000000010',
+   1, 'published', 'Initial published map', NOW());
+
+UPDATE sites
+SET published_map_version_id = 'e1000001-0000-4000-8000-000000000001'
+WHERE id = 'c0000001-0000-4000-8000-000000000010';
 
 INSERT INTO users (id, email, password_hash, name, role) VALUES
   ('11111111-1111-1111-1111-111111111111', 'admin@smartcampus.edu',
@@ -34,6 +46,20 @@ ALTER TABLE danger_zones ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-80
 ALTER TABLE events ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
 ALTER TABLE emergency_contacts ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
 ALTER TABLE emergency_exits ALTER COLUMN site_id SET DEFAULT 'c0000001-0000-4000-8000-000000000010';
+
+ALTER TABLE buildings ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE nodes ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE edges ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE floors ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE rooms ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE floor_corridors ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE floor_pois ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE indoor_maps ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE indoor_nodes ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE indoor_edges ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE indoor_places ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE indoor_anchors ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
+ALTER TABLE indoor_handoffs ALTER COLUMN map_version_id SET DEFAULT 'e1000001-0000-4000-8000-000000000001';
 
 INSERT INTO buildings (id, name, code, description, latitude, longitude, floors_count) VALUES
   ('b1000001-0000-0000-0000-000000000001', 'Admin Block', 'ADMIN', 'Administration and principal office', 12.90098, 77.51832, 3),
@@ -224,3 +250,17 @@ ALTER TABLE danger_zones ALTER COLUMN site_id DROP DEFAULT;
 ALTER TABLE events ALTER COLUMN site_id DROP DEFAULT;
 ALTER TABLE emergency_contacts ALTER COLUMN site_id DROP DEFAULT;
 ALTER TABLE emergency_exits ALTER COLUMN site_id DROP DEFAULT;
+
+ALTER TABLE buildings ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE nodes ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE edges ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE floors ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE rooms ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE floor_corridors ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE floor_pois ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE indoor_maps ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE indoor_nodes ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE indoor_edges ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE indoor_places ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE indoor_anchors ALTER COLUMN map_version_id DROP DEFAULT;
+ALTER TABLE indoor_handoffs ALTER COLUMN map_version_id DROP DEFAULT;

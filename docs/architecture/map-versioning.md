@@ -145,7 +145,34 @@ Draft creation: `POST /api/admin/map-builder/draft` — idempotent, returns 201 
 
 ---
 
-## Remaining (Step 3+)
+## Step 2.1 stabilization ✓
+
+- `schema.sql` includes `map_version_id` on all canonical spatial tables (fresh installs)
+- `seed.sql` creates Published V1 before spatial rows and binds RNSIT data to it
+- Clone rollback integration test (`CLONE_TEST_FAILURE` hook + transaction verify)
+- Docker proxy test uses isolated host ports (`18543` / `18400` / `18080`) via `scripts/test-docker-proxy.mjs`
+
+---
+
+## Step 3A — Unified draft validation ✓
+
+`GET /api/admin/map-builder/versions/:versionId/validate`
+
+- Requires `requireMapEditor` + editor site context (`X-Site-Id`)
+- **Draft versions only** — returns `422 VALIDATION_DRAFT_ONLY` for published/archived
+- Validates the **requested** `versionId` — never falls back to published
+- Aggregates existing validators (no duplicated rules):
+  - `validateSiteMap` — outdoor buildings, nodes, edges, areas
+  - `validateIndoorLayout` per draft building — floors, rooms, corridors, POIs + indoor graph
+  - `validateVersionScopeIntegrity` — cross-version row and edge-endpoint checks
+
+Response: `{ version, valid, summary: { errors, warnings }, issues[] }` where `issues[].level` is `error` | `warning`.
+
+Legacy endpoints remain: `GET /map-builder/validate` (outdoor only), `GET /map-builder/indoor/validate?buildingId=`.
+
+---
+
+## Remaining (Step 3B+)
 
 - [ ] Unified validation against draft bundle (partially wired for outdoor/indoor layout)
 - [ ] Preview mode for editors on public UI

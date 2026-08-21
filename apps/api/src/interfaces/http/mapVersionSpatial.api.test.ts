@@ -4,6 +4,10 @@ import { createApp } from '../../interfaces/http/app';
 import { pool } from '../../infrastructure/db/pool';
 import { mapVersionService } from '../../application/mapVersionService';
 import { campusRepository } from '../../infrastructure/repositories/campusRepository';
+import { mapVersionRepository } from '../../infrastructure/repositories/mapVersionRepository';
+import {
+  setCloneTestFailureAfter,
+} from '../../application/mapVersionCloneService';
 
 const app = createApp();
 
@@ -203,6 +207,64 @@ describe('site map spatial versioning (Step 2)', () => {
       });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('CROSS_VERSION_REFERENCE');
+  });
+
+  it.skipIf(!canUseDb)('clone rollback: forced failure leaves no partial draft and published unchanged', async () => {
+    const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
+    const { rows: pubBefore } = await pool.query(
+      `SELECT id, name FROM buildings WHERE map_version_id = $1 ORDER BY code`,
+      [published.id],
+    );
+
+    await pool.query(`DELETE FROM site_map_versions WHERE site_id = $1 AND status = 'draft'`, [
+      RNSIT_SITE,
+    ]);
+
+    setCloneTestFailureAfter('after-buildings');
+
+    await expect(
+      mapVersionRepository.createDraftInTransaction(
+        RNSIT_SITE,
+        null,
+        published.id,
+        2,
+        published.id,
+      ),
+    ).rejects.toThrow();
+
+    setCloneTestFailureAfter(null);
+
+    const { rows: draftVersions } = await pool.query(
+      `SELECT id FROM site_map_versions WHERE site_id = $1 AND status = 'draft'`,
+      [RNSIT_SITE],
+    );
+    expect(draftVersions).toHaveLength(0);
+
+    const { rows: orphanBuildings } = await pool.query(
+      `SELECT id FROM buildings WHERE site_id = $1 AND map_version_id <> $2`,
+      [RNSIT_SITE, published.id],
+    );
+    expect(orphanBuildings).toHaveLength(0);
+
+    const { rows: pubAfter } = await pool.query(
+      `SELECT id, name FROM buildings WHERE map_version_id = $1 ORDER BY code`,
+      [published.id],
+    );
+    expect(pubAfter).toEqual(pubBefore);
+
+    const draft = await mapVersionRepository.createDraftInTransaction(
+      RNSIT_SITE,
+      null,
+      published.id,
+      2,
+      published.id,
+    );
+    expect(draft.status).toBe('draft');
+    const { rows: draftBuildings } = await pool.query(
+      `SELECT id FROM buildings WHERE map_version_id = $1`,
+      [draft.id],
+    );
+    expect(draftBuildings.length).toBe(pubBefore.length);
   });
 
   it.skipIf(!canUseDb)('public routing uses published graph only', async () => {
