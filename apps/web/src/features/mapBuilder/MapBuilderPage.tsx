@@ -308,6 +308,9 @@ function MapLibreCanvas({
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
     mapRef.current = map;
+    if (import.meta.env.DEV) {
+      (window as unknown as { __mapBuilderMap?: maplibregl.Map }).__mapBuilderMap = map;
+    }
 
     const onLoad = () => {
       map.addSource('mapbuilder-buildings', { type: 'geojson', data: buildingsGeo });
@@ -434,6 +437,10 @@ function MapLibreCanvas({
       drawRef.current?.stop();
       drawRef.current = null;
       map.off('load', onLoad);
+      if (import.meta.env.DEV) {
+        const w = window as unknown as { __mapBuilderMap?: maplibregl.Map };
+        if (w.__mapBuilderMap === map) delete w.__mapBuilderMap;
+      }
       map.remove();
       mapRef.current = null;
     };
@@ -505,6 +512,7 @@ export function MapBuilderPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const dirtyRef = useRef(false);
+  const reloadGenerationRef = useRef(0);
   const [geometryEdit, setGeometryEdit] = useState<GeometryEditSession | null>(null);
   const [attachFootprintBuildingId, setAttachFootprintBuildingId] = useState<string | null>(null);
   const [unsavedDialog, setUnsavedDialog] = useState<{
@@ -604,10 +612,14 @@ export function MapBuilderPage() {
 
   const reload = useCallback(async () => {
     if (!token) return;
+    const siteId = useSiteStore.getState().activeSiteId;
+    if (!siteId) return;
+    const generation = ++reloadGenerationRef.current;
     setLoading(true);
     setLoadError(null);
     try {
       const snap = await api.mapBuilder.snapshot(token);
+      if (generation !== reloadGenerationRef.current) return;
       setBuildings(snap.buildings);
       setNodes(snap.nodes);
       setEdges(snap.edges);
@@ -616,11 +628,14 @@ export function MapBuilderPage() {
       dirtyRef.current = false;
       setSaveStatus('idle');
       const val = await api.mapBuilder.validateVersion(snap.version.id, token);
+      if (generation !== reloadGenerationRef.current) return;
       setValidation(val);
+      setLoadError(null);
     } catch (err) {
+      if (generation !== reloadGenerationRef.current) return;
       setLoadError(err instanceof ApiError ? err.message : 'Failed to load site map data');
     } finally {
-      setLoading(false);
+      if (generation === reloadGenerationRef.current) setLoading(false);
     }
   }, [token]);
 
@@ -657,7 +672,7 @@ export function MapBuilderPage() {
     setGeometryEdit(null);
     setAttachFootprintBuildingId(null);
     void reload();
-  }, [site?.id, reload]);
+  }, [activeSiteId, reload]);
 
   const saveGeometryEdit = useCallback(async () => {
     if (!token || !geometryEdit) return false;
