@@ -66,16 +66,24 @@ import { RecenterOnSite } from '../../components/maps/GpsTracker';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { EmptySiteNotice } from '../../components/EmptySiteNotice';
 import { EditableFootprintLayer } from './EditableFootprintLayer';
-import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 import { MapBuilderNav } from './MapBuilderNav';
-import {
-  cloneGeoRing,
-  ringsEqual,
-  type GeometryEditSession,
-  type UnsavedChoice,
-} from './mapBuilderUtils';
 import { MAP_ENGINE, MAPLIBRE_STYLE_URL } from '../../lib/mapEngine';
 import { ensureMapLibreWorker } from '../../lib/maplibreWorker';
+import {
+  DEFAULT_LAYER_VISIBILITY,
+  MapBuilderLayersPanel,
+  type FeatureSelection,
+  type LayerVisibility,
+} from './MapBuilderLayersPanel';
+import { MapBuilderInspectorPanel, type InspectorSaveConflict } from './MapBuilderInspectorPanel';
+import { MapBuilderIssuesPanel } from './MapBuilderIssuesPanel';
+import { MapBuilderStatusBar, type StatusAutosave } from './MapBuilderStatusBar';
+import { MapBuilderConflictDialog } from './MapBuilderConflictDialog';
+import {
+  computeClientValidationIssues,
+  issueBadgePoints,
+  type IssueBadgePoint,
+} from './mapBuilderClientValidation';
 
 type BuilderTool = 'select' | 'building' | 'walkway' | 'node' | 'entrance' | 'poi' | 'area';
 
@@ -183,6 +191,15 @@ function toPolygonCoords(ring: GeoPoint[]): number[][][] {
   return [ring.map((p) => [p.longitude, p.latitude])];
 }
 
+function emptyIssueBadges(): GeoJSON.FeatureCollection {
+  return { type: 'FeatureCollection', features: [] };
+}
+
+type GeometryCommit =
+  | { kind: 'building'; id: string; footprint: GeoPoint[] }
+  | { kind: 'area'; id: string; footprint: GeoPoint[] }
+  | { kind: 'node'; id: string; latitude: number; longitude: number };
+
 function MapLibreCanvas({
   center,
   buildings,
@@ -191,10 +208,16 @@ function MapLibreCanvas({
   areas,
   tool,
   walkFromId,
+  selection,
+  layerVisibility,
+  issueBadges = [],
+  conflictFeatureId = null,
+  geometryEditLocked = false,
   onSelect,
   onNodeWalkwayClick,
   onPointDrawn,
   onPolygonDrawn,
+  onGeometryCommit,
 }: {
   center: [number, number];
   buildings: Building[];
@@ -203,55 +226,109 @@ function MapLibreCanvas({
   areas: SiteArea[];
   tool: BuilderTool;
   walkFromId: string | null;
+  selection: Selection;
+  layerVisibility: LayerVisibility;
+  issueBadges?: IssueBadgePoint[];
+  conflictFeatureId?: string | null;
+  geometryEditLocked?: boolean;
   onSelect: (s: Selection) => void;
   onNodeWalkwayClick: (nodeId: string) => void;
   onPointDrawn: (lat: number, lon: number) => void;
   onPolygonDrawn: (ring: GeoPoint[]) => void;
+  onGeometryCommit: (commit: GeometryCommit) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const drawRef = useRef<TerraDraw | null>(null);
   const toolRef = useRef<BuilderTool>('select');
+  const editFeatureIdsRef = useRef<Array<string | number>>([]);
   const onPolygonDrawnRef = useRef(onPolygonDrawn);
   const onPointDrawnRef = useRef(onPointDrawn);
   const onSelectRef = useRef(onSelect);
   const onNodeWalkwayClickRef = useRef(onNodeWalkwayClick);
+  const onGeometryCommitRef = useRef(onGeometryCommit);
+  const buildingsRef = useRef(buildings);
+  const nodesRef = useRef(nodes);
+  const areasRef = useRef(areas);
+  const geometryEditLockedRef = useRef(geometryEditLocked);
 
   useEffect(() => {
     toolRef.current = tool;
   }, [tool]);
   useEffect(() => {
+    buildingsRef.current = buildings;
+    nodesRef.current = nodes;
+    areasRef.current = areas;
+  }, [areas, buildings, nodes]);
+  useEffect(() => {
+    geometryEditLockedRef.current = geometryEditLocked;
+  }, [geometryEditLocked]);
+  useEffect(() => {
     onPolygonDrawnRef.current = onPolygonDrawn;
     onPointDrawnRef.current = onPointDrawn;
     onSelectRef.current = onSelect;
     onNodeWalkwayClickRef.current = onNodeWalkwayClick;
-  }, [onNodeWalkwayClick, onPointDrawn, onPolygonDrawn, onSelect]);
+    onGeometryCommitRef.current = onGeometryCommit;
+  }, [onGeometryCommit, onNodeWalkwayClick, onPointDrawn, onPolygonDrawn, onSelect]);
 
   const buildingsGeo = useMemo<GeoJSON.FeatureCollection>(() => {
     const features: GeoJSON.Feature[] = [];
+    const editingId =
+      selection?.kind === 'building' && tool === 'select' ? selection.id : null;
     for (const b of buildings) {
+      // Hide static footprint while Terra Draw owns the editable overlay
+      if (editingId && b.id === editingId && b.footprint && b.footprint.length >= 3) continue;
       if (b.footprint && b.footprint.length >= 3) {
         features.push({
           type: 'Feature',
-          properties: { id: b.id, code: b.code, name: b.name },
+          properties: {
+            id: b.id,
+            code: b.code,
+            name: b.name,
+            point: 0,
+            conflict: conflictFeatureId === b.id ? 1 : 0,
+          },
           geometry: {
             type: 'Polygon',
             coordinates: toPolygonCoords(b.footprint),
           },
         });
+      } else {
+        features.push({
+          type: 'Feature',
+          properties: {
+            id: b.id,
+            code: b.code,
+            name: b.name,
+            point: 1,
+            conflict: conflictFeatureId === b.id ? 1 : 0,
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [b.longitude, b.latitude],
+          },
+        });
       }
     }
     return { type: 'FeatureCollection', features };
-  }, [buildings]);
+  }, [buildings, conflictFeatureId, selection, tool]);
 
   const nodesGeo = useMemo<GeoJSON.FeatureCollection>(() => {
-    const features: GeoJSON.Feature[] = nodes.map((n) => ({
-      type: 'Feature',
-      properties: { id: n.id, name: n.name, kind: n.kind },
-      geometry: { type: 'Point', coordinates: [n.longitude, n.latitude] },
-    }));
+    const editingId = selection?.kind === 'node' && tool === 'select' ? selection.id : null;
+    const features: GeoJSON.Feature[] = nodes
+      .filter((n) => !(editingId && n.id === editingId))
+      .map((n) => ({
+        type: 'Feature',
+        properties: {
+          id: n.id,
+          name: n.name,
+          kind: n.kind,
+          conflict: conflictFeatureId === n.id ? 1 : 0,
+        },
+        geometry: { type: 'Point', coordinates: [n.longitude, n.latitude] },
+      }));
     return { type: 'FeatureCollection', features };
-  }, [nodes]);
+  }, [conflictFeatureId, nodes, selection, tool]);
 
   const edgesGeo = useMemo<GeoJSON.FeatureCollection>(() => {
     const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -262,7 +339,12 @@ function MapLibreCanvas({
       if (!from || !to) continue;
       features.push({
         type: 'Feature',
-        properties: { id: e.id, blocked: e.blocked ? 1 : 0, kind: e.kind },
+        properties: {
+          id: e.id,
+          blocked: e.blocked ? 1 : 0,
+          kind: e.kind,
+          conflict: conflictFeatureId === e.id ? 1 : 0,
+        },
         geometry: {
           type: 'LineString',
           coordinates: [
@@ -273,21 +355,45 @@ function MapLibreCanvas({
       });
     }
     return { type: 'FeatureCollection', features };
-  }, [edges, nodes]);
+  }, [conflictFeatureId, edges, nodes]);
 
   const areasGeo = useMemo<GeoJSON.FeatureCollection>(() => {
+    const editingId = selection?.kind === 'area' && tool === 'select' ? selection.id : null;
     const features: GeoJSON.Feature[] = areas
       .filter((a) => a.footprint.length >= 3)
+      .filter((a) => !(editingId && a.id === editingId))
       .map((a) => ({
         type: 'Feature',
-        properties: { id: a.id, name: a.name, type: a.type },
+        properties: {
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          conflict: conflictFeatureId === a.id ? 1 : 0,
+        },
         geometry: {
           type: 'Polygon',
           coordinates: toPolygonCoords(a.footprint),
         },
       }));
     return { type: 'FeatureCollection', features };
-  }, [areas]);
+  }, [areas, conflictFeatureId, selection, tool]);
+
+  const issueBadgesGeo = useMemo<GeoJSON.FeatureCollection>(() => {
+    return {
+      type: 'FeatureCollection',
+      features: issueBadges.map((b) => ({
+        type: 'Feature',
+        properties: {
+          id: b.id,
+          resourceId: b.resourceId,
+          resourceType: b.resourceType,
+          level: b.level,
+          code: b.code,
+        },
+        geometry: { type: 'Point', coordinates: [b.longitude, b.latitude] },
+      })),
+    };
+  }, [issueBadges]);
 
   const ringFromFeature = (feature: GeoJSON.Feature): GeoPoint[] | null => {
     if (feature.geometry.type !== 'Polygon') return null;
@@ -317,6 +423,7 @@ function MapLibreCanvas({
       map.addSource('mapbuilder-edges', { type: 'geojson', data: edgesGeo });
       map.addSource('mapbuilder-nodes', { type: 'geojson', data: nodesGeo });
       map.addSource('mapbuilder-areas', { type: 'geojson', data: areasGeo });
+      map.addSource('mapbuilder-issue-badges', { type: 'geojson', data: emptyIssueBadges() });
 
       map.addLayer({
         id: 'mapbuilder-areas-fill',
@@ -328,13 +435,40 @@ function MapLibreCanvas({
         id: 'mapbuilder-buildings-fill',
         type: 'fill',
         source: 'mapbuilder-buildings',
+        filter: ['==', ['get', 'point'], 0],
         paint: { 'fill-color': '#0F6B63', 'fill-opacity': 0.22 },
       });
       map.addLayer({
         id: 'mapbuilder-buildings-line',
         type: 'line',
         source: 'mapbuilder-buildings',
-        paint: { 'line-color': '#0F6B63', 'line-width': 2 },
+        filter: ['==', ['get', 'point'], 0],
+        paint: {
+          'line-color': [
+            'case',
+            ['==', ['get', 'conflict'], 1],
+            '#dc2626',
+            '#0F6B63',
+          ],
+          'line-width': [
+            'case',
+            ['==', ['get', 'conflict'], 1],
+            4,
+            2,
+          ],
+        },
+      });
+      map.addLayer({
+        id: 'mapbuilder-buildings-point',
+        type: 'circle',
+        source: 'mapbuilder-buildings',
+        filter: ['==', ['get', 'point'], 1],
+        paint: {
+          'circle-color': '#0F6B63',
+          'circle-radius': 6,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+        },
       });
       map.addLayer({
         id: 'mapbuilder-edges-line',
@@ -382,8 +516,90 @@ function MapLibreCanvas({
         },
         filter: ['==', ['get', 'id'], '__none__'],
       });
+      // Selection highlight layers (filter keyed on selected feature id)
+      map.addLayer({
+        id: 'mapbuilder-sel-building-fill',
+        type: 'fill',
+        source: 'mapbuilder-buildings',
+        filter: ['==', ['get', 'id'], '__none__'],
+        paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.35 },
+      });
+      map.addLayer({
+        id: 'mapbuilder-sel-building-line',
+        type: 'line',
+        source: 'mapbuilder-buildings',
+        filter: ['==', ['get', 'id'], '__none__'],
+        paint: { 'line-color': '#f59e0b', 'line-width': 4 },
+      });
+      map.addLayer({
+        id: 'mapbuilder-sel-building-point',
+        type: 'circle',
+        source: 'mapbuilder-buildings',
+        filter: ['==', ['get', 'id'], '__none__'],
+        paint: {
+          'circle-color': '#f59e0b',
+          'circle-radius': 9,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      });
+      map.addLayer({
+        id: 'mapbuilder-sel-edge',
+        type: 'line',
+        source: 'mapbuilder-edges',
+        filter: ['==', ['get', 'id'], '__none__'],
+        paint: { 'line-color': '#f59e0b', 'line-width': 6 },
+      });
+      map.addLayer({
+        id: 'mapbuilder-sel-node',
+        type: 'circle',
+        source: 'mapbuilder-nodes',
+        filter: ['==', ['get', 'id'], '__none__'],
+        paint: {
+          'circle-color': '#f59e0b',
+          'circle-radius': 8,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      });
+      map.addLayer({
+        id: 'mapbuilder-sel-area-fill',
+        type: 'fill',
+        source: 'mapbuilder-areas',
+        filter: ['==', ['get', 'id'], '__none__'],
+        paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.3 },
+      });
+      map.addLayer({
+        id: 'mapbuilder-sel-area-line',
+        type: 'line',
+        source: 'mapbuilder-areas',
+        filter: ['==', ['get', 'id'], '__none__'],
+        paint: { 'line-color': '#f59e0b', 'line-width': 3 },
+      });
+      map.addLayer({
+        id: 'mapbuilder-issue-badges',
+        type: 'circle',
+        source: 'mapbuilder-issue-badges',
+        paint: {
+          'circle-radius': 7,
+          'circle-color': [
+            'match',
+            ['get', 'level'],
+            'error',
+            '#dc2626',
+            '#f59e0b',
+          ],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-opacity': 0.95,
+        },
+      });
 
       map.on('click', 'mapbuilder-buildings-fill', (e: maplibregl.MapLayerMouseEvent) => {
+        const id = e.features?.[0]?.properties?.id;
+        if (typeof id === 'string') onSelectRef.current({ kind: 'building', id });
+      });
+      map.on('click', 'mapbuilder-buildings-point', (e: maplibregl.MapLayerMouseEvent) => {
         const id = e.features?.[0]?.properties?.id;
         if (typeof id === 'string') onSelectRef.current({ kind: 'building', id });
       });
@@ -408,7 +624,25 @@ function MapLibreCanvas({
       const draw = new TerraDraw({
         adapter: new TerraDrawMapLibreGLAdapter({ map }),
         modes: [
-          new TerraDrawSelectMode(),
+          new TerraDrawSelectMode({
+            flags: {
+              polygon: {
+                feature: {
+                  draggable: true,
+                  coordinates: {
+                    midpoints: true,
+                    draggable: true,
+                    deletable: true,
+                  },
+                },
+              },
+              point: {
+                feature: {
+                  draggable: true,
+                },
+              },
+            },
+          }),
           new TerraDrawPolygonMode({ editable: false }),
           new TerraDrawPointMode({ editable: false }),
         ],
@@ -416,18 +650,54 @@ function MapLibreCanvas({
       drawRef.current = draw;
       draw.start();
       draw.setMode('select');
-      const onFinish = (id: string | number, context: { mode: string }) => {
+      const onFinish = (id: string | number, context: { mode: string; action?: string }) => {
         const feature = draw.getSnapshotFeature(id);
         if (!feature) return;
-        if (context.mode === 'polygon') {
+        const props = (feature.properties ?? {}) as Record<string, unknown>;
+        const campusarKind = props.campusarKind;
+        const campusarId = props.campusarId;
+        const isCampusFeature =
+          typeof campusarKind === 'string' && typeof campusarId === 'string';
+
+        if (!isCampusFeature && context.mode === 'polygon') {
           const ring = ringFromFeature(feature as GeoJSON.Feature);
           if (ring && ring.length >= 3) onPolygonDrawnRef.current(ring);
-        } else if (context.mode === 'point' && feature.geometry.type === 'Point') {
+          draw.removeFeatures([id]);
+          draw.setMode('select');
+          return;
+        }
+        if (!isCampusFeature && context.mode === 'point' && feature.geometry.type === 'Point') {
           const [lon, lat] = feature.geometry.coordinates as [number, number];
           onPointDrawnRef.current(lat, lon);
+          draw.removeFeatures([id]);
+          draw.setMode('select');
+          return;
         }
-        draw.removeFeatures([id]);
-        draw.setMode('select');
+
+        if (!isCampusFeature) return;
+        if (geometryEditLockedRef.current) return;
+
+        if (
+          (campusarKind === 'building' || campusarKind === 'area') &&
+          feature.geometry.type === 'Polygon'
+        ) {
+          const ring = ringFromFeature(feature as GeoJSON.Feature);
+          if (ring && ring.length >= 3) {
+            onGeometryCommitRef.current({
+              kind: campusarKind,
+              id: campusarId,
+              footprint: ring,
+            });
+          }
+        } else if (campusarKind === 'node' && feature.geometry.type === 'Point') {
+          const [lon, lat] = feature.geometry.coordinates as [number, number];
+          onGeometryCommitRef.current({
+            kind: 'node',
+            id: campusarId,
+            latitude: lat,
+            longitude: lon,
+          });
+        }
       };
       draw.on('finish', onFinish);
     };
@@ -454,14 +724,212 @@ function MapLibreCanvas({
     else draw.setMode('select');
   }, [tool]);
 
+  // Load selected feature into Terra Draw for direct vertex/point manipulation
+  useEffect(() => {
+    const draw = drawRef.current;
+    if (!draw) return;
+
+    const clearEdit = () => {
+      if (editFeatureIdsRef.current.length) {
+        try {
+          draw.removeFeatures(editFeatureIdsRef.current);
+        } catch {
+          /* feature may already be gone */
+        }
+        editFeatureIdsRef.current = [];
+      }
+    };
+
+    clearEdit();
+    if (tool !== 'select' || !selection || !('id' in selection)) return;
+    if (geometryEditLocked) return;
+
+    try {
+      if (selection.kind === 'building') {
+        const b = buildingsRef.current.find((x) => x.id === selection.id);
+        if (!b?.footprint || b.footprint.length < 3) return;
+        const results = draw.addFeatures([
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Polygon',
+              coordinates: toPolygonCoords(b.footprint),
+            },
+            properties: {
+              mode: 'polygon',
+              campusarKind: 'building',
+              campusarId: b.id,
+            },
+          },
+        ]);
+        const ids = results
+          .map((r) => r.id)
+          .filter((id): id is string | number => id !== undefined);
+        editFeatureIdsRef.current = ids;
+        if (ids[0] !== undefined) draw.selectFeature(ids[0]);
+      } else if (selection.kind === 'area') {
+        const a = areasRef.current.find((x) => x.id === selection.id);
+        if (!a || a.footprint.length < 3) return;
+        const results = draw.addFeatures([
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Polygon',
+              coordinates: toPolygonCoords(a.footprint),
+            },
+            properties: {
+              mode: 'polygon',
+              campusarKind: 'area',
+              campusarId: a.id,
+            },
+          },
+        ]);
+        const ids = results
+          .map((r) => r.id)
+          .filter((id): id is string | number => id !== undefined);
+        editFeatureIdsRef.current = ids;
+        if (ids[0] !== undefined) draw.selectFeature(ids[0]);
+      } else if (selection.kind === 'node') {
+        const n = nodesRef.current.find((x) => x.id === selection.id);
+        if (!n) return;
+        const results = draw.addFeatures([
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [n.longitude, n.latitude],
+            },
+            properties: {
+              mode: 'point',
+              campusarKind: 'node',
+              campusarId: n.id,
+            },
+          },
+        ]);
+        const ids = results
+          .map((r) => r.id)
+          .filter((id): id is string | number => id !== undefined);
+        editFeatureIdsRef.current = ids;
+        if (ids[0] !== undefined) draw.selectFeature(ids[0]);
+      }
+    } catch {
+      /* draw not ready */
+    }
+
+    return () => {
+      clearEdit();
+    };
+  }, [geometryEditLocked, selection, tool]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     map.setFilter(
       'mapbuilder-walkway-start',
-      walkFromId ? (['==', ['get', 'id'], walkFromId] as maplibregl.FilterSpecification) : (['==', ['get', 'id'], '__none__'] as maplibregl.FilterSpecification),
+      walkFromId
+        ? (['==', ['get', 'id'], walkFromId] as maplibregl.FilterSpecification)
+        : (['==', ['get', 'id'], '__none__'] as maplibregl.FilterSpecification),
     );
   }, [walkFromId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const none = ['==', ['get', 'id'], '__none__'] as maplibregl.FilterSpecification;
+    const idFilter = (id: string) => ['==', ['get', 'id'], id] as maplibregl.FilterSpecification;
+    const kind = selection && 'id' in selection ? selection.kind : null;
+    const id = selection && 'id' in selection ? selection.id : null;
+
+    map.setFilter(
+      'mapbuilder-sel-building-fill',
+      kind === 'building' && id ? idFilter(id) : none,
+    );
+    map.setFilter(
+      'mapbuilder-sel-building-line',
+      kind === 'building' && id ? idFilter(id) : none,
+    );
+    map.setFilter(
+      'mapbuilder-sel-building-point',
+      kind === 'building' && id ? idFilter(id) : none,
+    );
+    map.setFilter('mapbuilder-sel-node', kind === 'node' && id ? idFilter(id) : none);
+    map.setFilter('mapbuilder-sel-edge', kind === 'edge' && id ? idFilter(id) : none);
+    map.setFilter('mapbuilder-sel-area-fill', kind === 'area' && id ? idFilter(id) : none);
+    map.setFilter('mapbuilder-sel-area-line', kind === 'area' && id ? idFilter(id) : none);
+  }, [selection]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const setVis = (layerId: string, visible: boolean) => {
+      if (!map.getLayer(layerId)) return;
+      map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+    };
+    setVis('mapbuilder-buildings-fill', layerVisibility.buildings);
+    setVis('mapbuilder-buildings-line', layerVisibility.buildings);
+    setVis('mapbuilder-buildings-point', layerVisibility.buildings);
+    setVis('mapbuilder-sel-building-fill', layerVisibility.buildings);
+    setVis('mapbuilder-sel-building-line', layerVisibility.buildings);
+    setVis('mapbuilder-sel-building-point', layerVisibility.buildings);
+    setVis('mapbuilder-nodes-circle', layerVisibility.nodes);
+    setVis('mapbuilder-walkway-start', layerVisibility.nodes);
+    setVis('mapbuilder-sel-node', layerVisibility.nodes);
+    setVis('mapbuilder-edges-line', layerVisibility.edges);
+    setVis('mapbuilder-sel-edge', layerVisibility.edges);
+    setVis('mapbuilder-areas-fill', layerVisibility.areas);
+    setVis('mapbuilder-sel-area-fill', layerVisibility.areas);
+    setVis('mapbuilder-sel-area-line', layerVisibility.areas);
+  }, [layerVisibility]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (!selection || !('id' in selection)) return;
+
+    const pad = 56;
+    if (selection.kind === 'node') {
+      const n = nodes.find((x) => x.id === selection.id);
+      if (!n) return;
+      map.flyTo({ center: [n.longitude, n.latitude], zoom: Math.max(map.getZoom(), 18), duration: 500 });
+      return;
+    }
+    if (selection.kind === 'building') {
+      const b = buildings.find((x) => x.id === selection.id);
+      if (!b) return;
+      if (b.footprint && b.footprint.length >= 3) {
+        const bounds = new maplibregl.LngLatBounds();
+        for (const p of b.footprint) bounds.extend([p.longitude, p.latitude]);
+        map.fitBounds(bounds, { padding: pad, maxZoom: 19, duration: 500 });
+      } else {
+        map.flyTo({
+          center: [b.longitude, b.latitude],
+          zoom: Math.max(map.getZoom(), 18),
+          duration: 500,
+        });
+      }
+      return;
+    }
+    if (selection.kind === 'edge') {
+      const e = edges.find((x) => x.id === selection.id);
+      if (!e) return;
+      const from = nodes.find((n) => n.id === e.fromNodeId);
+      const to = nodes.find((n) => n.id === e.toNodeId);
+      if (!from || !to) return;
+      const bounds = new maplibregl.LngLatBounds(
+        [from.longitude, from.latitude],
+        [to.longitude, to.latitude],
+      );
+      map.fitBounds(bounds, { padding: pad, maxZoom: 19, duration: 500 });
+      return;
+    }
+    if (selection.kind === 'area') {
+      const a = areas.find((x) => x.id === selection.id);
+      if (!a?.footprint?.length) return;
+      const bounds = new maplibregl.LngLatBounds();
+      for (const p of a.footprint) bounds.extend([p.longitude, p.latitude]);
+      map.fitBounds(bounds, { padding: pad, maxZoom: 19, duration: 500 });
+    }
+  }, [selection, buildings, nodes, edges, areas]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -474,7 +942,8 @@ function MapLibreCanvas({
     setSource('mapbuilder-edges', edgesGeo);
     setSource('mapbuilder-nodes', nodesGeo);
     setSource('mapbuilder-areas', areasGeo);
-  }, [areasGeo, buildingsGeo, edgesGeo, nodesGeo]);
+    setSource('mapbuilder-issue-badges', issueBadgesGeo);
+  }, [areasGeo, buildingsGeo, edgesGeo, nodesGeo, issueBadgesGeo]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }
@@ -497,6 +966,13 @@ export function MapBuilderPage() {
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [areas, setAreas] = useState<SiteArea[]>([]);
   const [selection, setSelection] = useState<Selection>(null);
+  const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>(DEFAULT_LAYER_VISIBILITY);
+  const [rightPanelMode, setRightPanelMode] = useState<'inspector' | 'issues'>('inspector');
+  const [clientIssues, setClientIssues] = useState<MapValidationIssue[]>([]);
+  const [validationPending, setValidationPending] = useState(false);
+  const [inspectorAutosave, setInspectorAutosave] = useState<StatusAutosave>('idle');
+  const validationTimerRef = useRef<number | null>(null);
+  const skipNextValidationDebounceRef = useRef(true);
   const [walkFrom, setWalkFrom] = useState<string | null>(null);
   const [entranceBuildingId, setEntranceBuildingId] = useState<string>('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -513,51 +989,22 @@ export function MapBuilderPage() {
   const [loading, setLoading] = useState(true);
   const dirtyRef = useRef(false);
   const reloadGenerationRef = useRef(0);
-  const [geometryEdit, setGeometryEdit] = useState<GeometryEditSession | null>(null);
+  const geometrySaveTimerRef = useRef<number | null>(null);
   const [attachFootprintBuildingId, setAttachFootprintBuildingId] = useState<string | null>(null);
-  const [unsavedDialog, setUnsavedDialog] = useState<{
-    title: string;
-    message: string;
-    onResolve: (choice: UnsavedChoice) => void;
-  } | null>(null);
-
-  const hasUnsavedGeometry =
-    geometryEdit !== null && !ringsEqual(geometryEdit.originalFootprint, geometryEdit.draftFootprint);
-  const hasUnsaved = dirtyRef.current || hasUnsavedGeometry;
-
-  const requestUnsavedChoice = useCallback(
-    (title: string, message: string): Promise<UnsavedChoice> =>
-      new Promise((resolve) => {
-        if (!hasUnsaved) {
-          resolve('discard');
-          return;
-        }
-        setUnsavedDialog({
-          title,
-          message,
-          onResolve: (choice) => {
-            setUnsavedDialog(null);
-            resolve(choice);
-          },
-        });
-      }),
-    [hasUnsaved],
-  );
+  const [conflict, setConflict] = useState<InspectorSaveConflict | null>(null);
+  const [conflictBusy, setConflictBusy] = useState(false);
 
   const center = useMemo(() => siteMapCenter(site), [site]);
 
   const fitPoints = useMemo((): [number, number][] => {
     const pts: [number, number][] = [];
     for (const b of buildings) {
-      if (geometryEdit?.buildingId === b.id) {
-        pts.push(...ringToLatLngsLocal(geometryEdit.draftFootprint));
-      } else if (b.footprint?.length) pts.push(...ringToLatLngsLocal(b.footprint));
+      if (b.footprint?.length) pts.push(...ringToLatLngsLocal(b.footprint));
       else pts.push([b.latitude, b.longitude]);
     }
     for (const n of nodes) pts.push([n.latitude, n.longitude]);
     for (const a of areas) pts.push(...ringToLatLngsLocal(a.footprint));
     return pts;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fit when site data loads, not on every geometry drag
   }, [buildings, nodes, areas]);
 
   const markDirty = useCallback(() => {
@@ -567,15 +1014,74 @@ export function MapBuilderPage() {
 
   const refreshValidation = useCallback(async () => {
     if (!token || !draftVersion?.id) return;
+    setValidateBusy(true);
     try {
       const val = await api.mapBuilder.validateVersion(draftVersion.id, token);
       setValidation(val);
+      setValidationPending(false);
     } catch {
       /* keep prior validation snapshot */
+    } finally {
+      setValidateBusy(false);
     }
   }, [token, draftVersion?.id]);
 
-  const handleValidationIssue = useCallback((issue: MapValidationIssue) => {
+  const scheduleServerValidation = useCallback(() => {
+    if (validationTimerRef.current) window.clearTimeout(validationTimerRef.current);
+    setValidationPending(true);
+    validationTimerRef.current = window.setTimeout(() => {
+      void refreshValidation();
+    }, 1500);
+  }, [refreshValidation]);
+
+  useEffect(() => {
+    setClientIssues(computeClientValidationIssues(buildings, nodes, edges));
+  }, [buildings, nodes, edges]);
+
+  useEffect(() => {
+    if (loading || !draftVersion?.id) return;
+    if (skipNextValidationDebounceRef.current) {
+      skipNextValidationDebounceRef.current = false;
+      return;
+    }
+    scheduleServerValidation();
+    return () => {
+      if (validationTimerRef.current) window.clearTimeout(validationTimerRef.current);
+    };
+  }, [buildings, nodes, edges, areas, draftVersion?.id, loading, scheduleServerValidation]);
+
+  const mapIssueBadges = useMemo(() => {
+    const source = validationPending
+      ? clientIssues
+      : (validation?.issues ?? clientIssues);
+    return issueBadgePoints(source, buildings, nodes, edges);
+  }, [validationPending, clientIssues, validation, buildings, nodes, edges]);
+
+  const displayIssueCounts = useMemo(() => {
+    if (!validationPending && validation) {
+      return {
+        errors: validation.summary.errors,
+        warnings: validation.summary.warnings,
+        blockers: validation.issues.filter((i) => i.level === 'error'),
+      };
+    }
+    const key = (i: MapValidationIssue) =>
+      `${i.resourceType ?? ''}:${i.resourceId ?? ''}:${i.code.replace(/^CLIENT_/, '')}`;
+    const map = new Map<string, MapValidationIssue>();
+    for (const i of validation?.issues ?? []) map.set(key(i), i);
+    for (const i of clientIssues) {
+      const k = key(i);
+      if (!map.has(k)) map.set(k, i);
+    }
+    const list = [...map.values()];
+    return {
+      errors: list.filter((i) => i.level === 'error').length,
+      warnings: list.filter((i) => i.level === 'warning').length,
+      blockers: list.filter((i) => i.level === 'error'),
+    };
+  }, [validationPending, clientIssues, validation]);
+
+  const handleValidationIssue = useCallback((issue: MapValidationIssue, opts?: { openInspector?: boolean }) => {
     if (!issue.resourceId || !issue.resourceType) return;
     switch (issue.resourceType) {
       case 'building':
@@ -594,21 +1100,15 @@ export function MapBuilderPage() {
       default:
         break;
     }
+    if (opts?.openInspector) setRightPanelMode('inspector');
   }, []);
 
   const handleValidateDraft = useCallback(async () => {
     if (!token || !draftVersion) return;
-    setValidateBusy(true);
     setPublishSuccess(null);
-    try {
-      const val = await api.mapBuilder.validateVersion(draftVersion.id, token);
-      setValidation(val);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Validation failed');
-    } finally {
-      setValidateBusy(false);
-    }
-  }, [token, draftVersion]);
+    setValidationPending(true);
+    await refreshValidation();
+  }, [token, draftVersion, refreshValidation]);
 
   const reload = useCallback(async () => {
     if (!token) return;
@@ -627,9 +1127,11 @@ export function MapBuilderPage() {
       setDraftVersion(snap.version);
       dirtyRef.current = false;
       setSaveStatus('idle');
+      skipNextValidationDebounceRef.current = true;
       const val = await api.mapBuilder.validateVersion(snap.version.id, token);
       if (generation !== reloadGenerationRef.current) return;
       setValidation(val);
+      setValidationPending(false);
       setLoadError(null);
     } catch (err) {
       if (generation !== reloadGenerationRef.current) return;
@@ -638,6 +1140,92 @@ export function MapBuilderPage() {
       if (generation === reloadGenerationRef.current) setLoading(false);
     }
   }, [token]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const w = window as unknown as {
+      __mapBuilderDebug?: {
+        simulateDanglingEdge: () => string | null;
+        restoreSimulatedNode: () => void;
+        forceCleanValidation: () => void;
+        getIssueDebug: () => {
+          clientCodes: string[];
+          serverCodes: string[];
+          pending: boolean;
+          badgeCount: number;
+          errorCount: number;
+          warningCount: number;
+          rightPanelMode: string;
+          autosave: string;
+        };
+      };
+    };
+    let removed: GraphNode | null = null;
+    w.__mapBuilderDebug = {
+      simulateDanglingEdge: () => {
+        const connected = edges.find((e) => nodes.some((n) => n.id === e.fromNodeId || n.id === e.toNodeId));
+        if (!connected) return null;
+        const dropId = nodes.some((n) => n.id === connected.fromNodeId)
+          ? connected.fromNodeId
+          : connected.toNodeId;
+        const victim = nodes.find((n) => n.id === dropId);
+        if (!victim) return null;
+        removed = victim;
+        setNodes((prev) => prev.filter((n) => n.id !== dropId));
+        return dropId;
+      },
+      restoreSimulatedNode: () => {
+        if (!removed) return;
+        const node = removed;
+        removed = null;
+        setNodes((prev) => (prev.some((n) => n.id === node.id) ? prev : [...prev, node]));
+      },
+      forceCleanValidation: () => {
+        if (!draftVersion) return;
+        if (validationTimerRef.current) window.clearTimeout(validationTimerRef.current);
+        setValidationPending(false);
+        setValidation({
+          version: {
+            id: draftVersion.id,
+            versionNumber: draftVersion.versionNumber,
+            status: draftVersion.status,
+            label: draftVersion.label,
+          },
+          valid: true,
+          summary: { errors: 0, warnings: 0 },
+          issues: [],
+        });
+      },
+      getIssueDebug: () => ({
+        clientCodes: clientIssues.map((i) => i.code),
+        serverCodes: (validation?.issues ?? []).map((i) => i.code),
+        pending: validationPending,
+        badgeCount: mapIssueBadges.length,
+        errorCount: displayIssueCounts.errors,
+        warningCount: displayIssueCounts.warnings,
+        rightPanelMode,
+        autosave: inspectorAutosave,
+        conflict: conflict
+          ? { kind: conflict.kind, id: conflict.id, message: conflict.message }
+          : null,
+      }),
+    };
+    return () => {
+      delete w.__mapBuilderDebug;
+    };
+  }, [
+    edges,
+    nodes,
+    clientIssues,
+    validation,
+    validationPending,
+    mapIssueBadges,
+    displayIssueCounts,
+    rightPanelMode,
+    inspectorAutosave,
+    draftVersion,
+    conflict,
+  ]);
 
   const handlePublishDraft = useCallback(async () => {
     if (!token || !draftVersion) return;
@@ -669,86 +1257,331 @@ export function MapBuilderPage() {
   useEffect(() => {
     setSelection(null);
     setWalkFrom(null);
-    setGeometryEdit(null);
+    setConflict(null);
     setAttachFootprintBuildingId(null);
     void reload();
   }, [activeSiteId, reload]);
 
-  const saveGeometryEdit = useCallback(async () => {
-    if (!token || !geometryEdit) return false;
-    setSaveStatus('saving');
-    setError(null);
-    try {
-      const updated = await api.mapBuilder.updateBuilding(
-        geometryEdit.buildingId,
-        {
-          footprint: geometryEdit.draftFootprint,
-          expectedUpdatedAt: geometryEdit.expectedUpdatedAt,
-        },
-        token,
-      );
-      setBuildings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
-      setGeometryEdit(null);
-      dirtyRef.current = false;
-      setSaveStatus('saved');
-      void refreshValidation();
-      return true;
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save footprint');
-      setSaveStatus('error');
-      return false;
-    }
-  }, [geometryEdit, token, refreshValidation]);
+  const applyConflictLeaveDefault = useCallback(
+    async (leaving: InspectorSaveConflict) => {
+      // Unresolved conflict when navigating away → treat as Reload remote
+      if (!token) {
+        setConflict(null);
+        return;
+      }
+      try {
+        const snap = await api.mapBuilder.snapshot(token);
+        if (leaving.kind === 'building') {
+          const remote = snap.buildings.find((b) => b.id === leaving.id);
+          if (remote) setBuildings((prev) => prev.map((b) => (b.id === remote.id ? remote : b)));
+        } else if (leaving.kind === 'node') {
+          const remote = snap.nodes.find((n) => n.id === leaving.id);
+          if (remote) setNodes((prev) => prev.map((n) => (n.id === remote.id ? remote : n)));
+        } else if (leaving.kind === 'edge') {
+          const remote = snap.edges.find((e) => e.id === leaving.id);
+          if (remote) setEdges((prev) => prev.map((e) => (e.id === remote.id ? remote : e)));
+        } else if (leaving.kind === 'area') {
+          const remote = snap.areas.find((a) => a.id === leaving.id);
+          if (remote) setAreas((prev) => prev.map((a) => (a.id === remote.id ? remote : a)));
+        }
+      } catch {
+        /* keep local until next reload */
+      }
+      setConflict(null);
+    },
+    [token],
+  );
 
-  const cancelGeometryEdit = useCallback(() => {
-    setGeometryEdit(null);
-    if (!dirtyRef.current) setSaveStatus('idle');
-  }, []);
-
-  const handleSiteChange = async (siteId: string) => {
-    const choice = await requestUnsavedChoice(
-      'Unsaved map changes',
-      'You have unsaved geometry edits. Save, discard, or stay on this site.',
-    );
-    if (choice === 'stay') return;
-    if (choice === 'save') {
-      const ok = await saveGeometryEdit();
-      if (!ok) return;
-    } else {
-      cancelGeometryEdit();
-      dirtyRef.current = false;
-    }
+  const handleSiteChange = (siteId: string) => {
+    if (conflict) void applyConflictLeaveDefault(conflict);
     setActiveSiteId(siteId);
   };
 
-  const selectResource = async (next: Selection) => {
-    if (hasUnsavedGeometry) {
-      const choice = await requestUnsavedChoice(
-        'Unsaved geometry',
-        'Save footprint changes before selecting another feature?',
-      );
-      if (choice === 'stay') return;
-      if (choice === 'save') {
-        const ok = await saveGeometryEdit();
-        if (!ok) return;
-      } else {
-        cancelGeometryEdit();
-      }
+  const selectResource = (next: Selection) => {
+    if (
+      conflict &&
+      next &&
+      'id' in next &&
+      (next.kind !== conflict.kind || next.id !== conflict.id)
+    ) {
+      void applyConflictLeaveDefault(conflict);
+    } else if (conflict && next === null) {
+      void applyConflictLeaveDefault(conflict);
     }
     setSelection(next);
   };
 
-  const startGeometryEdit = (building: Building) => {
-    if (!building.footprint?.length) return;
-    setGeometryEdit({
-      buildingId: building.id,
-      originalFootprint: cloneGeoRing(building.footprint),
-      draftFootprint: cloneGeoRing(building.footprint),
-      expectedUpdatedAt: building.updatedAt,
-    });
-    setSelection({ kind: 'building', id: building.id });
-    markDirty();
-  };
+  const scheduleGeometrySave = useCallback(
+    (commit: GeometryCommit) => {
+      if (conflict) return;
+      if (geometrySaveTimerRef.current) window.clearTimeout(geometrySaveTimerRef.current);
+      setSaveStatus('unsaved');
+      setInspectorAutosave('pending');
+      geometrySaveTimerRef.current = window.setTimeout(() => {
+        void (async () => {
+          if (!token) return;
+          setSaveStatus('saving');
+          setInspectorAutosave('saving');
+          try {
+            if (commit.kind === 'building') {
+              const building = buildings.find((b) => b.id === commit.id);
+              const updated = await api.mapBuilder.updateBuilding(
+                commit.id,
+                {
+                  footprint: commit.footprint,
+                  expectedUpdatedAt: building?.updatedAt,
+                },
+                token,
+              );
+              setBuildings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+            } else if (commit.kind === 'area') {
+              const updated = await api.mapBuilder.updateArea(
+                commit.id,
+                { footprint: commit.footprint },
+                token,
+              );
+              setAreas((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+            } else {
+              const updated = await api.mapBuilder.updateNode(
+                commit.id,
+                { latitude: commit.latitude, longitude: commit.longitude },
+                token,
+              );
+              setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+            }
+            setSaveStatus('saved');
+            setInspectorAutosave('saved');
+            dirtyRef.current = false;
+          } catch (err) {
+            setSaveStatus('error');
+            setInspectorAutosave('error');
+            if (err instanceof ApiError && err.status === 409) {
+              const patch =
+                commit.kind === 'building'
+                  ? { footprint: commit.footprint }
+                  : commit.kind === 'area'
+                    ? { footprint: commit.footprint }
+                    : { latitude: commit.latitude, longitude: commit.longitude };
+              setConflict({
+                kind: commit.kind,
+                id: commit.id,
+                localPatch: patch,
+                message: err.message,
+              });
+              setSelection({ kind: commit.kind, id: commit.id });
+              setRightPanelMode('inspector');
+              return;
+            }
+            setError(err instanceof ApiError ? err.message : 'Could not save geometry');
+          }
+        })();
+      }, 800);
+    },
+    [buildings, conflict, token],
+  );
+
+  const handleConflictReloadRemote = useCallback(async () => {
+    if (!token || !conflict) return;
+    setConflictBusy(true);
+    try {
+      const snap = await api.mapBuilder.snapshot(token);
+      if (conflict.kind === 'building') {
+        const remote = snap.buildings.find((b) => b.id === conflict.id);
+        if (remote) setBuildings((prev) => prev.map((b) => (b.id === remote.id ? remote : b)));
+      } else if (conflict.kind === 'node') {
+        const remote = snap.nodes.find((n) => n.id === conflict.id);
+        if (remote) setNodes((prev) => prev.map((n) => (n.id === remote.id ? remote : n)));
+      } else if (conflict.kind === 'edge') {
+        const remote = snap.edges.find((e) => e.id === conflict.id);
+        if (remote) setEdges((prev) => prev.map((e) => (e.id === remote.id ? remote : e)));
+      } else if (conflict.kind === 'area') {
+        const remote = snap.areas.find((a) => a.id === conflict.id);
+        if (remote) setAreas((prev) => prev.map((a) => (a.id === remote.id ? remote : a)));
+      }
+      setConflict(null);
+      setSaveStatus('saved');
+      setInspectorAutosave('saved');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not reload feature');
+    } finally {
+      setConflictBusy(false);
+    }
+  }, [conflict, token]);
+
+  const handleConflictRetryLocal = useCallback(async () => {
+    if (!token || !conflict) return;
+    setConflictBusy(true);
+    try {
+      const snap = await api.mapBuilder.snapshot(token);
+      const patch = { ...conflict.localPatch };
+      if (conflict.kind === 'building') {
+        const remote = snap.buildings.find((b) => b.id === conflict.id);
+        if (!remote) throw new Error('Building no longer exists');
+        patch.expectedUpdatedAt = remote.updatedAt;
+        const updated = await api.mapBuilder.updateBuilding(
+          conflict.id,
+          patch as Partial<Building> & { expectedUpdatedAt?: string },
+          token,
+        );
+        setBuildings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+      } else if (conflict.kind === 'node') {
+        const updated = await api.mapBuilder.updateNode(conflict.id, patch, token);
+        setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+      } else if (conflict.kind === 'edge') {
+        const updated = await api.mapBuilder.updateEdge(
+          conflict.id,
+          patch as Partial<GraphEdge>,
+          token,
+        );
+        setEdges((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+      } else {
+        const updated = await api.mapBuilder.updateArea(
+          conflict.id,
+          patch as Partial<SiteArea>,
+          token,
+        );
+        setAreas((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      }
+      setConflict(null);
+      setSaveStatus('saved');
+      setInspectorAutosave('saved');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setConflict((c) => (c ? { ...c, message: err.message } : c));
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Retry failed');
+      }
+    } finally {
+      setConflictBusy(false);
+    }
+  }, [conflict, token]);
+
+  const handleConflictDuplicate = useCallback(async () => {
+    if (!token || !conflict) return;
+    setConflictBusy(true);
+    try {
+      const snap = await api.mapBuilder.snapshot(token);
+      if (conflict.kind === 'building') {
+        const remote = snap.buildings.find((b) => b.id === conflict.id);
+        if (!remote) throw new Error('Building no longer exists');
+        const name =
+          typeof conflict.localPatch.name === 'string' ? conflict.localPatch.name : remote.name;
+        const code =
+          typeof conflict.localPatch.code === 'string' ? conflict.localPatch.code : remote.code;
+        const footprint = Array.isArray(conflict.localPatch.footprint)
+          ? (conflict.localPatch.footprint as GeoPoint[])
+          : remote.footprint;
+        const created = await api.mapBuilder.createBuilding(
+          {
+            name: `${name} (copy)`,
+            code: `${code}-COPY`,
+            description: remote.description,
+            latitude: remote.latitude,
+            longitude: remote.longitude,
+            floorsCount: remote.floorsCount,
+            footprint: footprint?.length ? footprint : undefined,
+          },
+          token,
+        );
+        setBuildings((prev) => [...prev, created]);
+        // Keep original at remote state
+        setBuildings((prev) => prev.map((b) => (b.id === remote.id ? remote : b)));
+        setSelection({ kind: 'building', id: created.id });
+      } else if (conflict.kind === 'node') {
+        const remote = snap.nodes.find((n) => n.id === conflict.id);
+        if (!remote) throw new Error('Node no longer exists');
+        const created = await api.mapBuilder.createNode(
+          {
+            name:
+              conflict.localPatch.name !== undefined
+                ? (conflict.localPatch.name as string | null)
+                : remote.name,
+            latitude:
+              typeof conflict.localPatch.latitude === 'number'
+                ? conflict.localPatch.latitude
+                : remote.latitude,
+            longitude:
+              typeof conflict.localPatch.longitude === 'number'
+                ? conflict.localPatch.longitude
+                : remote.longitude,
+            floorId: remote.floorId,
+            buildingId:
+              conflict.localPatch.buildingId !== undefined
+                ? (conflict.localPatch.buildingId as string | null)
+                : remote.buildingId,
+            kind:
+              typeof conflict.localPatch.kind === 'string'
+                ? (conflict.localPatch.kind as GraphNode['kind'])
+                : remote.kind,
+          },
+          token,
+        );
+        setNodes((prev) => [...prev, created]);
+        setNodes((prev) => prev.map((n) => (n.id === remote.id ? remote : n)));
+        setSelection({ kind: 'node', id: created.id });
+      } else if (conflict.kind === 'area') {
+        const remote = snap.areas.find((a) => a.id === conflict.id);
+        if (!remote) throw new Error('Area no longer exists');
+        const created = await api.mapBuilder.createArea(
+          {
+            name:
+              typeof conflict.localPatch.name === 'string'
+                ? `${conflict.localPatch.name} (copy)`
+                : `${remote.name} (copy)`,
+            type:
+              typeof conflict.localPatch.type === 'string'
+                ? (conflict.localPatch.type as SiteArea['type'])
+                : remote.type,
+            footprint: Array.isArray(conflict.localPatch.footprint)
+              ? (conflict.localPatch.footprint as GeoPoint[])
+              : remote.footprint,
+          },
+          token,
+        );
+        setAreas((prev) => [...prev, created]);
+        setAreas((prev) => prev.map((a) => (a.id === remote.id ? remote : a)));
+        setSelection({ kind: 'area', id: created.id });
+      } else {
+        // Edges: duplicate by creating a new edge with same endpoints + local attrs
+        const remote = snap.edges.find((e) => e.id === conflict.id);
+        if (!remote) throw new Error('Edge no longer exists');
+        const created = await api.mapBuilder.createEdge(
+          {
+            fromNodeId: remote.fromNodeId,
+            toNodeId: remote.toNodeId,
+            distanceM:
+              typeof conflict.localPatch.distanceM === 'number'
+                ? conflict.localPatch.distanceM
+                : remote.distanceM,
+            kind: remote.kind,
+            bidirectional: remote.bidirectional,
+            blocked:
+              typeof conflict.localPatch.blocked === 'boolean'
+                ? conflict.localPatch.blocked
+                : remote.blocked,
+            safetyScore: remote.safetyScore,
+            crowdScore: remote.crowdScore,
+            accessibilityScore:
+              typeof conflict.localPatch.accessibilityScore === 'number'
+                ? conflict.localPatch.accessibilityScore
+                : remote.accessibilityScore,
+            siteId: remote.siteId,
+          },
+          token,
+        );
+        setEdges((prev) => [...prev, created]);
+        setEdges((prev) => prev.map((e) => (e.id === remote.id ? remote : e)));
+        setSelection({ kind: 'edge', id: created.id });
+      }
+      setConflict(null);
+      setSaveStatus('saved');
+      setInspectorAutosave('saved');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not duplicate feature');
+    } finally {
+      setConflictBusy(false);
+    }
+  }, [conflict, token]);
 
   const onPolygonDrawn = useCallback(
     async (ring: GeoPoint[]) => {
@@ -767,8 +1600,19 @@ export function MapBuilderPage() {
           setSaveStatus('saved');
           void refreshValidation();
         } catch (err) {
-          setError(err instanceof ApiError ? err.message : 'Could not save footprint');
-          setSaveStatus('error');
+          if (err instanceof ApiError && err.status === 409) {
+            setConflict({
+              kind: 'building',
+              id: attachFootprintBuildingId,
+              localPatch: { footprint: ring },
+              message: err.message,
+            });
+            setSaveStatus('error');
+            setRightPanelMode('inspector');
+          } else {
+            setError(err instanceof ApiError ? err.message : 'Could not save footprint');
+            setSaveStatus('error');
+          }
         }
         setTool('select');
         return;
@@ -1033,7 +1877,11 @@ export function MapBuilderPage() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="w-52 shrink-0 overflow-y-auto border-r border-line bg-paper p-3">
+        <aside
+          className={`shrink-0 overflow-y-auto border-r border-line bg-paper p-3 ${
+            MAP_ENGINE === 'maplibre' ? 'w-72' : 'w-52'
+          }`}
+        >
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Tools</p>
           <div className="space-y-1">
             {TOOLS.map(({ id, label: toolLabel, icon: Icon }) => (
@@ -1070,15 +1918,46 @@ export function MapBuilderPage() {
               </select>
             </div>
           ) : null}
-          <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-muted">Layers</p>
-          <div className="space-y-1 text-xs text-muted">
-            <div className="flex items-center gap-2">
-              <Layers className="h-3.5 w-3.5" /> Buildings ({buildings.length})
-            </div>
-            <div>Nodes ({nodes.length})</div>
-            <div>Walkways ({edges.length})</div>
-            <div>Areas ({areas.length})</div>
-          </div>
+          {MAP_ENGINE === 'maplibre' ? (
+            <MapBuilderLayersPanel
+              buildings={buildings}
+              nodes={nodes}
+              edges={edges}
+              areas={areas}
+              visibility={layerVisibility}
+              onVisibilityChange={setLayerVisibility}
+              selection={
+                selection &&
+                (selection.kind === 'building' ||
+                  selection.kind === 'node' ||
+                  selection.kind === 'edge' ||
+                  selection.kind === 'area')
+                  ? (selection as FeatureSelection)
+                  : null
+              }
+              onSelect={(next) => {
+                if (!next) {
+                  setSelection(null);
+                  return;
+                }
+                void selectResource(next);
+              }}
+            />
+          ) : (
+            <>
+              <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-muted">
+                Layers
+              </p>
+              <div className="space-y-1 text-xs text-muted">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5" /> Buildings ({buildings.length})
+                </div>
+                <div>Nodes ({nodes.length})</div>
+                <div>Walkways ({edges.length})</div>
+                <div>Areas ({areas.length})</div>
+              </div>
+            </>
+          )}
         </aside>
 
         <div className="relative min-w-0 flex-1">
@@ -1096,10 +1975,16 @@ export function MapBuilderPage() {
                 areas={areas}
                 tool={tool}
                 walkFromId={walkFrom}
-                onSelect={setSelection}
+                selection={selection}
+                layerVisibility={layerVisibility}
+                issueBadges={mapIssueBadges}
+                conflictFeatureId={conflict?.id ?? null}
+                geometryEditLocked={Boolean(conflict)}
+                onSelect={(s) => selectResource(s)}
                 onNodeWalkwayClick={handleWalkwayClick}
                 onPointDrawn={(lat, lon) => void handleMapClick(lat, lon)}
                 onPolygonDrawn={(ring) => void onPolygonDrawn(ring)}
+                onGeometryCommit={scheduleGeometrySave}
               />
             ) : (
               <MapContainer center={center} zoom={CAMPUS_DEFAULT_ZOOM} maxZoom={CAMPUS_MAX_ZOOM} className="h-full w-full">
@@ -1108,16 +1993,20 @@ export function MapBuilderPage() {
                 <RecenterOnSite center={center} />
                 <FitSiteData center={center} points={fitPoints} />
                 <GeomanDrawLayer tool={tool} onPolygon={onPolygonDrawn} />
-                {geometryEdit ? (
-                  <EditableFootprintLayer
-                    key={geometryEdit.buildingId}
-                    footprint={geometryEdit.originalFootprint}
-                    onChange={(ring) => {
-                      setGeometryEdit((g) => (g ? { ...g, draftFootprint: ring } : g));
-                      setSaveStatus('unsaved');
-                      dirtyRef.current = true;
-                    }}
-                  />
+                {selection?.kind === 'building' && !conflict ? (
+                  (() => {
+                    const b = buildings.find((x) => x.id === selection.id);
+                    if (!b?.footprint?.length) return null;
+                    return (
+                      <EditableFootprintLayer
+                        key={`${b.id}:${b.updatedAt ?? '0'}`}
+                        footprint={b.footprint}
+                        onCommit={(ring) =>
+                          scheduleGeometrySave({ kind: 'building', id: b.id, footprint: ring })
+                        }
+                      />
+                    );
+                  })()
                 ) : null}
                 <MapClickLayer
                   enabled={tool === 'node' || tool === 'poi' || tool === 'entrance'}
@@ -1129,27 +2018,40 @@ export function MapBuilderPage() {
                     key={a.id}
                     positions={ringToLatLngsLocal(a.footprint)}
                     pathOptions={{
-                      color: a.type === 'restricted' ? '#dc2626' : '#2563eb',
+                      color:
+                        conflict?.id === a.id
+                          ? '#dc2626'
+                          : a.type === 'restricted'
+                            ? '#dc2626'
+                            : '#2563eb',
                       fillOpacity: 0.15,
-                      weight: selection?.kind === 'area' && selection.id === a.id ? 3 : 1,
+                      weight:
+                        conflict?.id === a.id || (selection?.kind === 'area' && selection.id === a.id)
+                          ? 3
+                          : 1,
                     }}
-                    eventHandlers={{ click: () => setSelection({ kind: 'area', id: a.id }) }}
+                    eventHandlers={{ click: () => selectResource({ kind: 'area', id: a.id }) }}
                   />
                 ))}
 
                 {buildings.map((b) => {
-                  if (geometryEdit?.buildingId === b.id) return null;
+                  if (selection?.kind === 'building' && selection.id === b.id && b.footprint?.length)
+                    return null;
                   return b.footprint && b.footprint.length >= 3 ? (
                     <Polygon
                       key={b.id}
                       positions={ringToLatLngsLocal(b.footprint)}
                       pathOptions={{
-                        color: '#0F6B63',
+                        color: conflict?.id === b.id ? '#dc2626' : '#0F6B63',
                         fillOpacity: 0.25,
-                        weight: selection?.kind === 'building' && selection.id === b.id ? 3 : 1,
+                        weight:
+                          conflict?.id === b.id ||
+                          (selection?.kind === 'building' && selection.id === b.id)
+                            ? 3
+                            : 1,
                       }}
                       eventHandlers={{
-                        click: () => void selectResource({ kind: 'building', id: b.id }),
+                        click: () => selectResource({ kind: 'building', id: b.id }),
                       }}
                     >
                       <Tooltip permanent direction="center" className="building-label">
@@ -1161,9 +2063,13 @@ export function MapBuilderPage() {
                       key={b.id}
                       center={[b.latitude, b.longitude]}
                       radius={8}
-                      pathOptions={{ color: '#0F6B63', fillColor: '#0F6B63', fillOpacity: 0.8 }}
+                      pathOptions={{
+                        color: conflict?.id === b.id ? '#dc2626' : '#0F6B63',
+                        fillColor: conflict?.id === b.id ? '#dc2626' : '#0F6B63',
+                        fillOpacity: 0.8,
+                      }}
                       eventHandlers={{
-                        click: () => void selectResource({ kind: 'building', id: b.id }),
+                        click: () => selectResource({ kind: 'building', id: b.id }),
                       }}
                     >
                       <Tooltip>{b.name}</Tooltip>
@@ -1252,43 +2158,192 @@ export function MapBuilderPage() {
           ) : null}
         </div>
 
-        <aside className="w-80 shrink-0 overflow-y-auto border-l border-line bg-paper p-4">
-          <PropertiesPanel
-            selection={selection}
-            buildings={buildings}
-            nodes={nodes}
-            geometryEdit={geometryEdit}
-            onStartGeometryEdit={startGeometryEdit}
-            onSaveGeometry={() => void saveGeometryEdit()}
-            onCancelGeometry={cancelGeometryEdit}
-            onAttachFootprint={(buildingId) => {
-              setAttachFootprintBuildingId(buildingId);
-              setTool('building');
-            }}
-            onSaveBuilding={saveDraftBuilding}
-            onSaveArea={saveDraftArea}
-            onUpdate={async (kind, id, patch) => {
-              if (!token) return;
-              setSaveStatus('saving');
-              try {
-                if (kind === 'building') {
-                  const updated = await api.mapBuilder.updateBuilding(id, patch as Partial<Building>, token);
-                  setBuildings((prev) => prev.map((b) => (b.id === id ? updated : b)));
-                } else if (kind === 'node') {
-                  const updated = await api.mapBuilder.updateNode(id, patch, token);
-                  setNodes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-line bg-paper">
+          {MAP_ENGINE === 'maplibre' ? (
+            <div className="flex gap-1 border-b border-line p-2">
+              <button
+                type="button"
+                className={`flex-1 rounded px-2 py-1.5 text-xs font-semibold ${
+                  rightPanelMode === 'inspector'
+                    ? 'bg-accent/15 text-accent'
+                    : 'text-ink-mute hover:bg-paper-raised'
+                }`}
+                onClick={() => setRightPanelMode('inspector')}
+              >
+                Inspector
+              </button>
+              <button
+                type="button"
+                className={`flex-1 rounded px-2 py-1.5 text-xs font-semibold ${
+                  rightPanelMode === 'issues'
+                    ? 'bg-accent/15 text-accent'
+                    : 'text-ink-mute hover:bg-paper-raised'
+                }`}
+                data-tab="issues"
+                onClick={() => setRightPanelMode('issues')}
+              >
+                Issues
+                {displayIssueCounts.errors + displayIssueCounts.warnings > 0
+                  ? ` (${displayIssueCounts.errors + displayIssueCounts.warnings})`
+                  : ''}
+              </button>
+            </div>
+          ) : null}
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {conflict ? (
+            <div className="mb-4">
+              <MapBuilderConflictDialog
+                open
+                featureLabel={`${conflict.kind} · ${conflict.id.slice(0, 8)}…`}
+                message={conflict.message}
+                busy={conflictBusy}
+                onReloadRemote={() => void handleConflictReloadRemote()}
+                onRetryLocal={() => void handleConflictRetryLocal()}
+                onDuplicate={() => void handleConflictDuplicate()}
+              />
+            </div>
+          ) : null}
+          {MAP_ENGINE === 'maplibre' && rightPanelMode === 'issues' ? (
+            <MapBuilderIssuesPanel
+              validation={validation}
+              clientIssues={clientIssues}
+              pending={validationPending}
+              validateBusy={validateBusy}
+              onReCheck={() => void handleValidateDraft()}
+              onSelectIssue={handleValidationIssue}
+            />
+          ) : MAP_ENGINE === 'maplibre' &&
+          (!selection ||
+            selection.kind === 'building' ||
+            selection.kind === 'node' ||
+            selection.kind === 'edge' ||
+            selection.kind === 'area') ? (
+            <div className="space-y-4">
+              <MapBuilderInspectorPanel
+                selection={
+                  selection &&
+                  (selection.kind === 'building' ||
+                    selection.kind === 'node' ||
+                    selection.kind === 'edge' ||
+                    selection.kind === 'area')
+                    ? selection
+                    : null
                 }
-                setSaveStatus('saved');
-                void refreshValidation();
-              } catch (err) {
-                setError(err instanceof ApiError ? err.message : 'Update failed');
-                setSaveStatus('error');
-              }
-            }}
-            onDelete={deleteSelected}
-          />
+                buildings={buildings}
+                nodes={nodes}
+                edges={edges}
+                areas={areas}
+                conflictFeatureId={conflict?.id ?? null}
+                onAutosaveStatusChange={setInspectorAutosave}
+                onConflict={(c) => {
+                  setConflict(c);
+                  setRightPanelMode('inspector');
+                }}
+                onSavedBuilding={(b) =>
+                  setBuildings((prev) => prev.map((x) => (x.id === b.id ? b : x)))
+                }
+                onSavedNode={(n) => setNodes((prev) => prev.map((x) => (x.id === n.id ? n : x)))}
+                onSavedEdge={(e) => setEdges((prev) => prev.map((x) => (x.id === e.id ? e : x)))}
+                onSavedArea={(a) => setAreas((prev) => prev.map((x) => (x.id === a.id ? a : x)))}
+                onDelete={deleteSelected}
+                save={async ({ kind, id, patch }) => {
+                  if (!token) throw new Error('Not signed in');
+                  setSaveStatus('saving');
+                  try {
+                    if (kind === 'building') {
+                      const updated = await api.mapBuilder.updateBuilding(
+                        id,
+                        patch as Partial<Building> & { expectedUpdatedAt?: string },
+                        token,
+                      );
+                      setSaveStatus('saved');
+                      return updated;
+                    }
+                    if (kind === 'node') {
+                      const updated = await api.mapBuilder.updateNode(id, patch, token);
+                      setSaveStatus('saved');
+                      return updated;
+                    }
+                    if (kind === 'edge') {
+                      const updated = await api.mapBuilder.updateEdge(
+                        id,
+                        patch as Partial<GraphEdge>,
+                        token,
+                      );
+                      setSaveStatus('saved');
+                      return updated;
+                    }
+                    const updated = await api.mapBuilder.updateArea(
+                      id,
+                      patch as Partial<SiteArea>,
+                      token,
+                    );
+                    setSaveStatus('saved');
+                    return updated;
+                  } catch (err) {
+                    setSaveStatus('error');
+                    throw err;
+                  }
+                }}
+              />
+              {selection?.kind === 'building' ? (
+                <BuildingGeometryControls
+                  building={buildings.find((b) => b.id === selection.id)}
+                  onAttachFootprint={(buildingId) => {
+                    setAttachFootprintBuildingId(buildingId);
+                    setTool('building');
+                  }}
+                />
+              ) : null}
+            </div>
+          ) : (
+            <PropertiesPanel
+              selection={selection}
+              buildings={buildings}
+              nodes={nodes}
+              onAttachFootprint={(buildingId) => {
+                setAttachFootprintBuildingId(buildingId);
+                setTool('building');
+              }}
+              onSaveBuilding={saveDraftBuilding}
+              onSaveArea={saveDraftArea}
+              onUpdate={async (kind, id, patch) => {
+                if (!token) return;
+                setSaveStatus('saving');
+                try {
+                  if (kind === 'building') {
+                    const updated = await api.mapBuilder.updateBuilding(
+                      id,
+                      patch as Partial<Building> & { expectedUpdatedAt?: string },
+                      token,
+                    );
+                    setBuildings((prev) => prev.map((b) => (b.id === id ? updated : b)));
+                  } else if (kind === 'node') {
+                    const updated = await api.mapBuilder.updateNode(id, patch, token);
+                    setNodes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+                  }
+                  setSaveStatus('saved');
+                  void refreshValidation();
+                } catch (err) {
+                  if (err instanceof ApiError && err.status === 409) {
+                    setConflict({
+                      kind,
+                      id,
+                      localPatch: patch,
+                      message: err.message,
+                    });
+                  } else {
+                    setError(err instanceof ApiError ? err.message : 'Update failed');
+                  }
+                  setSaveStatus('error');
+                }
+              }}
+              onDelete={deleteSelected}
+            />
+          )}
           {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
           {publishSuccess ? <p className="mt-3 text-sm font-semibold text-accent">{publishSuccess}</p> : null}
+          {MAP_ENGINE !== 'maplibre' ? (
           <div className="mt-6 space-y-3 border-t border-line pt-4">
             <button
               type="button"
@@ -1351,17 +2406,37 @@ export function MapBuilderPage() {
               {publishBusy ? 'Publishing…' : 'Publish Map'}
             </button>
           </div>
-          <ValidationPanel validation={validation} onSelectIssue={handleValidationIssue} />
+          ) : null}
+          {MAP_ENGINE !== 'maplibre' ? (
+            <ValidationPanel validation={validation} onSelectIssue={handleValidationIssue} />
+          ) : null}
+          </div>
         </aside>
       </div>
-      {unsavedDialog ? (
-        <UnsavedChangesDialog
-          open
-          title={unsavedDialog.title}
-          message={unsavedDialog.message}
-          onStay={() => unsavedDialog.onResolve('stay')}
-          onDiscard={() => unsavedDialog.onResolve('discard')}
-          onSave={() => unsavedDialog.onResolve('save')}
+      {MAP_ENGINE === 'maplibre' ? (
+        <MapBuilderStatusBar
+          autosave={
+            inspectorAutosave === 'pending' || inspectorAutosave === 'saving'
+              ? inspectorAutosave
+              : saveStatus === 'saving'
+                ? 'saving'
+                : saveStatus === 'error'
+                  ? 'error'
+                  : saveStatus === 'saved' || inspectorAutosave === 'saved'
+                    ? 'saved'
+                    : saveStatus === 'unsaved'
+                      ? 'unsaved'
+                      : 'idle'
+          }
+          errorCount={displayIssueCounts.errors}
+          warningCount={displayIssueCounts.warnings}
+          onOpenIssues={() => setRightPanelMode('issues')}
+          publishDisabled={
+            !draftVersion || publishBusy || displayIssueCounts.errors > 0
+          }
+          publishBusy={publishBusy}
+          publishBlockers={displayIssueCounts.blockers}
+          onPublish={() => setPublishDialogOpen(true)}
         />
       ) : null}
       {publishDialogOpen && draftVersion ? (
@@ -1398,14 +2473,38 @@ export function MapBuilderPage() {
   );
 }
 
+function BuildingGeometryControls({
+  building,
+  onAttachFootprint,
+}: {
+  building: Building | undefined;
+  onAttachFootprint: (buildingId: string) => void;
+}) {
+  if (!building) return null;
+  return (
+    <div className="space-y-2 border-t border-line pt-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">Geometry</p>
+      {building.footprint?.length ? (
+        <p className="text-xs text-muted">
+          Drag footprint vertices on the map — changes autosave after you release.
+        </p>
+      ) : (
+        <button
+          type="button"
+          className="btn-secondary inline-flex w-full items-center justify-center gap-2"
+          onClick={() => onAttachFootprint(building.id)}
+        >
+          Draw footprint
+        </button>
+      )}
+    </div>
+  );
+}
+
 function PropertiesPanel({
   selection,
   buildings,
   nodes,
-  geometryEdit,
-  onStartGeometryEdit,
-  onSaveGeometry,
-  onCancelGeometry,
   onAttachFootprint,
   onSaveBuilding,
   onSaveArea,
@@ -1415,10 +2514,6 @@ function PropertiesPanel({
   selection: Selection;
   buildings: Building[];
   nodes: GraphNode[];
-  geometryEdit: GeometryEditSession | null;
-  onStartGeometryEdit: (building: Building) => void;
-  onSaveGeometry: () => void;
-  onCancelGeometry: () => void;
   onAttachFootprint: (buildingId: string) => void;
   onSaveBuilding: (meta: {
     name: string;
@@ -1453,7 +2548,6 @@ function PropertiesPanel({
   if (selection.kind === 'building') {
     const b = buildings.find((x) => x.id === selection.id);
     if (!b) return null;
-    const editingThis = geometryEdit?.buildingId === b.id;
     return (
       <div className="space-y-3">
         <EntityForm
@@ -1474,29 +2568,18 @@ function PropertiesPanel({
           onDelete={onDelete}
           extra={
             b.footprint?.length
-              ? `${b.footprint.length} footprint vertices · center derived from polygon`
+              ? `${b.footprint.length} footprint vertices · drag on map to edit (autosaves)`
               : 'Legacy point building — draw a footprint to enable polygon rendering'
           }
         />
         {b.footprint?.length ? (
-          editingThis ? (
-            <div className="space-y-2 border-t border-line pt-3">
-              <p className="text-sm font-semibold text-ink">Editing footprint</p>
-              <p className="text-xs text-muted">Drag vertices on the map, then save or cancel.</p>
-              <button type="button" className="btn-primary inline-flex w-full items-center justify-center gap-2" onClick={onSaveGeometry}>
-                <Save className="h-4 w-4" /> Save geometry
-              </button>
-              <button type="button" className="btn-secondary inline-flex w-full items-center justify-center gap-2" onClick={onCancelGeometry}>
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button type="button" className="btn-secondary inline-flex w-full items-center justify-center gap-2" onClick={() => onStartGeometryEdit(b)}>
-              Edit geometry
-            </button>
-          )
+          <p className="text-xs text-muted">Drag footprint vertices on the map — changes autosave after you release.</p>
         ) : (
-          <button type="button" className="btn-secondary inline-flex w-full items-center justify-center gap-2" onClick={() => onAttachFootprint(b.id)}>
+          <button
+            type="button"
+            className="btn-secondary inline-flex w-full items-center justify-center gap-2"
+            onClick={() => onAttachFootprint(b.id)}
+          >
             Draw footprint
           </button>
         )}

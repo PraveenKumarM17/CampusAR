@@ -4,15 +4,21 @@ import L from 'leaflet';
 import type { GeoPoint } from '@campusar/shared';
 import { ringFromPolygonLayer, ringToLatLngs } from './mapBuilderUtils';
 
+/**
+ * Always-on vertex editor for the selected footprint (direct manipulation).
+ * Calls onCommit only on drag-end / vertex add-remove — not every drag frame.
+ */
 export function EditableFootprintLayer({
   footprint,
-  onChange,
+  onCommit,
 }: {
   footprint: GeoPoint[];
-  onChange: (ring: GeoPoint[]) => void;
+  onCommit: (ring: GeoPoint[]) => void;
 }) {
   const map = useMap();
   const layerRef = useRef<L.Polygon | null>(null);
+  const onCommitRef = useRef(onCommit);
+  onCommitRef.current = onCommit;
 
   useEffect(() => {
     const polygon = L.polygon(ringToLatLngs(footprint), {
@@ -29,26 +35,26 @@ export function EditableFootprintLayer({
     });
     layerRef.current = polygon;
 
-    const sync = () => {
-      onChange(ringFromPolygonLayer(polygon));
+    const commit = () => {
+      onCommitRef.current(ringFromPolygonLayer(polygon));
     };
-    polygon.on('pm:edit', sync);
-    polygon.on('pm:vertexadded', sync);
-    polygon.on('pm:vertexremoved', sync);
-    polygon.on('pm:dragend', sync);
+    polygon.on('pm:markerdragend', commit);
+    polygon.on('pm:dragend', commit);
+    polygon.on('pm:vertexadded', commit);
+    polygon.on('pm:vertexremoved', commit);
 
     return () => {
-      polygon.off('pm:edit', sync);
-      polygon.off('pm:vertexadded', sync);
-      polygon.off('pm:vertexremoved', sync);
-      polygon.off('pm:dragend', sync);
+      polygon.off('pm:markerdragend', commit);
+      polygon.off('pm:dragend', commit);
+      polygon.off('pm:vertexadded', commit);
+      polygon.off('pm:vertexremoved', commit);
       polygon.pm.disable();
       polygon.remove();
       layerRef.current = null;
     };
-    // Mount once per edit session; footprint prop is the initial snapshot only.
+    // Parent remounts with key=featureId(+updatedAt) when baseline should reset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, onChange]);
+  }, [map]);
 
   return null;
 }
