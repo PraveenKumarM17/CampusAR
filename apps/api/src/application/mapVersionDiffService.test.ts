@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../infrastructure/db/pool';
 import { mapVersionService } from './mapVersionService';
 import { mapVersionDiffService } from './mapVersionDiffService';
-import { pointGeometryHash } from './geometryHash';
+import { edgeGeometryHash, pointGeometryHash, ringGeometryHash } from './geometryHash';
 
 const ORG_ID = '9a000001-0000-4000-8000-000000000001';
 const SITE_ID = '9a000001-0000-4000-8000-000000000002';
@@ -67,6 +67,28 @@ async function resetPublishedData() {
     )
     VALUES ($1, $2, $3, $4, 20, 'walkway', TRUE, FALSE, 0.9, 0.2, 0.9, $5)`,
     [SITE_ID, published.id, nodeRows[0]!.id, nodeRows[1]!.id, pointGeometryHash(13.00015, 77.00015)],
+  );
+  await pool.query(
+    `INSERT INTO site_areas (site_id, map_version_id, name, type, footprint_geom, geometry_hash)
+     VALUES (
+      $1,
+      $2,
+      'Assembly Zone',
+      'assembly',
+      ST_GeogFromText('POLYGON((77.0 13.0, 77.0 13.0002, 77.0002 13.0002, 77.0002 13.0, 77.0 13.0))')::geography,
+      $3
+     )`,
+    [
+      SITE_ID,
+      published.id,
+      ringGeometryHash([
+        { latitude: 13.0, longitude: 77.0 },
+        { latitude: 13.0002, longitude: 77.0 },
+        { latitude: 13.0002, longitude: 77.0002 },
+        { latitude: 13.0, longitude: 77.0002 },
+        { latitude: 13.0, longitude: 77.0 },
+      ]),
+    ],
   );
 }
 
@@ -163,5 +185,85 @@ describe('mapVersionDiffService', () => {
     const nodeHit = diff.modified.find((m) => m.featureType === 'node' && m.id === n.id);
     expect(nodeHit).toBeTruthy();
     expect(nodeHit?.changedFields.includes('geometry')).toBe(true);
+  });
+
+  it.skipIf(!canUseDb)('no-op load/save round-trip does not produce false modified diff', async () => {
+    const published = await mapVersionService.getPublishedVersion(SITE_ID);
+    const draft = await mapVersionService.getOrCreateDraftVersion(SITE_ID, null);
+
+    const buildings = await pool.query<{ id: string; latitude: number; longitude: number }>(
+      `SELECT id, latitude, longitude FROM buildings WHERE map_version_id = $1`,
+      [draft.id],
+    );
+    for (const b of buildings.rows) {
+      await pool.query(
+        `UPDATE buildings
+         SET latitude = $2, longitude = $3, geometry_hash = $4
+         WHERE id = $1`,
+        [b.id, b.latitude, b.longitude, pointGeometryHash(b.latitude, b.longitude)],
+      );
+    }
+
+    const nodes = await pool.query<{ id: string; latitude: number; longitude: number }>(
+      `SELECT id, latitude, longitude FROM nodes WHERE map_version_id = $1`,
+      [draft.id],
+    );
+    for (const n of nodes.rows) {
+      await pool.query(
+        `UPDATE nodes
+         SET latitude = $2, longitude = $3, geometry_hash = $4
+         WHERE id = $1`,
+        [n.id, n.latitude, n.longitude, pointGeometryHash(n.latitude, n.longitude)],
+      );
+    }
+
+    const edges = await pool.query<{
+      id: string;
+      from_lat: number;
+      from_lon: number;
+      to_lat: number;
+      to_lon: number;
+    }>(
+      `SELECT
+         e.id,
+         fn.latitude AS from_lat,
+         fn.longitude AS from_lon,
+         tn.latitude AS to_lat,
+         tn.longitude AS to_lon
+       FROM edges e
+       JOIN nodes fn ON fn.id = e.from_node_id
+       JOIN nodes tn ON tn.id = e.to_node_id
+       WHERE e.map_version_id = $1`,
+      [draft.id],
+    );
+    for (const e of edges.rows) {
+      await pool.query(`UPDATE edges SET geometry_hash = $2 WHERE id = $1`, [
+        e.id,
+        edgeGeometryHash(
+          { latitude: e.from_lat, longitude: e.from_lon },
+          { latitude: e.to_lat, longitude: e.to_lon },
+        ),
+      ]);
+    }
+
+    const areas = await pool.query<{ id: string; geo: { coordinates: number[][][] } }>(
+      `SELECT id, ST_AsGeoJSON(footprint_geom)::json AS geo
+       FROM site_areas
+       WHERE map_version_id = $1`,
+      [draft.id],
+    );
+    for (const a of areas.rows) {
+      const ring = (a.geo.coordinates?.[0] ?? []).map((p) => ({
+        latitude: Number(p[1]),
+        longitude: Number(p[0]),
+      }));
+      await pool.query(`UPDATE site_areas SET geometry_hash = $2 WHERE id = $1`, [
+        a.id,
+        ringGeometryHash(ring),
+      ]);
+    }
+
+    const diff = await mapVersionDiffService.computeDiff(draft.id, published.id, undefined, 0.5);
+    expect(diff.summary).toEqual({ added: 0, removed: 0, modified: 0 });
   });
 });

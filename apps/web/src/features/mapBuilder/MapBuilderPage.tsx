@@ -10,6 +10,8 @@ import {
   useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
+import * as maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import {
@@ -65,7 +67,7 @@ import {
   type GeometryEditSession,
   type UnsavedChoice,
 } from './mapBuilderUtils';
-import { MAP_ENGINE } from '../../lib/mapEngine';
+import { MAP_ENGINE, MAPLIBRE_STYLE_URL } from '../../lib/mapEngine';
 
 type BuilderTool = 'select' | 'building' | 'walkway' | 'node' | 'entrance' | 'poi' | 'area';
 
@@ -167,6 +169,192 @@ function MapClickLayer({
     },
   });
   return null;
+}
+
+function toPolygonCoords(ring: GeoPoint[]): number[][][] {
+  return [ring.map((p) => [p.longitude, p.latitude])];
+}
+
+function MapLibreReadOnlyCanvas({
+  center,
+  buildings,
+  nodes,
+  edges,
+  areas,
+  onSelect,
+}: {
+  center: [number, number];
+  buildings: Building[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  areas: SiteArea[];
+  onSelect: (s: Selection) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+
+  const buildingsGeo = useMemo<GeoJSON.FeatureCollection>(() => {
+    const features: GeoJSON.Feature[] = [];
+    for (const b of buildings) {
+      if (b.footprint && b.footprint.length >= 3) {
+        features.push({
+          type: 'Feature',
+          properties: { id: b.id, code: b.code, name: b.name },
+          geometry: {
+            type: 'Polygon',
+            coordinates: toPolygonCoords(b.footprint),
+          },
+        });
+      }
+    }
+    return { type: 'FeatureCollection', features };
+  }, [buildings]);
+
+  const nodesGeo = useMemo<GeoJSON.FeatureCollection>(() => {
+    const features: GeoJSON.Feature[] = nodes.map((n) => ({
+      type: 'Feature',
+      properties: { id: n.id, name: n.name, kind: n.kind },
+      geometry: { type: 'Point', coordinates: [n.longitude, n.latitude] },
+    }));
+    return { type: 'FeatureCollection', features };
+  }, [nodes]);
+
+  const edgesGeo = useMemo<GeoJSON.FeatureCollection>(() => {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const features: GeoJSON.Feature[] = [];
+    for (const e of edges) {
+      const from = byId.get(e.fromNodeId);
+      const to = byId.get(e.toNodeId);
+      if (!from || !to) continue;
+      features.push({
+        type: 'Feature',
+        properties: { id: e.id, blocked: e.blocked ? 1 : 0 },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [from.longitude, from.latitude],
+            [to.longitude, to.latitude],
+          ],
+        },
+      });
+    }
+    return { type: 'FeatureCollection', features };
+  }, [edges, nodes]);
+
+  const areasGeo = useMemo<GeoJSON.FeatureCollection>(() => {
+    const features: GeoJSON.Feature[] = areas
+      .filter((a) => a.footprint.length >= 3)
+      .map((a) => ({
+        type: 'Feature',
+        properties: { id: a.id, name: a.name, type: a.type },
+        geometry: {
+          type: 'Polygon',
+          coordinates: toPolygonCoords(a.footprint),
+        },
+      }));
+    return { type: 'FeatureCollection', features };
+  }, [areas]);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: MAPLIBRE_STYLE_URL,
+      center: [center[1], center[0]],
+      zoom: CAMPUS_DEFAULT_ZOOM,
+      maxZoom: CAMPUS_MAX_ZOOM,
+    });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
+    mapRef.current = map;
+
+    map.on('load', () => {
+      map.addSource('mapbuilder-buildings', { type: 'geojson', data: buildingsGeo });
+      map.addSource('mapbuilder-edges', { type: 'geojson', data: edgesGeo });
+      map.addSource('mapbuilder-nodes', { type: 'geojson', data: nodesGeo });
+      map.addSource('mapbuilder-areas', { type: 'geojson', data: areasGeo });
+
+      map.addLayer({
+        id: 'mapbuilder-areas-fill',
+        type: 'fill',
+        source: 'mapbuilder-areas',
+        paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.12 },
+      });
+      map.addLayer({
+        id: 'mapbuilder-buildings-fill',
+        type: 'fill',
+        source: 'mapbuilder-buildings',
+        paint: { 'fill-color': '#0F6B63', 'fill-opacity': 0.22 },
+      });
+      map.addLayer({
+        id: 'mapbuilder-buildings-line',
+        type: 'line',
+        source: 'mapbuilder-buildings',
+        paint: { 'line-color': '#0F6B63', 'line-width': 2 },
+      });
+      map.addLayer({
+        id: 'mapbuilder-edges-line',
+        type: 'line',
+        source: 'mapbuilder-edges',
+        paint: {
+          'line-color': [
+            'case',
+            ['==', ['get', 'blocked'], 1],
+            '#dc2626',
+            '#64748b',
+          ],
+          'line-width': 3,
+        },
+      });
+      map.addLayer({
+        id: 'mapbuilder-nodes-circle',
+        type: 'circle',
+        source: 'mapbuilder-nodes',
+        paint: {
+          'circle-color': '#f59e0b',
+          'circle-radius': 4,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+        },
+      });
+
+      map.on('click', 'mapbuilder-buildings-fill', (e: maplibregl.MapLayerMouseEvent) => {
+        const id = e.features?.[0]?.properties?.id;
+        if (typeof id === 'string') onSelect({ kind: 'building', id });
+      });
+      map.on('click', 'mapbuilder-edges-line', (e: maplibregl.MapLayerMouseEvent) => {
+        const id = e.features?.[0]?.properties?.id;
+        if (typeof id === 'string') onSelect({ kind: 'edge', id });
+      });
+      map.on('click', 'mapbuilder-nodes-circle', (e: maplibregl.MapLayerMouseEvent) => {
+        const id = e.features?.[0]?.properties?.id;
+        if (typeof id === 'string') onSelect({ kind: 'node', id });
+      });
+      map.on('click', 'mapbuilder-areas-fill', (e: maplibregl.MapLayerMouseEvent) => {
+        const id = e.features?.[0]?.properties?.id;
+        if (typeof id === 'string') onSelect({ kind: 'area', id });
+      });
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [areasGeo, buildingsGeo, center, edgesGeo, nodesGeo, onSelect]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const setSource = (id: string, data: GeoJSON.FeatureCollection) => {
+      const source = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
+      source?.setData(data);
+    };
+    setSource('mapbuilder-buildings', buildingsGeo);
+    setSource('mapbuilder-edges', edgesGeo);
+    setSource('mapbuilder-nodes', nodesGeo);
+    setSource('mapbuilder-areas', areasGeo);
+  }, [areasGeo, buildingsGeo, edgesGeo, nodesGeo]);
+
+  return <div ref={containerRef} className="h-full w-full" />;
 }
 
 export function MapBuilderPage() {
@@ -756,144 +944,155 @@ export function MapBuilderPage() {
           ) : loadError ? (
             <div className="flex h-full items-center justify-center p-6 text-sm text-danger">{loadError}</div>
           ) : (
-            <MapContainer center={center} zoom={CAMPUS_DEFAULT_ZOOM} maxZoom={CAMPUS_MAX_ZOOM} className="h-full w-full">
-              <RealBasemapTiles mode={basemap} />
-              <BasemapModeSwitcher mode={basemap} onChange={setBasemap} />
-              <RecenterOnSite center={center} />
-              <FitSiteData center={center} points={fitPoints} />
-              <GeomanDrawLayer tool={tool} onPolygon={onPolygonDrawn} />
-              {geometryEdit ? (
-                <EditableFootprintLayer
-                  key={geometryEdit.buildingId}
-                  footprint={geometryEdit.originalFootprint}
-                  onChange={(ring) => {
-                    setGeometryEdit((g) => (g ? { ...g, draftFootprint: ring } : g));
-                    setSaveStatus('unsaved');
-                    dirtyRef.current = true;
-                  }}
-                />
-              ) : null}
-              <MapClickLayer
-                enabled={tool === 'node' || tool === 'poi' || tool === 'entrance'}
-                onClick={handleMapClick}
+            MAP_ENGINE === 'maplibre' ? (
+              <MapLibreReadOnlyCanvas
+                center={center}
+                buildings={buildings}
+                nodes={nodes}
+                edges={edges}
+                areas={areas}
+                onSelect={setSelection}
               />
-
-              {areas.map((a) => (
-                <Polygon
-                  key={a.id}
-                  positions={ringToLatLngsLocal(a.footprint)}
-                  pathOptions={{
-                    color: a.type === 'restricted' ? '#dc2626' : '#2563eb',
-                    fillOpacity: 0.15,
-                    weight: selection?.kind === 'area' && selection.id === a.id ? 3 : 1,
-                  }}
-                  eventHandlers={{ click: () => setSelection({ kind: 'area', id: a.id }) }}
-                />
-              ))}
-
-              {buildings.map((b) => {
-                if (geometryEdit?.buildingId === b.id) return null;
-                return b.footprint && b.footprint.length >= 3 ? (
-                  <Polygon
-                    key={b.id}
-                    positions={ringToLatLngsLocal(b.footprint)}
-                    pathOptions={{
-                      color: '#0F6B63',
-                      fillOpacity: 0.25,
-                      weight: selection?.kind === 'building' && selection.id === b.id ? 3 : 1,
+            ) : (
+              <MapContainer center={center} zoom={CAMPUS_DEFAULT_ZOOM} maxZoom={CAMPUS_MAX_ZOOM} className="h-full w-full">
+                <RealBasemapTiles mode={basemap} />
+                <BasemapModeSwitcher mode={basemap} onChange={setBasemap} />
+                <RecenterOnSite center={center} />
+                <FitSiteData center={center} points={fitPoints} />
+                <GeomanDrawLayer tool={tool} onPolygon={onPolygonDrawn} />
+                {geometryEdit ? (
+                  <EditableFootprintLayer
+                    key={geometryEdit.buildingId}
+                    footprint={geometryEdit.originalFootprint}
+                    onChange={(ring) => {
+                      setGeometryEdit((g) => (g ? { ...g, draftFootprint: ring } : g));
+                      setSaveStatus('unsaved');
+                      dirtyRef.current = true;
                     }}
-                    eventHandlers={{
-                      click: () => void selectResource({ kind: 'building', id: b.id }),
-                    }}
-                  >
-                    <Tooltip permanent direction="center" className="building-label">
-                      {b.code}
-                    </Tooltip>
-                  </Polygon>
-                ) : (
-                  <CircleMarker
-                    key={b.id}
-                    center={[b.latitude, b.longitude]}
-                    radius={8}
-                    pathOptions={{ color: '#0F6B63', fillColor: '#0F6B63', fillOpacity: 0.8 }}
-                    eventHandlers={{
-                      click: () => void selectResource({ kind: 'building', id: b.id }),
-                    }}
-                  >
-                    <Tooltip>{b.name}</Tooltip>
-                  </CircleMarker>
-                );
-              })}
-
-              {selection?.kind === 'draft-building' ? (
-                <Polygon
-                  positions={ringToLatLngsLocal(selection.footprint)}
-                  pathOptions={{ color: '#f97316', dashArray: '4' }}
-                />
-              ) : null}
-              {selection?.kind === 'draft-area' ? (
-                <Polygon
-                  positions={ringToLatLngsLocal(selection.footprint)}
-                  pathOptions={{ color: '#7c3aed', dashArray: '4' }}
-                />
-              ) : null}
-
-              {edges.map((e) => {
-                const from = nodes.find((n) => n.id === e.fromNodeId);
-                const to = nodes.find((n) => n.id === e.toNodeId);
-                if (!from || !to) return null;
-                return (
-                  <Polyline
-                    key={e.id}
-                    positions={[
-                      [from.latitude, from.longitude],
-                      [to.latitude, to.longitude],
-                    ]}
-                    pathOptions={{
-                      color: e.blocked ? '#dc2626' : '#64748b',
-                      weight: selection?.kind === 'edge' && selection.id === e.id ? 5 : 3,
-                    }}
-                    eventHandlers={{ click: () => void selectResource({ kind: 'edge', id: e.id }) }}
                   />
-                );
-              })}
+                ) : null}
+                <MapClickLayer
+                  enabled={tool === 'node' || tool === 'poi' || tool === 'entrance'}
+                  onClick={handleMapClick}
+                />
 
-              {nodes.map((n) => (
-                <Marker
-                  key={n.id}
-                  position={[n.latitude, n.longitude]}
-                  draggable={tool === 'select' && selection?.kind === 'node' && selection.id === n.id}
-                  eventHandlers={{
-                    click: () => {
-                      if (tool === 'walkway') handleWalkwayClick(n.id);
-                      else void selectResource({ kind: 'node', id: n.id });
-                    },
-                    dragend: async (e) => {
-                      if (!token || tool !== 'select') return;
-                      const ll = e.target.getLatLng();
-                      setSaveStatus('saving');
-                      try {
-                        const updated = await api.mapBuilder.updateNode(
-                          n.id,
-                          { latitude: ll.lat, longitude: ll.lng },
-                          token,
-                        );
-                        setNodes((prev) => prev.map((node) => (node.id === n.id ? updated : node)));
-                        const snap = await api.mapBuilder.snapshot(token);
-                        setEdges(snap.edges);
-                        setSaveStatus('saved');
-                        void refreshValidation();
-                      } catch (err) {
-                        setError(err instanceof ApiError ? err.message : 'Could not move node');
-                        setSaveStatus('error');
-                      }
-                    },
-                  }}
-                >
-                  <Tooltip>{n.name ?? n.kind}</Tooltip>
-                </Marker>
-              ))}
-            </MapContainer>
+                {areas.map((a) => (
+                  <Polygon
+                    key={a.id}
+                    positions={ringToLatLngsLocal(a.footprint)}
+                    pathOptions={{
+                      color: a.type === 'restricted' ? '#dc2626' : '#2563eb',
+                      fillOpacity: 0.15,
+                      weight: selection?.kind === 'area' && selection.id === a.id ? 3 : 1,
+                    }}
+                    eventHandlers={{ click: () => setSelection({ kind: 'area', id: a.id }) }}
+                  />
+                ))}
+
+                {buildings.map((b) => {
+                  if (geometryEdit?.buildingId === b.id) return null;
+                  return b.footprint && b.footprint.length >= 3 ? (
+                    <Polygon
+                      key={b.id}
+                      positions={ringToLatLngsLocal(b.footprint)}
+                      pathOptions={{
+                        color: '#0F6B63',
+                        fillOpacity: 0.25,
+                        weight: selection?.kind === 'building' && selection.id === b.id ? 3 : 1,
+                      }}
+                      eventHandlers={{
+                        click: () => void selectResource({ kind: 'building', id: b.id }),
+                      }}
+                    >
+                      <Tooltip permanent direction="center" className="building-label">
+                        {b.code}
+                      </Tooltip>
+                    </Polygon>
+                  ) : (
+                    <CircleMarker
+                      key={b.id}
+                      center={[b.latitude, b.longitude]}
+                      radius={8}
+                      pathOptions={{ color: '#0F6B63', fillColor: '#0F6B63', fillOpacity: 0.8 }}
+                      eventHandlers={{
+                        click: () => void selectResource({ kind: 'building', id: b.id }),
+                      }}
+                    >
+                      <Tooltip>{b.name}</Tooltip>
+                    </CircleMarker>
+                  );
+                })}
+
+                {selection?.kind === 'draft-building' ? (
+                  <Polygon
+                    positions={ringToLatLngsLocal(selection.footprint)}
+                    pathOptions={{ color: '#f97316', dashArray: '4' }}
+                  />
+                ) : null}
+                {selection?.kind === 'draft-area' ? (
+                  <Polygon
+                    positions={ringToLatLngsLocal(selection.footprint)}
+                    pathOptions={{ color: '#7c3aed', dashArray: '4' }}
+                  />
+                ) : null}
+
+                {edges.map((e) => {
+                  const from = nodes.find((n) => n.id === e.fromNodeId);
+                  const to = nodes.find((n) => n.id === e.toNodeId);
+                  if (!from || !to) return null;
+                  return (
+                    <Polyline
+                      key={e.id}
+                      positions={[
+                        [from.latitude, from.longitude],
+                        [to.latitude, to.longitude],
+                      ]}
+                      pathOptions={{
+                        color: e.blocked ? '#dc2626' : '#64748b',
+                        weight: selection?.kind === 'edge' && selection.id === e.id ? 5 : 3,
+                      }}
+                      eventHandlers={{ click: () => void selectResource({ kind: 'edge', id: e.id }) }}
+                    />
+                  );
+                })}
+
+                {nodes.map((n) => (
+                  <Marker
+                    key={n.id}
+                    position={[n.latitude, n.longitude]}
+                    draggable={tool === 'select' && selection?.kind === 'node' && selection.id === n.id}
+                    eventHandlers={{
+                      click: () => {
+                        if (tool === 'walkway') handleWalkwayClick(n.id);
+                        else void selectResource({ kind: 'node', id: n.id });
+                      },
+                      dragend: async (e) => {
+                        if (!token || tool !== 'select') return;
+                        const ll = e.target.getLatLng();
+                        setSaveStatus('saving');
+                        try {
+                          const updated = await api.mapBuilder.updateNode(
+                            n.id,
+                            { latitude: ll.lat, longitude: ll.lng },
+                            token,
+                          );
+                          setNodes((prev) => prev.map((node) => (node.id === n.id ? updated : node)));
+                          const snap = await api.mapBuilder.snapshot(token);
+                          setEdges(snap.edges);
+                          setSaveStatus('saved');
+                          void refreshValidation();
+                        } catch (err) {
+                          setError(err instanceof ApiError ? err.message : 'Could not move node');
+                          setSaveStatus('error');
+                        }
+                      },
+                    }}
+                  >
+                    <Tooltip>{n.name ?? n.kind}</Tooltip>
+                  </Marker>
+                ))}
+              </MapContainer>
+            )
           )}
           {emptySite && !loading ? (
             <div className="pointer-events-none absolute inset-x-0 top-4 z-[1000] mx-auto max-w-lg px-4">
