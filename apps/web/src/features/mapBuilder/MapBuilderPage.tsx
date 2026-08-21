@@ -12,6 +12,13 @@ import {
 import L from 'leaflet';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import {
+  TerraDraw,
+  TerraDrawPointMode,
+  TerraDrawPolygonMode,
+  TerraDrawSelectMode,
+} from 'terra-draw';
+import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import {
@@ -175,23 +182,49 @@ function toPolygonCoords(ring: GeoPoint[]): number[][][] {
   return [ring.map((p) => [p.longitude, p.latitude])];
 }
 
-function MapLibreReadOnlyCanvas({
+function MapLibreCanvas({
   center,
   buildings,
   nodes,
   edges,
   areas,
+  tool,
+  walkFromId,
   onSelect,
+  onNodeWalkwayClick,
+  onPointDrawn,
+  onPolygonDrawn,
 }: {
   center: [number, number];
   buildings: Building[];
   nodes: GraphNode[];
   edges: GraphEdge[];
   areas: SiteArea[];
+  tool: BuilderTool;
+  walkFromId: string | null;
   onSelect: (s: Selection) => void;
+  onNodeWalkwayClick: (nodeId: string) => void;
+  onPointDrawn: (lat: number, lon: number) => void;
+  onPolygonDrawn: (ring: GeoPoint[]) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const drawRef = useRef<TerraDraw | null>(null);
+  const toolRef = useRef<BuilderTool>('select');
+  const onPolygonDrawnRef = useRef(onPolygonDrawn);
+  const onPointDrawnRef = useRef(onPointDrawn);
+  const onSelectRef = useRef(onSelect);
+  const onNodeWalkwayClickRef = useRef(onNodeWalkwayClick);
+
+  useEffect(() => {
+    toolRef.current = tool;
+  }, [tool]);
+  useEffect(() => {
+    onPolygonDrawnRef.current = onPolygonDrawn;
+    onPointDrawnRef.current = onPointDrawn;
+    onSelectRef.current = onSelect;
+    onNodeWalkwayClickRef.current = onNodeWalkwayClick;
+  }, [onNodeWalkwayClick, onPointDrawn, onPolygonDrawn, onSelect]);
 
   const buildingsGeo = useMemo<GeoJSON.FeatureCollection>(() => {
     const features: GeoJSON.Feature[] = [];
@@ -228,7 +261,7 @@ function MapLibreReadOnlyCanvas({
       if (!from || !to) continue;
       features.push({
         type: 'Feature',
-        properties: { id: e.id, blocked: e.blocked ? 1 : 0 },
+        properties: { id: e.id, blocked: e.blocked ? 1 : 0, kind: e.kind },
         geometry: {
           type: 'LineString',
           coordinates: [
@@ -255,6 +288,13 @@ function MapLibreReadOnlyCanvas({
     return { type: 'FeatureCollection', features };
   }, [areas]);
 
+  const ringFromFeature = (feature: GeoJSON.Feature): GeoPoint[] | null => {
+    if (feature.geometry.type !== 'Polygon') return null;
+    const raw = feature.geometry.coordinates[0];
+    if (!Array.isArray(raw) || raw.length < 3) return null;
+    return raw.map((p) => ({ latitude: Number(p[1]), longitude: Number(p[0]) }));
+  };
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
@@ -267,7 +307,7 @@ function MapLibreReadOnlyCanvas({
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
     mapRef.current = map;
 
-    map.on('load', () => {
+    const onLoad = () => {
       map.addSource('mapbuilder-buildings', { type: 'geojson', data: buildingsGeo });
       map.addSource('mapbuilder-edges', { type: 'geojson', data: edgesGeo });
       map.addSource('mapbuilder-nodes', { type: 'geojson', data: nodesGeo });
@@ -310,36 +350,109 @@ function MapLibreReadOnlyCanvas({
         type: 'circle',
         source: 'mapbuilder-nodes',
         paint: {
-          'circle-color': '#f59e0b',
+          'circle-color': [
+            'match',
+            ['get', 'kind'],
+            'entrance',
+            '#dc2626',
+            'outdoor',
+            '#f59e0b',
+            '#2563eb',
+          ],
           'circle-radius': 4,
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 1.5,
         },
       });
+      map.addLayer({
+        id: 'mapbuilder-walkway-start',
+        type: 'circle',
+        source: 'mapbuilder-nodes',
+        paint: {
+          'circle-color': '#22c55e',
+          'circle-radius': 8,
+          'circle-opacity': 0.2,
+          'circle-stroke-color': '#16a34a',
+          'circle-stroke-width': 2,
+        },
+        filter: ['==', ['get', 'id'], '__none__'],
+      });
 
       map.on('click', 'mapbuilder-buildings-fill', (e: maplibregl.MapLayerMouseEvent) => {
         const id = e.features?.[0]?.properties?.id;
-        if (typeof id === 'string') onSelect({ kind: 'building', id });
+        if (typeof id === 'string') onSelectRef.current({ kind: 'building', id });
       });
       map.on('click', 'mapbuilder-edges-line', (e: maplibregl.MapLayerMouseEvent) => {
         const id = e.features?.[0]?.properties?.id;
-        if (typeof id === 'string') onSelect({ kind: 'edge', id });
+        if (typeof id === 'string') onSelectRef.current({ kind: 'edge', id });
       });
       map.on('click', 'mapbuilder-nodes-circle', (e: maplibregl.MapLayerMouseEvent) => {
         const id = e.features?.[0]?.properties?.id;
-        if (typeof id === 'string') onSelect({ kind: 'node', id });
+        if (typeof id !== 'string') return;
+        if (toolRef.current === 'walkway') {
+          onNodeWalkwayClickRef.current(id);
+          return;
+        }
+        onSelectRef.current({ kind: 'node', id });
       });
       map.on('click', 'mapbuilder-areas-fill', (e: maplibregl.MapLayerMouseEvent) => {
         const id = e.features?.[0]?.properties?.id;
-        if (typeof id === 'string') onSelect({ kind: 'area', id });
+        if (typeof id === 'string') onSelectRef.current({ kind: 'area', id });
       });
-    });
+
+      const draw = new TerraDraw({
+        adapter: new TerraDrawMapLibreGLAdapter({ map }),
+        modes: [
+          new TerraDrawSelectMode(),
+          new TerraDrawPolygonMode({ editable: false }),
+          new TerraDrawPointMode({ editable: false }),
+        ],
+      });
+      drawRef.current = draw;
+      draw.start();
+      draw.setMode('select');
+      const onFinish = (id: string | number, context: { mode: string }) => {
+        const feature = draw.getSnapshotFeature(id);
+        if (!feature) return;
+        if (context.mode === 'polygon') {
+          const ring = ringFromFeature(feature as GeoJSON.Feature);
+          if (ring && ring.length >= 3) onPolygonDrawnRef.current(ring);
+        } else if (context.mode === 'point' && feature.geometry.type === 'Point') {
+          const [lon, lat] = feature.geometry.coordinates as [number, number];
+          onPointDrawnRef.current(lat, lon);
+        }
+        draw.removeFeatures([id]);
+        draw.setMode('select');
+      };
+      draw.on('finish', onFinish);
+    };
+    map.on('load', onLoad);
 
     return () => {
+      drawRef.current?.stop();
+      drawRef.current = null;
+      map.off('load', onLoad);
       map.remove();
       mapRef.current = null;
     };
-  }, [areasGeo, buildingsGeo, center, edgesGeo, nodesGeo, onSelect]);
+  }, [center]);
+
+  useEffect(() => {
+    const draw = drawRef.current;
+    if (!draw) return;
+    if (tool === 'building' || tool === 'area') draw.setMode('polygon');
+    else if (tool === 'node' || tool === 'poi' || tool === 'entrance') draw.setMode('point');
+    else draw.setMode('select');
+  }, [tool]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    map.setFilter(
+      'mapbuilder-walkway-start',
+      walkFromId ? (['==', ['get', 'id'], walkFromId] as maplibregl.FilterSpecification) : (['==', ['get', 'id'], '__none__'] as maplibregl.FilterSpecification),
+    );
+  }, [walkFromId]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -841,6 +954,19 @@ export function MapBuilderPage() {
     }
   };
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      if (!selection) return;
+      event.preventDefault();
+      void deleteSelected();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selection, deleteSelected]);
+
   if (accessLoading) {
     return <div className="p-6 text-sm text-muted">Checking map editor access…</div>;
   }
@@ -945,13 +1071,18 @@ export function MapBuilderPage() {
             <div className="flex h-full items-center justify-center p-6 text-sm text-danger">{loadError}</div>
           ) : (
             MAP_ENGINE === 'maplibre' ? (
-              <MapLibreReadOnlyCanvas
+              <MapLibreCanvas
                 center={center}
                 buildings={buildings}
                 nodes={nodes}
                 edges={edges}
                 areas={areas}
+                tool={tool}
+                walkFromId={walkFrom}
                 onSelect={setSelection}
+                onNodeWalkwayClick={handleWalkwayClick}
+                onPointDrawn={(lat, lon) => void handleMapClick(lat, lon)}
+                onPolygonDrawn={(ring) => void onPolygonDrawn(ring)}
               />
             ) : (
               <MapContainer center={center} zoom={CAMPUS_DEFAULT_ZOOM} maxZoom={CAMPUS_MAX_ZOOM} className="h-full w-full">
