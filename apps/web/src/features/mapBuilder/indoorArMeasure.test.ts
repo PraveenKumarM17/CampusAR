@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   arSessionToFloorPlan,
+  collectMeasureSnapTargets,
   distance2D,
   distance3D,
   floorElevationM,
   formatMeasureDistance,
   geometryFromMeasurePoints,
   measuredRoomExtents,
+  measureLabelRotationDeg,
   polylineLength2D,
+  projectWorldToScreen,
+  snapMeasurePoint,
   verticalSpan3D,
 } from './indoorArMeasure';
 
@@ -79,5 +83,47 @@ describe('indoorArMeasure (AR-Measure distance logic)', () => {
         { x: 2, y: 6 },
       ]),
     ).toEqual({ lengthM: 5, widthM: 3 });
+  });
+
+  it('keeps measure labels readable (not upside-down)', () => {
+    expect(measureLabelRotationDeg({ x: 0, y: 0 }, { x: 2, y: 0 })).toBe(0);
+    expect(measureLabelRotationDeg({ x: 0, y: 0 }, { x: -2, y: 0 })).toBe(0);
+    expect(measureLabelRotationDeg({ x: 0, y: 0 }, { x: 0, y: 2 })).toBe(90);
+  });
+
+  it('snaps to the nearest candidate within tolerance', () => {
+    const snapped = snapMeasurePoint({ x: 1.1, y: 2.05 }, [
+      { x: 0, y: 0 },
+      { x: 1, y: 2 },
+    ]);
+    expect(snapped).toEqual({ x: 1, y: 2 });
+    expect(snapMeasurePoint({ x: 10, y: 10 }, [{ x: 1, y: 2 }])).toEqual({ x: 10, y: 10 });
+  });
+
+  it('collects snap targets from nodes, POIs, and polygon corners', () => {
+    const pts = collectMeasureSnapTargets({
+      nodes: [{ localX: 1, localY: 0, localZ: 4 }],
+      pois: [{ localX: 2, localY: 3 }],
+      rooms: [{ localGeometry: [{ x: 5, y: 6 }] }],
+      corridors: [{ localGeometry: [{ x: 7, y: 8 }] }],
+    });
+    expect(pts).toEqual([
+      { x: 1, y: 4 },
+      { x: 2, y: 3 },
+      { x: 5, y: 6 },
+      { x: 7, y: 8 },
+    ]);
+  });
+
+  it('projects a point at NDC origin to the overlay center', () => {
+    const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const screen = projectWorldToScreen({ x: 0, y: 0, z: 0 }, identity, identity, 200, 100);
+    expect(screen).toEqual({ x: 100, y: 50 });
+  });
+
+  it('rejects points behind the camera (w <= 0)', () => {
+    const view = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const proj = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1];
+    expect(projectWorldToScreen({ x: 0, y: 0, z: 0 }, view, proj, 100, 100)).toBeNull();
   });
 });

@@ -16,6 +16,7 @@ import {
   Trash2,
   ArrowUpDown,
   Camera,
+  Undo2,
 } from 'lucide-react';
 import type {
   Building,
@@ -46,11 +47,14 @@ import {
   type UnsavedChoice,
 } from './indoorLayoutUtils';
 import {
+  collectMeasureSnapTargets,
+  distance2D,
   floorElevationM,
   formatMeasureDistance,
   geometryFromMeasurePoints,
   measuredRoomExtents,
   polylineLength2D,
+  segmentMidpoint2D,
 } from './indoorArMeasure';
 
 const LAYOUT_TOOLS: { id: IndoorTool; label: string; icon: typeof MousePointer2 }[] = [
@@ -89,6 +93,7 @@ const POI_CATEGORIES: FloorPoiCategory[] = [
   'stairs',
   'information',
   'waiting',
+  'measurement',
   'other',
 ];
 
@@ -175,6 +180,17 @@ export function IndoorMapBuilderPage() {
       (e) => e.active && ids.has(e.fromNodeId) && ids.has(e.toNodeId),
     );
   }, [snapshot, floorNodes]);
+
+  const measureSnapTargets = useMemo(
+    () =>
+      collectMeasureSnapTargets({
+        nodes: floorNodes,
+        pois: floorPois,
+        rooms: floorRooms,
+        corridors: floorCorridors,
+      }),
+    [floorNodes, floorPois, floorRooms, floorCorridors],
+  );
 
   const requestUnsavedChoice = useCallback(
     (title: string, message: string): Promise<UnsavedChoice> =>
@@ -428,6 +444,32 @@ export function IndoorMapBuilderPage() {
       await reloadSnapshot();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save POI');
+    }
+  }
+
+  async function saveMeasurement() {
+    if (!token || !buildingId || !selectedFloorId || measurePoints.length < 2) return;
+    try {
+      for (let i = 1; i < measurePoints.length; i++) {
+        const a = measurePoints[i - 1];
+        const b = measurePoints[i];
+        const mid = segmentMidpoint2D(a, b);
+        await api.mapBuilder.createPoi(
+          {
+            buildingId,
+            floorId: selectedFloorId,
+            name: formatMeasureDistance(distance2D(a, b)),
+            category: 'measurement',
+            localX: Number(mid.x.toFixed(3)),
+            localY: Number(mid.y.toFixed(3)),
+          },
+          token,
+        );
+      }
+      setError(null);
+      await reloadSnapshot();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save measurement');
     }
   }
 
@@ -791,11 +833,12 @@ export function IndoorMapBuilderPage() {
           </div>
           {tool === 'measure' && (
             <p className="text-xs text-emerald-700">
-              Tap floor-plan corners to measure. Segment distances use AR-Measure vector math (
+              Tap two points for a live distance, or keep tapping to chain segments. Drag an endpoint to
+              adjust. Distances are 2D floor-plan meters
               {measurePoints.length > 1
-                ? `total ${formatMeasureDistance(polylineLength2D(measurePoints))}`
-                : '2+ points'}
-              ).
+                ? ` · total ${formatMeasureDistance(polylineLength2D(measurePoints))}`
+                : ''}
+              .
             </p>
           )}
           {connectFromId && (
@@ -818,11 +861,15 @@ export function IndoorMapBuilderPage() {
               selectedKind={selectedKind}
               draftRect={editSession?.draftGeometry ?? draftRect}
               measurePoints={tool === 'measure' ? measurePoints : []}
+              measureSnapTargets={measureSnapTargets}
               onDraftRect={(ring) => {
                 if (editSession) setEditSession({ ...editSession, draftGeometry: ring ?? [] });
                 else setDraftRect(ring);
               }}
               onMeasurePoint={(pt) => setMeasurePoints((prev) => [...prev, pt])}
+              onMeasurePointMove={(index, pt) =>
+                setMeasurePoints((prev) => prev.map((p, i) => (i === index ? pt : p)))
+              }
               onSelect={(kind, id) => {
                 if (kind === 'node') void handleNodeSelect(id);
                 else {
@@ -852,15 +899,51 @@ export function IndoorMapBuilderPage() {
         </div>
 
         <aside className="w-72 shrink-0 space-y-3 overflow-y-auto rounded-lg border border-line bg-paper-raised p-3">
-          {tool === 'measure' && measurePoints.length > 0 && !draftRect?.length && (
+          {tool === 'measure' && (
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Measured shape</h3>
+              <h3 className="text-sm font-semibold">Point-to-point measure</h3>
               <p className="text-xs text-muted">
-                {measurePoints.length} point(s) ·{' '}
+                {measurePoints.length} point(s)
                 {measurePoints.length > 1
-                  ? formatMeasureDistance(polylineLength2D(measurePoints))
-                  : 'add another point'}
+                  ? ` · ${formatMeasureDistance(polylineLength2D(measurePoints))}`
+                  : ' · tap a second point'}
               </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary flex-1 text-sm"
+                  disabled={measurePoints.length === 0}
+                  onClick={() => setMeasurePoints((prev) => prev.slice(0, -1))}
+                >
+                  <Undo2 className="mr-1 inline h-3.5 w-3.5" /> Undo
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary text-sm"
+                  disabled={measurePoints.length === 0}
+                  onClick={() => setMeasurePoints([])}
+                >
+                  <Trash2 className="mr-1 inline h-3.5 w-3.5" />
+                </button>
+              </div>
+              <button
+                type="button"
+                className="btn-primary w-full text-sm"
+                disabled={measurePoints.length < 2}
+                onClick={() => void saveMeasurement()}
+              >
+                <Save className="mr-1 inline h-3.5 w-3.5" /> Save Measurement
+              </button>
+              <p className="text-[11px] text-muted">
+                Saves each segment as a labeled POI at the midpoint (same pattern as Save POI).
+              </p>
+            </div>
+          )}
+
+          {tool === 'measure' && measurePoints.length > 0 && !draftRect?.length && (
+            <div className="space-y-2 border-t border-line pt-2">
+              <h3 className="text-sm font-semibold">Measured shape</h3>
+              <p className="text-xs text-muted">Optional: turn these corners into a room or corridor polygon.</p>
               <select
                 className="input w-full text-sm"
                 value={measureSaveAs}
@@ -869,14 +952,9 @@ export function IndoorMapBuilderPage() {
                 <option value="room">Save as room</option>
                 <option value="corridor">Save as corridor</option>
               </select>
-              <div className="flex gap-2">
-                <button type="button" className="btn-primary flex-1 text-sm" onClick={applyMeasureToDraft}>
-                  Build &amp; save…
-                </button>
-                <button type="button" className="btn-secondary text-sm" onClick={() => setMeasurePoints([])}>
-                  Clear
-                </button>
-              </div>
+              <button type="button" className="btn-primary w-full text-sm" onClick={applyMeasureToDraft}>
+                Build &amp; save…
+              </button>
             </div>
           )}
 

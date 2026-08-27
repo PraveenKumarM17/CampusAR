@@ -8,17 +8,68 @@ import {
   ringToSvgPoints,
   type IndoorTool,
 } from './indoorLayoutUtils';
-import { distance2D, formatMeasureDistance, segmentMidpoint2D } from './indoorArMeasure';
+import {
+  MEASURE_SNAP_M,
+  distance2D,
+  formatMeasureDistance,
+  measureLabelRotationDeg,
+  segmentMidpoint2D,
+  snapMeasurePoint,
+} from './indoorArMeasure';
 
 const GRID = 1;
+const HANDLE_HIT_M = 0.45;
 
 function clientToLocal(svg: SVGSVGElement, clientX: number, clientY: number, fine = false): LocalVec2 {
+  const raw = clientToLocalRaw(svg, clientX, clientY);
+  const step = fine ? 0.1 : GRID;
+  return { x: Math.round(raw.x / step) * step, y: Math.round(raw.y / step) * step };
+}
+
+function clientToLocalRaw(svg: SVGSVGElement, clientX: number, clientY: number): LocalVec2 {
   const pt = svg.createSVGPoint();
   pt.x = clientX;
   pt.y = clientY;
   const local = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-  const step = fine ? 0.1 : GRID;
-  return { x: Math.round(local.x / step) * step, y: Math.round(local.y / step) * step };
+  return { x: local.x, y: local.y };
+}
+
+function MeasureSegmentLabel({ a, b }: { a: LocalVec2; b: LocalVec2 }) {
+  const mid = segmentMidpoint2D(a, b);
+  const dist = distance2D(a, b);
+  const label = formatMeasureDistance(dist);
+  const rot = measureLabelRotationDeg(a, b);
+  const w = Math.max(1.7, label.length * 0.34);
+  const h = 0.7;
+  return (
+    <g transform={`translate(${mid.x} ${mid.y}) rotate(${rot})`}>
+      <rect
+        x={-w / 2}
+        y={-h / 2}
+        width={w}
+        height={h}
+        rx={h / 2}
+        fill="#ffffff"
+        stroke="#d4dce6"
+        strokeWidth={0.04}
+      />
+      <text
+        fontSize={0.36}
+        fontWeight={700}
+        fill="#1a2228"
+        textAnchor="middle"
+        dominantBaseline="central"
+      >
+        {label}
+      </text>
+      <polygon
+        points={`${w / 2 - 0.02},${-0.12} ${w / 2 + 0.22},0 ${w / 2 - 0.02},0.12`}
+        fill="#ffffff"
+        stroke="#d4dce6"
+        strokeWidth={0.03}
+      />
+    </g>
+  );
 }
 
 type Props = {
@@ -34,8 +85,10 @@ type Props = {
   selectedKind: 'room' | 'corridor' | 'poi' | 'node' | 'edge' | null;
   draftRect: LocalVec2[] | null;
   measurePoints?: LocalVec2[];
+  measureSnapTargets?: LocalVec2[];
   onDraftRect: (ring: LocalVec2[] | null) => void;
   onMeasurePoint?: (point: LocalVec2) => void;
+  onMeasurePointMove?: (index: number, point: LocalVec2) => void;
   onSelect: (kind: 'room' | 'corridor' | 'poi' | 'node' | 'edge', id: string) => void;
   onClearSelect: () => void;
   onPoiPlace: (point: LocalVec2) => void;
@@ -56,8 +109,10 @@ export function FloorCanvas({
   selectedKind,
   draftRect,
   measurePoints = [],
+  measureSnapTargets = [],
   onDraftRect,
   onMeasurePoint,
+  onMeasurePointMove,
   onSelect,
   onClearSelect,
   onPoiPlace,
@@ -67,8 +122,10 @@ export function FloorCanvas({
   const svgRef = useRef<SVGSVGElement>(null);
   const dragStart = useRef<LocalVec2 | null>(null);
   const nodeDragId = useRef<string | null>(null);
+  const measureDragIndex = useRef<number | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(28);
+  const [previewPoint, setPreviewPoint] = useState<LocalVec2 | null>(null);
   const panning = useRef(false);
   const panOrigin = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
@@ -85,10 +142,19 @@ export function FloorCanvas({
 
   const isGraphTool = ['node', 'connect', 'entrance', 'stairs', 'elevator', 'room_entrance', 'handoff'].includes(tool);
 
+  const snap = (pt: LocalVec2) => snapMeasurePoint(pt, measureSnapTargets, MEASURE_SNAP_M);
+
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     setScale((s) => Math.min(80, Math.max(8, s - e.deltaY * 0.05)));
   }, []);
+
+  const hitMeasureHandle = (pt: LocalVec2): number | null => {
+    for (let i = 0; i < measurePoints.length; i++) {
+      if (distance2D(pt, measurePoints[i]) <= HANDLE_HIT_M) return i;
+    }
+    return null;
+  };
 
   const onPointerDown = (e: React.PointerEvent) => {
     const svg = svgRef.current;
@@ -98,11 +164,18 @@ export function FloorCanvas({
       panOrigin.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
       return;
     }
-    const pt = clientToLocal(svg, e.clientX, e.clientY, tool === 'measure');
     if (tool === 'measure') {
-      onMeasurePoint?.(pt);
+      const raw = clientToLocalRaw(svg, e.clientX, e.clientY);
+      const handle = hitMeasureHandle(raw);
+      if (handle != null && onMeasurePointMove) {
+        measureDragIndex.current = handle;
+        (e.target as Element).setPointerCapture?.(e.pointerId);
+        return;
+      }
+      onMeasurePoint?.(snap(clientToLocal(svg, e.clientX, e.clientY, true)));
       return;
     }
+    const pt = clientToLocal(svg, e.clientX, e.clientY);
     if (tool === 'select') {
       const target = (e.target as SVGElement).dataset;
       if (target.nodeId) {
@@ -134,6 +207,17 @@ export function FloorCanvas({
       });
       return;
     }
+    if (tool === 'measure') {
+      const raw = clientToLocalRaw(svg, e.clientX, e.clientY);
+      const snapped = snap(raw);
+      if (measureDragIndex.current != null && onMeasurePointMove) {
+        onMeasurePointMove(measureDragIndex.current, snapped);
+        setPreviewPoint(null);
+        return;
+      }
+      setPreviewPoint(measurePoints.length > 0 ? snapped : null);
+      return;
+    }
     if (nodeDragId.current && tool === 'select') return;
     if (!dragStart.current || (tool !== 'room' && tool !== 'corridor')) return;
     const pt = clientToLocal(svg, e.clientX, e.clientY);
@@ -146,11 +230,17 @@ export function FloorCanvas({
     if (nodeDragId.current && svg && onNodeDragEnd) {
       const pt = clientToLocal(svg, e.clientX, e.clientY);
       onNodeDragEnd(nodeDragId.current, pt);
-      nodeDragId.current = null;
     }
+    nodeDragId.current = null;
+    measureDragIndex.current = null;
     panning.current = false;
     dragStart.current = null;
   };
+
+  const previewSegments =
+    tool === 'measure' && previewPoint && measurePoints.length > 0
+      ? [{ a: measurePoints[measurePoints.length - 1], b: previewPoint }]
+      : [];
 
   return (
     <div className="relative h-full min-h-[420px] overflow-hidden rounded-lg border border-line bg-paper">
@@ -174,10 +264,14 @@ export function FloorCanvas({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
+        onPointerLeave={(e) => {
+          setPreviewPoint(null);
+          onPointerUp(e);
+        }}
         style={{
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale / 28})`,
           transformOrigin: '0 0',
+          cursor: tool === 'measure' ? 'crosshair' : undefined,
         }}
       >
         <defs>
@@ -287,8 +381,14 @@ export function FloorCanvas({
               cx={p.localX}
               cy={p.localY}
               r={0.35}
-              fill={selectedKind === 'poi' && selectedId === p.id ? '#fb923c' : '#f97316'}
-              stroke="#c2410c"
+              fill={
+                selectedKind === 'poi' && selectedId === p.id
+                  ? '#fb923c'
+                  : p.category === 'measurement'
+                    ? '#10b981'
+                    : '#f97316'
+              }
+              stroke={p.category === 'measurement' ? '#065f46' : '#c2410c'}
               strokeWidth={0.06}
             />
             <text x={p.localX + 0.5} y={p.localY + 0.2} fontSize={0.5} fill="#9a3412">
@@ -310,36 +410,47 @@ export function FloorCanvas({
 
         {measurePoints.length > 0 && (
           <g>
-            {measurePoints.length > 1 &&
-              measurePoints.slice(1).map((p, i) => {
-                const a = measurePoints[i];
-                const mid = segmentMidpoint2D(a, p);
-                const dist = distance2D(a, p);
-                return (
-                  <g key={`seg-${i}`}>
-                    <line
-                      x1={a.x}
-                      y1={a.y}
-                      x2={p.x}
-                      y2={p.y}
-                      stroke="#10b981"
-                      strokeWidth={0.12}
-                    />
-                    <text x={mid.x} y={mid.y - 0.25} fontSize={0.45} fill="#047857" textAnchor="middle">
-                      {formatMeasureDistance(dist)}
-                    </text>
-                  </g>
-                );
-              })}
+            {measurePoints.slice(1).map((p, i) => {
+              const a = measurePoints[i];
+              return (
+                <g key={`seg-${i}`}>
+                  <line x1={a.x} y1={a.y} x2={p.x} y2={p.y} stroke="#10b981" strokeWidth={0.12} />
+                  <MeasureSegmentLabel a={a} b={p} />
+                </g>
+              );
+            })}
+            {previewSegments.map((seg, i) => (
+              <g key={`preview-${i}`} opacity={0.65}>
+                <line
+                  x1={seg.a.x}
+                  y1={seg.a.y}
+                  x2={seg.b.x}
+                  y2={seg.b.y}
+                  stroke="#10b981"
+                  strokeWidth={0.1}
+                  strokeDasharray="0.2 0.12"
+                />
+                <MeasureSegmentLabel a={seg.a} b={seg.b} />
+              </g>
+            ))}
             {measurePoints.map((p, i) => (
-              <circle key={`mp-${i}`} cx={p.x} cy={p.y} r={0.25} fill="#10b981" stroke="#065f46" strokeWidth={0.06} />
+              <circle
+                key={`mp-${i}`}
+                cx={p.x}
+                cy={p.y}
+                r={0.28}
+                fill="#ffffff"
+                stroke="#065f46"
+                strokeWidth={0.08}
+                style={{ cursor: 'grab' }}
+              />
             ))}
           </g>
         )}
       </svg>
       <p className="absolute bottom-2 left-2 text-xs text-muted">
         {tool === 'measure'
-          ? 'Measure — tap corners; distances shown like AR-Measure'
+          ? 'Measure — tap two points; drag endpoints. Snaps to nodes, POIs, and corners.'
           : 'Local meters — Alt+drag to pan, wheel to zoom'}
       </p>
     </div>

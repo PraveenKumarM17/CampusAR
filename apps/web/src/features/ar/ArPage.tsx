@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUp, MapPin, Volume2, AlertTriangle, Users, CheckCircle2, LocateFixed } from 'lucide-react';
+import { ArrowUp, MapPin, Volume2, AlertTriangle, Users, CheckCircle2, LocateFixed, Ruler } from 'lucide-react';
 import type { CampusPlace, GraphNode, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -37,6 +37,7 @@ import { useActiveSite } from '../../hooks/useActiveSite';
 import { MAP_ENGINE } from '../../lib/mapEngine';
 import { IndoorDestinationPicker } from '../../components/indoor/IndoorDestinationPicker';
 import { buildIndoorNavPath } from '../../lib/buildingNavigation';
+import { IndoorArMeasurePanel } from '../mapBuilder/IndoorArMeasurePanel';
 
 /**
  * AR Navigation is a camera + compass overlay — it does not embed Leaflet or MapLibre.
@@ -111,6 +112,7 @@ export function ArPage() {
   const [routeReady, setRouteReady] = useState(false);
   const [initTimedOut, setInitTimedOut] = useState(false);
   const [userWalking, setUserWalking] = useState(false);
+  const [measureOpen, setMeasureOpen] = useState(false);
 
   const routeReqId = useRef(0);
   const lastRouteSourceRef = useRef<string | null>(null);
@@ -549,6 +551,14 @@ export function ArPage() {
           <button
             type="button"
             className="btn-ghost inline-flex items-center gap-2 !py-2 text-sm"
+            onClick={() => setMeasureOpen(true)}
+          >
+            <Ruler size={16} />
+            Measure
+          </button>
+          <button
+            type="button"
+            className="btn-ghost inline-flex items-center gap-2 !py-2 text-sm"
             onClick={handleRefreshGps}
           >
             <LocateFixed size={16} />
@@ -782,6 +792,8 @@ export function ArPage() {
           onDismiss={() => undefined}
         />
       )}
+
+      {measureOpen && <IndoorArMeasurePanel onClose={() => setMeasureOpen(false)} />}
     </div>
   );
 }

@@ -67,6 +67,7 @@ const floorPoiCategorySchema = z.enum([
   'stairs',
   'information',
   'waiting',
+  'measurement',
   'other',
 ]);
 

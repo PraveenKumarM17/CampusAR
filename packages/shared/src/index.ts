@@ -269,6 +269,7 @@ export type FloorPoiCategory =
   | 'stairs'
   | 'information'
   | 'waiting'
+  | 'measurement'
   | 'other';
 
 export interface FloorCorridor {
