@@ -6,6 +6,7 @@ import { ApiError } from '../../lib/api';
 import { useCampusApi } from '../../hooks/useCampusApi';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
+import { IndoorArNavigator } from './IndoorArNavigator';
 import {
   parseIndoorParams,
   placeBelongsToBuilding,
@@ -122,38 +123,38 @@ export function IndoorPage() {
     };
   }, [destinationId, buildingId, token, indoorDestinationPlaceId, setIndoorDestination, campusApi]);
 
-  async function resolveQr(e: FormEvent) {
-    e.preventDefault();
-    await localizeAtAnchor(qr.trim());
-  }
+async function resolveQr(e: FormEvent) {
+  e.preventDefault();
+  await localizeAtAnchor(qr.trim());
+}
 
-  async function localizeAtAnchor(code: string) {
-    if (!code) return;
-    setError(null);
-    setRoute(null);
-    try {
-      const normalized = code.toUpperCase();
-      setQr(normalized);
-      const res = await campusApi.indoorResolveAnchor(normalized, token, buildingId ?? undefined);
-      setStatus(`Localized at ${res.node.name ?? res.anchor.anchorCode} (${res.map.name}).`);
-      if (guided && destinationId) {
-        await startIndoor(destinationId, normalized);
-      }
-    } catch (err) {
-      setStatus(null);
-      setError(err instanceof Error ? err.message : 'Marker not found');
+async function localizeAtAnchor(code: string) {
+  if (!code) return;
+
+  setError(null);
+  setRoute(null);
+
+  try {
+    const normalized = code.toUpperCase();
+    setQr(normalized);
+
+    const res = await campusApi.indoorResolveAnchor(
+      normalized,
+      token,
+      buildingId ?? undefined,
+    );
+
+    setStatus(
+      `Localized at ${res.node.name ?? res.anchor.anchorCode} (${res.map.name}).`,
+    );
+
+    if (guided && destinationId) {
+      await startIndoor(destinationId, normalized);
     }
   } catch (err) {
     setStatus(null);
-    setError(
-      err instanceof Error ? err.message : 'Marker not found',
-    );
+    setError(err instanceof Error ? err.message : 'Marker not found');
   }
-}
-
-async function resolveQr(e: FormEvent) {
-  e.preventDefault();
-  await resolveQrCode(qr);
 }
 
   async function searchPlaces(e: FormEvent) {
@@ -254,13 +255,13 @@ async function resolveQr(e: FormEvent) {
   </p>
 
   <IndoorQrScanner
-    onScan={(decodedText) => {
-      void resolveQrCode(decodedText);
-    }}
-    onError={(message) => {
-      setError(message);
-    }}
-  />
+  onScan={(decodedText) => {
+    void localizeAtAnchor(decodedText);
+  }}
+  onError={(message) => {
+    setError(message);
+  }}
+/>
   <div className="flex gap-2">
           <input
             id="indoor-qr"
@@ -360,7 +361,6 @@ async function resolveQr(e: FormEvent) {
       )}
       {scannerOpen && (
         <IndoorQrScanner
-          onClose={() => setScannerOpen(false)}
           onScan={(value) => {
             setScannerOpen(false);
             void localizeAtAnchor(value);

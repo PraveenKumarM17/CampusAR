@@ -203,9 +203,14 @@ function DraggablePin({
         },
       }}
     >
-      <Tooltip direction="top" offset={[0, -18]} opacity={1}>
-        {node.name ?? 'pin'}
-      </Tooltip>
+    <Tooltip
+  direction="top"
+  offset={[0, -18]}
+  opacity={0.95}
+  className="admin-map-tooltip"
+>
+  {node.name ?? 'pin'}
+</Tooltip>
     </Marker>
   );
 }
