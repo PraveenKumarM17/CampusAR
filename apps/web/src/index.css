@@ -107,17 +107,22 @@ body {
 }
 
 .leaflet-tooltip {
-  background: rgba(26, 34, 40, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #fff;
-  box-shadow: none;
-  font-size: 11px;
+  background: rgba(26, 34, 40, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
   font-weight: 600;
-  padding: 3px 6px;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.leaflet-tooltip .text-ink {
+  color: #fff !important;
 }
 
 .leaflet-tooltip-top::before {
-  border-top-color: rgba(26, 34, 40, 0.88);
+  border-top-color: rgba(26, 34, 40, 0.92);
 }
 
 @keyframes float-arrow {

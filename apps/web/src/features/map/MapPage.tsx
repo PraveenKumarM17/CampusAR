@@ -517,14 +517,11 @@ export function MapPage() {
                       direction="top"
                       offset={[0, -6]}
                       opacity={0.95}
-                      permanent={
-                        node.kind === 'entrance' ||
-                        /Ground|Gate|Parking|Temple|Court|Corner|Gallery|Plaza|Junction|Auditorium|Admin|ECE|IT|Civil|Cyber|BCA|School|PUC|MBA|Mech|Jain/.test(
-                          node.name ?? '',
-                        )
-                      }
+                      permanent
                     >
-                      <span className="font-semibold text-ink">{node.name ?? node.kind}</span>
+                      <span className="font-semibold text-white whitespace-nowrap">
+                        {node.name ?? node.kind}
+                      </span>
                     </Tooltip>
                     <Popup>
                       <strong>{node.name}</strong>
