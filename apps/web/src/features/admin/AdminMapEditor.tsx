@@ -203,9 +203,14 @@ function DraggablePin({
         },
       }}
     >
-      <Tooltip direction="top" offset={[0, -18]} opacity={1}>
-        {node.name ?? 'pin'}
-      </Tooltip>
+    <Tooltip
+  direction="top"
+  offset={[0, -18]}
+  opacity={0.95}
+  className="admin-map-tooltip"
+>
+  {node.name ?? 'pin'}
+</Tooltip>
     </Marker>
   );
 }
@@ -732,7 +737,7 @@ export function AdminMapEditor() {
         }
       }
 
-      await api.adminNodes.remove(bendId, token);
+      await api.mapBuilder.deleteNode(bendId,true, token);
       setSelectedBendId(null);
       await refresh();
       flash(

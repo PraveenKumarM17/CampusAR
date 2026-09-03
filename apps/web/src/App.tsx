@@ -7,7 +7,7 @@ import { NavigatePage } from './features/navigate/NavigatePage';
 import { ArPage } from './features/ar/ArPage';
 import { SafetyPage } from './features/safety/SafetyPage';
 import { AdminPage } from './features/admin/AdminPage';
-import { MapBuilderPage } from './features/mapBuilder/MapBuilderPage';
+import { AdminMapEditor } from './features/admin/AdminMapEditor';
 import { IndoorMapBuilderPage } from './features/mapBuilder/IndoorMapBuilderPage';
 import { AnalyticsPage } from './features/analytics/AnalyticsPage';
 import { TwinPage } from './features/twin/TwinPage';
@@ -57,7 +57,7 @@ export default function App() {
           path="/admin/map-builder"
           element={
             <Protected>
-              <MapBuilderPage />
+              <AdminMapEditor />
             </Protected>
           }
         />
