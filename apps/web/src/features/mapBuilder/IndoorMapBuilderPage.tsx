@@ -667,27 +667,27 @@ export function IndoorMapBuilderPage() {
 
   if (!buildingId) {
     return (
-      <div className="space-y-4 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
           <div>
-            <h1 className="page-title">Indoor Map Builder</h1>
-            <p className="page-sub">Select a building to manage floors and floor plans. Site: {label}</p>
+            <h1 className="page-title text-xl sm:text-2xl md:text-3xl">Indoor Map Builder</h1>
+            <p className="page-sub text-xs sm:text-sm">Select a building to manage floors and floor plans. Site: {label}</p>
           </div>
           <MapBuilderNav mode="indoor" />
         </div>
         {error && (
-          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 sm:px-3 sm:text-sm">{error}</p>
         )}
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
           {buildings.map((b) => (
             <Link
               key={b.id}
               to={`/admin/map-builder/indoor/${b.id}`}
-              className="rounded-lg border border-line bg-paper-raised p-4 hover:border-accent"
+              className="rounded-lg border border-line bg-paper-raised p-3 transition-colors hover:border-accent sm:p-4"
             >
-              <Building2 className="mb-2 h-5 w-5 text-accent" />
-              <p className="font-semibold text-ink">{b.name}</p>
-              <p className="text-sm text-muted">{b.code}</p>
+              <Building2 className="mb-2 h-4 w-4 text-accent sm:h-5 sm:w-5" />
+              <p className="text-sm font-semibold text-ink sm:text-base">{b.name}</p>
+              <p className="text-xs text-muted sm:text-sm">{b.code}</p>
             </Link>
           ))}
         </div>
@@ -703,20 +703,20 @@ export function IndoorMapBuilderPage() {
   const shapeTool = pendingTool ?? tool;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col gap-3 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex min-h-screen flex-col gap-2 p-2 sm:h-[calc(100vh-4rem)] sm:gap-3 sm:p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div>
-          <h1 className="page-title">Indoor Map Builder</h1>
-          <p className="text-sm text-muted">
+          <h1 className="page-title text-xl sm:text-2xl lg:text-3xl">Indoor Map Builder</h1>
+          <p className="text-xs text-muted sm:text-sm">
             {buildingName} · {FLOOR_PLAN_COORDINATE_SYSTEM} · {label}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <MapBuilderNav mode="indoor" />
-          <button type="button" className="btn-secondary text-sm" onClick={() => void runValidation()}>
+          <button type="button" className="btn-secondary w-full text-xs sm:w-auto sm:text-sm" onClick={() => void runValidation()}>
             Validate
           </button>
-          <Link to="/admin/map-builder/indoor" className="btn-secondary text-sm">
+          <Link to="/admin/map-builder/indoor" className="btn-secondary w-full text-xs sm:w-auto sm:text-sm">
             Change building
           </Link>
         </div>
@@ -726,10 +726,10 @@ export function IndoorMapBuilderPage() {
         <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
       )}
 
-      <div className="flex min-h-0 flex-1 gap-3">
-        <aside className="w-56 shrink-0 space-y-3 overflow-y-auto rounded-lg border border-line bg-paper-raised p-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Layers className="h-4 w-4" /> Floors
+      <div className="flex min-h-0 flex-1 flex-col gap-2 sm:gap-3 lg:flex-row">
+        <aside className="w-full shrink-0 space-y-2 overflow-y-auto rounded-lg border border-line bg-paper-raised p-2.5 sm:space-y-3 sm:p-3 lg:w-64 lg:max-h-[calc(100vh-12rem)] xl:w-72">
+          <h2 className="flex items-center gap-1.5 text-xs font-semibold sm:gap-2 sm:text-sm">
+            <Layers className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Floors
           </h2>
           <ul className="space-y-1">
             {(snapshot?.floors ?? []).map((f: Floor) => (
@@ -818,8 +818,8 @@ export function IndoorMapBuilderPage() {
               <button
                 key={t.id}
                 type="button"
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-sm ${
-                  tool === t.id ? 'bg-violet-600 text-white' : 'border border-line bg-paper-raised'
+                className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors sm:text-sm ${
+                  tool === t.id ? 'bg-violet-600 text-white' : 'border border-line bg-paper-raised hover:bg-paper-soft'
                 }`}
                 onClick={() => {
                   setTool(t.id);
@@ -827,7 +827,9 @@ export function IndoorMapBuilderPage() {
                   setPendingHandoffOutdoorId(null);
                 }}
               >
-                <t.icon className="h-3.5 w-3.5" /> {t.label}
+                <t.icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> 
+                <span className="hidden sm:inline">{t.label}</span>
+                <span className="sm:hidden">{t.label === 'Nav node' ? 'Node' : t.label === 'Connect' ? 'Link' : t.label === 'Room link' ? 'Room' : t.label}</span>
               </button>
             ))}
           </div>

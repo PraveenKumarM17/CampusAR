@@ -806,3 +806,6 @@ export interface IndoorBuildingContext {
   quickPlaces: IndoorPlace[];
   anchors: { anchorCode: string; floorId: string; nodeId: string }[];
 }
+
+// ============ Measurement Types ============
+export * from './types/measurement';

@@ -102,6 +102,45 @@ function roundRect(
   ctx.closePath();
 }
 
+function poseToVec3(pose: XRPose): LocalVec3 {
+  const p = pose.transform.position;
+  return { x: p.x, y: p.y, z: p.z };
+}
+
+async function requestArSession(overlayRoot: HTMLElement): Promise<XRSessionWithHitTest> {
+  if (!navigator.xr) throw new Error('WebXR is not available');
+  const attempts: XRSessionInit[] = [
+    {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['local-floor', 'dom-overlay'],
+      domOverlay: { root: overlayRoot },
+    },
+    {
+      requiredFeatures: ['hit-test', 'local-floor'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: overlayRoot },
+    },
+    {
+      requiredFeatures: ['local-floor'],
+      optionalFeatures: ['hit-test', 'dom-overlay'],
+      domOverlay: { root: overlayRoot },
+    },
+    {
+      optionalFeatures: ['hit-test', 'local-floor', 'dom-overlay'],
+      domOverlay: { root: overlayRoot },
+    },
+  ];
+  let lastError: unknown;
+  for (const init of attempts) {
+    try {
+      return (await navigator.xr.requestSession('immersive-ar', init)) as XRSessionWithHitTest;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Could not start WebXR AR session');
+}
+
 /**
  * Mobile AR measure mode — ports AR-Measure tap-to-measure flow using WebXR hit-test when available.
  * Falls back to camera preview + screen overlay (not metric) or the 2D canvas Measure tool.
@@ -114,6 +153,9 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
   const stageRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<XRSessionWithHitTest | null>(null);
   const refSpaceRef = useRef<XRReferenceSpace | null>(null);
+  const hitTestSourceRef = useRef<XRHitTestSource | null>(null);
+  const latestHitRef = useRef<LocalVec3 | null>(null);
+  const surfaceDetectedRef = useRef(false);
   const pointsRef = useRef<LocalVec3[]>([]);
   const [arSupported, setArSupported] = useState<boolean | null>(null);
   const [arActive, setArActive] = useState(false);
@@ -122,14 +164,27 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
   const [projected, setProjected] = useState<(ScreenPt | null)[]>([]);
   const [status, setStatus] = useState('Checking AR support…');
   const [error, setError] = useState<string | null>(null);
+  const [surfaceDetected, setSurfaceDetected] = useState(false);
   const dragIndex = useRef<number | null>(null);
 
   pointsRef.current = points;
 
+  const placeArPoint = useCallback(() => {
+    const hit = latestHitRef.current;
+    if (!hit) {
+      setError('No surface yet. Move the phone slowly over a flat, well-lit area until the reticle turns green, then tap Place.');
+      return;
+    }
+    setError(null);
+    const next = [...pointsRef.current, { ...hit }];
+    pointsRef.current = next;
+    setPoints(next);
+    setScreenPoints([]);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      // Check if we're in a secure context (HTTPS or localhost)
       if (!window.isSecureContext) {
         if (!cancelled) {
           setArSupported(false);
@@ -151,7 +206,7 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
         setArSupported(ok);
         setStatus(
           ok
-            ? 'Tap Start AR, then tap the floor to place points. Distances are 3D Euclidean meters.'
+            ? 'Tap Start AR, aim the reticle at a surface, then tap Place.'
             : 'WebXR AR not available on this device. Use 2D Measure tool for accurate floor-plan distances.',
         );
       }
@@ -178,10 +233,14 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
   }, [arSupported]);
 
   const stopAr = useCallback(() => {
+    hitTestSourceRef.current?.cancel();
+    hitTestSourceRef.current = null;
+    latestHitRef.current = null;
     sessionRef.current?.end().catch(() => undefined);
     sessionRef.current = null;
     refSpaceRef.current = null;
     setArActive(false);
+    setSurfaceDetected(false);
     setStatus('AR session ended.');
   }, []);
 
@@ -189,53 +248,80 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
 
   const startAr = useCallback(async () => {
     const canvas = canvasRef.current;
-    if (!canvas || !navigator.xr) return;
+    const overlayRoot = panelRef.current;
+    if (!canvas || !navigator.xr || !overlayRoot) return;
     setError(null);
     try {
-      const overlayRoot = panelRef.current;
-      const sessionInit: XRSessionInit = {
-        requiredFeatures: ['local-floor'],
-        optionalFeatures: overlayRoot ? ['hit-test', 'dom-overlay'] : ['hit-test'],
-      };
-      if (overlayRoot) sessionInit.domOverlay = { root: overlayRoot };
-      const session = (await navigator.xr.requestSession(
-        'immersive-ar',
-        sessionInit,
-      )) as XRSessionWithHitTest;
+      const session = await requestArSession(overlayRoot);
       sessionRef.current = session;
-      const gl = canvas.getContext('webgl', { xrCompatible: true });
+      // Alpha must be enabled so the XR compositor can show the camera through the GL layer.
+      const gl = canvas.getContext('webgl', {
+        xrCompatible: true,
+        alpha: true,
+        premultipliedAlpha: true,
+        antialias: false,
+        depth: true,
+        stencil: false,
+      });
       if (!gl) throw new Error('WebGL not available');
       await gl.makeXRCompatible();
-      session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
-      const refSpace = await session.requestReferenceSpace('local-floor');
+      session.updateRenderState({
+        baseLayer: new XRWebGLLayer(session, gl, { alpha: true, ignoreDepthValues: true }),
+      });
+
+      let refSpace: XRReferenceSpace;
+      try {
+        refSpace = await session.requestReferenceSpace('local-floor');
+      } catch {
+        refSpace = await session.requestReferenceSpace('local');
+      }
       refSpaceRef.current = refSpace;
+
       const viewerSpace = await session.requestReferenceSpace('viewer');
       let hitTestSource: XRHitTestSource | null = null;
-      if (session.requestHitTestSource) {
-        hitTestSource = (await session.requestHitTestSource({ space: viewerSpace })) ?? null;
+      try {
+        if (session.requestHitTestSource) {
+          hitTestSource = (await session.requestHitTestSource({ space: viewerSpace })) ?? null;
+        }
+      } catch {
+        hitTestSource = null;
       }
+      hitTestSourceRef.current = hitTestSource;
+      if (!hitTestSource) {
+        setError('Hit-test is not available on this session. Surface points cannot be placed until the phone detects planes.');
+      }
+
+      const commitHit = (hit: LocalVec3) => {
+        const next = [...pointsRef.current, hit];
+        pointsRef.current = next;
+        setPoints(next);
+        setScreenPoints([]);
+        setError(null);
+      };
 
       session.addEventListener('select', (event: XRInputSourceEvent) => {
         const frame = event.frame;
-        if (!hitTestSource) {
-          setError('Hit-test unavailable — use canvas Measure tool.');
-          return;
+        const source = hitTestSourceRef.current;
+        const ref = refSpaceRef.current;
+        if (source && ref && frame) {
+          const results = source.getHitTestResults(frame);
+          const pose = results[0]?.getPose(ref);
+          if (pose) {
+            commitHit(poseToVec3(pose));
+            return;
+          }
         }
-        const results = hitTestSource.getHitTestResults(frame);
-        if (results.length === 0) return;
-        const pose = results[0].getPose(refSpace);
-        if (!pose) return;
-        const p = pose.transform.position;
-        const next: LocalVec3 = { x: p.x, y: p.y, z: p.z };
-        pointsRef.current = [...pointsRef.current, next];
-        setPoints([...pointsRef.current]);
-        setScreenPoints([]);
+        placeArPoint();
       });
 
       session.addEventListener('end', () => {
+        hitTestSourceRef.current?.cancel();
+        hitTestSourceRef.current = null;
         sessionRef.current = null;
         refSpaceRef.current = null;
+        latestHitRef.current = null;
         setArActive(false);
+        setSurfaceDetected(false);
       });
 
       const onFrame = (_time: number, frame: XRFrame) => {
@@ -244,10 +330,26 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
         const baseLayer = sess.renderState.baseLayer;
         if (baseLayer) {
           gl.bindFramebuffer(gl.FRAMEBUFFER, baseLayer.framebuffer);
+          gl.viewport(0, 0, baseLayer.framebufferWidth, baseLayer.framebufferHeight);
           gl.clearColor(0, 0, 0, 0);
           gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         }
+
         const ref = refSpaceRef.current;
+        const source = hitTestSourceRef.current;
+        let hit: LocalVec3 | null = null;
+        if (ref && source) {
+          const results = source.getHitTestResults(frame);
+          const pose = results[0]?.getPose(ref);
+          if (pose) hit = poseToVec3(pose);
+        }
+        latestHitRef.current = hit;
+        const detected = hit != null;
+        if (detected !== surfaceDetectedRef.current) {
+          surfaceDetectedRef.current = detected;
+          setSurfaceDetected(detected);
+        }
+
         const stage = stageRef.current;
         if (ref && stage && pointsRef.current.length > 0) {
           const viewer = frame.getViewerPose(ref);
@@ -270,12 +372,12 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
       };
       session.requestAnimationFrame(onFrame);
       setArActive(true);
-      setStatus('Aim at a surface and tap to place points. The line stays world-locked as you move.');
+      setStatus('Aim the reticle at a surface, then tap Place (or tap the camera view).');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start AR session');
       setArActive(false);
     }
-  }, []);
+  }, [placeArPoint]);
 
   const undoPoint = () => {
     if (arActive || points.length > 0) {
@@ -336,7 +438,15 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
   };
 
   const onOverlayPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (arActive) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button')) return;
+
+    if (arActive) {
+      e.preventDefault();
+      placeArPoint();
+      return;
+    }
+
     const rect = stageRef.current?.getBoundingClientRect();
     if (!rect) return;
     const x = e.clientX - rect.left;
@@ -379,22 +489,38 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
   const canUndo = points.length > 0 || screenPoints.length > 0;
 
   return (
-    <div ref={panelRef} className="fixed inset-0 z-50 flex flex-col bg-black/90 text-white">
-      <div className="flex items-center justify-between gap-2 border-b border-white/20 px-3 py-2">
-        <p className="text-sm font-semibold">AR Measure</p>
-        <button type="button" className="rounded p-1 hover:bg-white/10" onClick={onClose} aria-label="Close">
-          <X className="h-5 w-5" />
+    <div
+      ref={panelRef}
+      className={`fixed inset-0 z-50 flex flex-col text-white ${arActive ? 'bg-transparent' : 'bg-black'}`}
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-white/20 bg-black/80 px-4 py-3 backdrop-blur-sm">
+        <p className="text-base font-semibold sm:text-lg">AR Measure</p>
+        <button
+          type="button"
+          className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <X className="h-6 w-6" />
         </button>
       </div>
 
       <div
         ref={stageRef}
-        className="relative min-h-0 flex-1"
+        className="relative min-h-0 flex-1 touch-none"
         onPointerDown={onOverlayPointerDown}
         onPointerMove={onOverlayPointerMove}
         onPointerUp={onOverlayPointerUp}
+        style={{ touchAction: 'none' }}
       >
-        <canvas ref={canvasRef} className={`h-full w-full ${arActive ? 'block' : 'hidden'}`} />
+        <canvas
+          ref={canvasRef}
+          className={
+            arActive
+              ? 'pointer-events-none absolute inset-0 h-full w-full bg-transparent opacity-0'
+              : 'hidden'
+          }
+        />
         {!arActive && (
           <video ref={videoRef} className="h-full w-full object-cover" autoPlay playsInline muted />
         )}
@@ -428,11 +554,25 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
           ))}
         </div>
 
-        <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex items-center justify-between px-3">
+        {arActive && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <div
+              className={`flex h-16 w-16 items-center justify-center rounded-full border-2 ${
+                surfaceDetected ? 'border-emerald-400 bg-emerald-500/20' : 'border-white/70 bg-black/20'
+              }`}
+            >
+              <div
+                className={`h-3 w-3 rounded-full ${surfaceDetected ? 'bg-emerald-400' : 'bg-white/80'}`}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex items-center justify-between px-4">
           <div className="pointer-events-auto flex gap-2">
             <button
               type="button"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-ink/80 text-white shadow-md disabled:opacity-40"
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm transition-all hover:bg-black/80 active:scale-95 disabled:opacity-40"
               onClick={undoPoint}
               disabled={!canUndo}
               aria-label="Undo last point"
@@ -441,7 +581,7 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
             </button>
             <button
               type="button"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-ink/80 text-white shadow-md disabled:opacity-40"
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm transition-all hover:bg-black/80 active:scale-95 disabled:opacity-40"
               onClick={clearPoints}
               disabled={!canUndo}
               aria-label="Delete measurement"
@@ -451,7 +591,7 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
           </div>
           <button
             type="button"
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-ink shadow-md disabled:opacity-40"
+            className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-black shadow-lg transition-all hover:bg-gray-100 active:scale-95 disabled:opacity-40"
             onClick={capture}
             disabled={overlayHandles.length < 2}
             aria-label="Capture measurement"
@@ -459,50 +599,100 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
             <Circle className="h-6 w-6" />
           </button>
         </div>
+
+        {arActive && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-28 z-20 flex flex-col items-center gap-3 px-4">
+            <p
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold shadow ${
+                surfaceDetected ? 'bg-emerald-600 text-white' : 'bg-black/70 text-white'
+              }`}
+            >
+              {surfaceDetected ? 'Surface detected — tap Place' : 'Move slowly to detect a surface'}
+            </p>
+            <button
+              type="button"
+              className="pointer-events-auto flex h-20 w-20 items-center justify-center rounded-full bg-white text-black shadow-2xl ring-4 ring-white/30 active:scale-95"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                placeArPoint();
+              }}
+              aria-label="Place point"
+            >
+              <span className="text-sm font-bold">Place</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="space-y-2 border-t border-white/20 p-3 text-sm">
-        {error && <p className="text-red-300">{error}</p>}
-        <p className="text-white/80">{status}</p>
+      <div className="space-y-3 border-t border-white/20 bg-black/80 p-4 backdrop-blur-sm">
+        {error && (
+          <div className="rounded-lg bg-red-900/40 p-3 text-sm text-red-200">
+            <p className="font-semibold">⚠️ Error</p>
+            <p className="mt-1">{error}</p>
+          </div>
+        )}
+
+        {!arActive && <p className="text-sm text-white/90 sm:text-base">{status}</p>}
         {!arActive && arSupported === false && (
-          <div className="rounded-md bg-amber-900/30 p-3 text-xs text-amber-200">
+          <div className="rounded-lg bg-amber-900/40 p-3 text-sm text-amber-200">
             <p className="font-semibold">⚠️ Screen Overlay Mode (Not Metric)</p>
-            <p className="mt-1">
-              For accurate measurements, use one of these:
-            </p>
-            <ul className="mt-1 list-inside list-disc space-y-0.5">
-              <li>Access via <strong>HTTPS</strong> on an ARCore/ARKit device</li>
-              <li>Use the <strong>2D Measure tool</strong> on the floor plan (accurate local meters)</li>
+            <p className="mt-2">For accurate measurements, use one of these:</p>
+            <ul className="mt-2 list-inside list-disc space-y-1">
+              <li>
+                Access via <strong>HTTPS</strong> on an ARCore/ARKit device
+              </li>
+              <li>
+                Use the <strong>2D Measure tool</strong> on the floor plan (accurate local meters)
+              </li>
             </ul>
           </div>
         )}
 
         {points.length > 0 && (
-          <p className="text-xs text-emerald-300">
-            {points.length} AR point(s)
-            {points.length > 1 ? ` · path ${formatMeasureDistance(polylineLength3D(points))}` : ''}
-            {verticalSpan >= 0.5 ? ` · height ${formatMeasureDistance(verticalSpan)}` : ''}
-          </p>
+          <div className="rounded-lg bg-emerald-900/30 p-3">
+            <p className="text-sm font-medium text-emerald-300">
+              📍 {points.length} point{points.length !== 1 ? 's' : ''} captured
+            </p>
+            {points.length > 1 && (
+              <p className="mt-1 text-xs text-emerald-200">
+                Path length: {formatMeasureDistance(polylineLength3D(points))}
+                {verticalSpan >= 0.5 ? ` · Height: ${formatMeasureDistance(verticalSpan)}` : ''}
+              </p>
+            )}
+          </div>
         )}
 
         <div className="flex flex-wrap gap-2">
           {arSupported && !arActive && (
-            <button type="button" className="btn-primary text-sm" onClick={() => void startAr()}>
-              <Camera className="mr-1 inline h-4 w-4" /> Start AR
+            <button
+              type="button"
+              className="btn-primary flex-1 !py-3 text-base font-semibold sm:flex-none sm:text-sm"
+              onClick={() => void startAr()}
+            >
+              <Camera className="mr-2 inline h-5 w-5" /> Start AR
             </button>
           )}
           {arActive && (
-            <button type="button" className="btn-ghost text-sm text-white" onClick={stopAr}>
+            <button
+              type="button"
+              className="btn-ghost flex-1 !py-3 text-base text-white sm:flex-none sm:text-sm"
+              onClick={stopAr}
+            >
               Stop AR
             </button>
           )}
-          <button type="button" className="btn-ghost text-sm text-white" onClick={clearPoints} disabled={!canUndo}>
-            <RotateCcw className="mr-1 inline h-4 w-4" /> Clear
+          <button
+            type="button"
+            className="btn-ghost !py-3 text-base text-white sm:text-sm"
+            onClick={clearPoints}
+            disabled={!canUndo}
+          >
+            <RotateCcw className="mr-1.5 inline h-5 w-5 sm:h-4 sm:w-4" /> Clear
           </button>
           {onApplyPlanPoints && (
             <button
               type="button"
-              className="btn-primary text-sm"
+              className="btn-primary flex-1 !py-3 text-base font-semibold sm:flex-none sm:text-sm"
               disabled={points.length < 2}
               onClick={applyToPlan}
             >
@@ -512,7 +702,7 @@ export function IndoorArMeasurePanel({ onClose, onApplyPlanPoints, onSuggestFloo
           {verticalSpan >= 2 && onSuggestFloorHeight && (
             <button
               type="button"
-              className="btn-ghost text-sm text-white"
+              className="btn-ghost !py-3 text-base text-white sm:text-sm"
               onClick={() => onSuggestFloorHeight(Number(verticalSpan.toFixed(2)))}
             >
               Use {formatMeasureDistance(verticalSpan)} as floor height
