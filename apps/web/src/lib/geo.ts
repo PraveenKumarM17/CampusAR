@@ -4,11 +4,11 @@ import { CAMPUS_CENTER } from './campus';
 const R = 6371000;
 
 /** Max accuracy (m) to trust for routing snap and auto-follow. */
-export const GPS_MAX_ACCURACY_M = 65;
+export const GPS_MAX_ACCURACY_M = 100;
 /** Max distance (m) from GPS fix to snap onto a walk node. */
-export const CAMPUS_MAX_SNAP_DISTANCE_M = 35;
+export const CAMPUS_MAX_SNAP_DISTANCE_M = 100;
 /** Search radius (m) for nearest walk node. */
-export const CAMPUS_SNAP_RADIUS_M = 45;
+export const CAMPUS_SNAP_RADIUS_M = 120;
 /** Must be within this distance (m) of campus center to auto-track. */
 export const CAMPUS_PROXIMITY_M = 1200;
 /** Treat GPS fixes older than this as stale for navigation progress. */
@@ -115,47 +115,94 @@ export function namedPlaceNodes(nodes: GraphNode[]): GraphNode[] {
     .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 }
 
-export type GpsSnapResult =
-  | { ok: true; node: GraphNode; distanceM: number; message: string }
-  | { ok: false; message: string };
+// export type GpsSnapResult =
+//   | { ok: true; node: GraphNode; distanceM: number; message: string }
+//   | { ok: false; message: string };
 
 /** Snap raw GPS to a named campus place for routing — never moves the map marker. */
-export function snapGpsForRouting(pose: UserPose, nodes: GraphNode[]): GpsSnapResult {
-  const campusDist = distanceFromCampusM(pose);
-  if (campusDist > CAMPUS_PROXIMITY_M) {
+export function snapGpsForRouting(
+  pose: UserPose,
+  nodes: GraphNode[],
+): GpsSnapResult {
+  const campusDistance = distanceFromCampusM(pose);
+
+  if (campusDistance > CAMPUS_PROXIMITY_M) {
     return {
       ok: false,
-      message: `You are ${(campusDist / 1000).toFixed(1)} km from RNSIT — pick a start point manually.`,
+      message:
+        'You are outside the campus area. Move closer to campus to start outdoor navigation.',
     };
   }
-  if (pose.accuracy != null && pose.accuracy > GPS_MAX_ACCURACY_M) {
+
+  if (
+    pose.accuracy !== null &&
+    pose.accuracy > GPS_MAX_ACCURACY_M
+  ) {
     return {
       ok: false,
-      message: `Low GPS accuracy (±${Math.round(pose.accuracy)} m) — move outdoors, then tap Track me.`,
+      message: `GPS accuracy is low (±${Math.round(
+        pose.accuracy,
+      )} m). Move outdoors and try again.`,
     };
   }
-  const places = namedPlaceNodes(nodes);
-  const snap = nearestNode(pose, places, CAMPUS_SNAP_RADIUS_M);
-  if (!snap) {
+
+  const outdoorNodes = nodes.filter(
+    (node) =>
+      node.active !== false &&
+      (
+        node.kind === 'outdoor' ||
+        node.kind === 'entrance' ||
+        node.kind === 'exit'
+      ),
+  );
+
+  let nearest: GraphNode | null = null;
+  let nearestDistance = Infinity;
+
+  for (const node of outdoorNodes) {
+    const distance = haversineMeters(
+      pose.latitude,
+      pose.longitude,
+      node.latitude,
+      node.longitude,
+    );
+
+    if (
+      distance <= CAMPUS_SNAP_RADIUS_M &&
+      distance < nearestDistance
+    ) {
+      nearest = node;
+      nearestDistance = distance;
+    }
+  }
+
+  if (!nearest) {
     return {
       ok: false,
-      message: 'No named place nearby — pick your start from the list or map.',
+      message:
+        'No marked outdoor navigation node is nearby. Move closer to a campus walkway.',
     };
   }
-  if (snap.distanceM > CAMPUS_MAX_SNAP_DISTANCE_M) {
+
+  if (nearestDistance > CAMPUS_MAX_SNAP_DISTANCE_M) {
     return {
       ok: false,
-      message: `GPS uncertain (${Math.round(snap.distanceM)} m from ${snap.node.name}) — tap Track me again outdoors.`,
+      message: `Nearest outdoor node is ${Math.round(
+        nearestDistance,
+      )} m away. GPS position is too uncertain.`,
     };
   }
+
   return {
     ok: true,
-    node: snap.node,
-    distanceM: snap.distanceM,
+    node: nearest,
+    distanceM: nearestDistance,
     message:
-      snap.distanceM < 12
-        ? `At ${snap.node.name}`
-        : `Near ${snap.node.name} (${Math.round(snap.distanceM)} m)`,
+      nearestDistance < 12
+        ? `At ${nearest.name ?? 'outdoor navigation node'}`
+        : `Near ${
+            nearest.name ?? 'outdoor navigation node'
+          } (${Math.round(nearestDistance)} m)`,
   };
 }
 
@@ -209,3 +256,27 @@ export function closestNamedPlace(
   const named = nodes.filter((n) => n.name && n.name.trim().length > 0);
   return closestNode(pose, named);
 }
+export function nearestOutdoorNode(
+  pose: { latitude: number; longitude: number },
+  nodes: GraphNode[],
+  maxDistanceM = CAMPUS_MAX_SNAP_DISTANCE_M,
+): { node: GraphNode; distanceM: number } | null {
+  const outdoorNodes = nodes.filter(
+    (node) => node.kind === 'outdoor' && node.active !== false,
+  );
+
+  return nearestNode(pose, outdoorNodes, maxDistanceM);
+}
+export type GpsSnapResult =
+  | {
+      ok: true;
+      node: GraphNode;
+      distanceM: number;
+      message: string;
+    }
+  | {
+      ok: false;
+      node?: undefined;
+      distanceM?: undefined;
+      message: string;
+    };

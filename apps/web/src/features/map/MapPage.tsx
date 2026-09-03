@@ -175,14 +175,14 @@ export function MapPage() {
   }, [query, token, campusApi]);
 
   // Snap live GPS → nearest campus node for routing only (marker stays on raw GPS)
-  useEffect(() => {
-    if (!followGps || !pose || nodes.length === 0) return;
-    const snap = snapGpsForRouting(pose, nodes);
-    setGpsNote(snap.message);
-    if (snap.ok && snap.node.id !== sourceNodeId) {
-      setSource(snap.node.id);
-    }
-  }, [pose, nodes, followGps, sourceNodeId, setSource]);
+    useEffect(() => {
+      if (!followGps || !pose || nodes.length === 0) return;
+      const snap = snapGpsForRouting(pose, nodes);
+      setGpsNote(snap.message);
+      if (snap.ok && snap.node.id !== sourceNodeId) {
+        setSource(snap.node.id);
+      }
+    }, [pose, nodes, followGps, sourceNodeId, setSource]);
 
   const trackOnMap = followGps && pose != null;
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUp, MapPin, Volume2, AlertTriangle, Users, CheckCircle2, LocateFixed } from 'lucide-react';
+import { ArrowUp,ArrowLeft,ArrowRight, MapPin, Volume2, AlertTriangle, Users, CheckCircle2, LocateFixed } from 'lucide-react';
 import type { CampusPlace, GraphNode, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -14,7 +14,6 @@ import {
   snapGpsForRouting,
 } from '../../lib/geo';
 import {
-  classifyTurn,
   dampRelativeBearing,
   relativeBearingDeg,
 } from '../../lib/navigationHeading';
@@ -111,7 +110,7 @@ export function ArPage() {
   const [routeReady, setRouteReady] = useState(false);
   const [initTimedOut, setInitTimedOut] = useState(false);
   const [userWalking, setUserWalking] = useState(false);
-
+  const arrowRelRef = useRef(0);
   const routeReqId = useRef(0);
   const lastRouteSourceRef = useRef<string | null>(null);
   const lastRecalcAtRef = useRef(0);
@@ -122,7 +121,6 @@ export function ArPage() {
   const refreshPendingRef = useRef(false);
   const movementSamplesRef = useRef<GpsMovementSample[]>([]);
   const userWalkingRef = useRef(false);
-  const [arrowRotation, setArrowRotation] = useState(0);
   const [dollYawDeg, setDollYawDeg] = useState(0);
 
   const placeNodes = useMemo(() => campusPlacesToGraphNodes(places), [places]);
@@ -193,10 +191,22 @@ export function ArPage() {
       const reqId = ++routeReqId.current;
       setLoadingRoute(true);
       try {
-        const r = await api.recalculate(
-          { sourceNodeId: source, destinationNodeId: destination, accessibility, usePrediction: true },
-          token,
-        );
+const r = await api.recalculate(
+  {
+    sourceNodeId: source,
+    destinationNodeId: destination,
+
+    // Keep the route stable while the user is walking
+    usePrediction: false,
+
+    // Preserve accessibility preferences
+    accessibility,
+
+    // Make sure routing uses the currently active campus/site
+    siteId: activeSiteId ?? undefined,
+  },
+  token,
+);
         if (reqId !== routeReqId.current) return;
         setRoute(r);
         lastRouteSourceRef.current = source;
@@ -220,7 +230,7 @@ export function ArPage() {
         }
       }
     },
-    [destinationNodeId, resolveRouteSource, accessibility, token],
+    [destinationNodeId, resolveRouteSource, accessibility,activeSiteId, token],
   );
 
   const loadRouteRef = useRef(loadRoute);
@@ -328,7 +338,7 @@ export function ArPage() {
   const remaining = progress?.distanceRemainingM ?? route?.totalDistanceM ?? 0;
 
   const targetBearing = useMemo(() => {
-    if (gpsReady && pose && nextWaypoint) {
+    if ( pose && nextWaypoint) {
       return bearingDegrees(
         pose.latitude,
         pose.longitude,
@@ -351,26 +361,83 @@ export function ArPage() {
     [targetBearing, route?.path, stepIndex, nextStep, distToNextMeters],
   );
 
-  const rawArrowRel =
-    compassHeading != null ? relativeBearingDeg(targetBearing, compassHeading) : null;
-  const rawDollYaw =
-    compassHeading != null ? relativeBearingDeg(guideBearing, compassHeading) : 0;
+const rawArrowRel = useMemo(() => {
+  if (compassHeading == null) {
+    return guideBearing;
+  }
 
-  useEffect(() => {
-    if (rawArrowRel == null) return;
-    setArrowRotation((prev) => dampRelativeBearing(prev, rawArrowRel, ARROW_DAMP_DEG));
-  }, [rawArrowRel]);
+  return relativeBearingDeg(
+    targetBearing,
+    compassHeading,
+  );
+}, [targetBearing, compassHeading, guideBearing]);
 
-  useEffect(() => {
-    if (compassHeading == null) {
-      setDollYawDeg(0);
-      return;
-    }
-    setDollYawDeg((prev) => dampRelativeBearing(prev, rawDollYaw, DOLL_YAW_DAMP_DEG));
-  }, [rawDollYaw, compassHeading]);
+const turnClass = useMemo(() => {
+  const instruction = step?.instruction?.toLowerCase() ?? '';
 
-  const turnClass =
-    rawArrowRel != null ? classifyTurn(rawArrowRel) : null;
+  if (instruction.includes('u-turn') || instruction.includes('uturn')) {
+    return 'u-turn';
+  }
+
+  if (instruction.includes('left')) {
+    return 'left';
+  }
+
+  if (instruction.includes('right')) {
+    return 'right';
+  }
+
+  return 'straight';
+}, [step?.instruction]);
+
+const arrowDirection = useMemo(() => {
+  if (turnClass.includes('left')) {
+    return 'left';
+  }
+
+  if (turnClass.includes('right')) {
+    return 'right';
+  }
+
+  return 'straight';
+}, [turnClass]);
+
+  // const rawDollYaw =
+  //   compassHeading != null ? relativeBearingDeg(guideBearing, compassHeading) : 0;
+
+  // useEffect(() => {
+  //   if (rawArrowRel == null) return;
+  //   setArrowRotation((prev) => dampRelativeBearing(prev, rawArrowRel, ARROW_DAMP_DEG));
+  // }, [rawArrowRel]);
+
+  // useEffect(() => {
+  //   if (compassHeading == null) {
+  //     setDollYawDeg(0);
+  //     return;
+  //   }
+  //   setDollYawDeg((prev) => dampRelativeBearing(prev, rawDollYaw, DOLL_YAW_DAMP_DEG));
+  // }, [rawDollYaw, compassHeading]);
+const rawDollYaw =
+  compassHeading != null
+    ? relativeBearingDeg(guideBearing, compassHeading)
+    : 0;
+
+useEffect(() => {
+  if (compassHeading == null) {
+    setDollYawDeg(0);
+    return;
+  }
+
+  setDollYawDeg((prev) =>
+    dampRelativeBearing(
+      prev,
+      rawDollYaw,
+      DOLL_YAW_DAMP_DEG,
+    )
+  );
+}, [rawDollYaw, compassHeading]);
+  // const turnClass =
+  //   rawArrowRel != null ? classifyTurn(rawArrowRel) : null;
 
   const navPhase: ArNavPhase = useMemo(() => {
     if (arrived) return 'arrived';
@@ -644,30 +711,53 @@ export function ArPage() {
           </div>
         </div>
 
-        {showNavigation && navPhase !== 'arrived' && gpsReady && (
-          <div className="pointer-events-none absolute left-1/2 top-[22%] z-10 -translate-x-1/2">
-            {compassHeading != null ? (
-              <>
-                <div className="ar-arrow flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-md">
-                  <ArrowUp
-                    size={32}
-                    className="text-white transition-transform duration-200"
-                    style={{ transform: `rotate(${arrowRotation}deg)` }}
-                  />
-                </div>
-                {turnClass && turnClass !== 'straight' && (
-                  <p className="mt-2 max-w-[10rem] text-center text-[10px] font-semibold text-white/90">
-                    {turnClass.replace('-', ' ')}
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="max-w-[10rem] rounded bg-ink/70 px-2 py-1 text-center text-[10px] text-white/70">
-                Allow compass for turn arrow
-              </p>
-            )}
-          </div>
+      {showNavigation && navPhase !== 'arrived' && (
+    <div
+      className={`pointer-events-none absolute z-30 transition-all duration-300 ${
+        turnClass?.includes('left')
+          ? 'left-[8%] bottom-[22%]'
+          : turnClass?.includes('right')
+            ? 'right-[8%] bottom-[22%]'
+            : 'left-1/2 bottom-[12%] -translate-x-1/2'
+      }`}
+    >
+    <div className="flex flex-col items-center">
+      <div className="ar-arrow flex h-16 w-16 items-center justify-center rounded-full bg-accent/90 text-white shadow-lg backdrop-blur-sm">
+
+        {arrowDirection === 'left' && (
+          <ArrowLeft
+            size={38}
+            strokeWidth={3}
+            className="text-white"
+          />
         )}
+
+        {arrowDirection === 'right' && (
+          <ArrowRight
+            size={38}
+            strokeWidth={3}
+            className="text-white"
+          />
+        )}
+
+        {arrowDirection === 'straight' && (
+          <ArrowUp
+            size={38}
+            strokeWidth={3}
+            className="text-white"
+          />
+        )}
+
+      </div>
+
+      {turnClass !== 'straight' && (
+        <p className="mt-2 rounded-md bg-ink/75 px-2 py-1 text-center text-xs font-semibold capitalize text-white">
+          {turnClass?.replace('-', ' ')}
+        </p>
+      )}
+    </div>
+  </div>
+)}
 
         <GuideDollViewport
           gender={avatarGender}
