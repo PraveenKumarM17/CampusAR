@@ -84,10 +84,10 @@ export function AppShell() {
     <div className="min-h-screen bg-atlas text-ink">
       {/* z-[2000]: above Leaflet panes/controls (≤1000) and map overlays so the bell panel stays on top */}
       <header className="sticky top-0 z-[2000] border-b border-line bg-paper-raised/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
           <button
             type="button"
-            className="font-display text-xl font-semibold tracking-tight"
+            className="font-display text-lg font-semibold tracking-tight sm:text-xl"
             onClick={() => navigate('/map')}
           >
             CampusAR
@@ -108,9 +108,9 @@ export function AppShell() {
               </NavLink>
             ))}
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {sites.length > 0 && (
-              <label className="hidden max-w-[14rem] sm:block">
+              <label className="hidden max-w-[14rem] lg:block">
                 <span className="sr-only">Active site</span>
                 <select
                   className="input !py-1.5 !text-xs"
@@ -129,17 +129,17 @@ export function AppShell() {
             <div className="relative z-[2001]">
               <button
                 type="button"
-                className="btn-ghost !px-2.5 !py-2"
+                className="btn-ghost !px-2 !py-1.5 sm:!px-2.5 sm:!py-2"
                 onClick={() => setOpenNotes((v) => !v)}
                 aria-label="Notifications"
               >
-                <Bell size={16} />
+                <Bell size={16} className="sm:size-4" />
                 {notes.some((n) => !n.read) && (
-                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent-danger" />
+                  <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent-danger sm:right-1.5 sm:top-1.5" />
                 )}
               </button>
               {openNotes && (
-                <div className="absolute right-0 z-[2002] mt-2 max-h-96 w-80 overflow-auto border border-line bg-paper-raised p-3 shadow-lg">
+                <div className="absolute right-0 z-[2002] mt-2 max-h-96 w-72 overflow-auto border border-line bg-paper-raised p-3 shadow-lg sm:w-80">
                   <p className="mb-2 text-xs font-semibold text-ink-mute">Alerts</p>
                   {notes.length === 0 && <p className="text-sm text-ink-faint">No notifications</p>}
                   {notes.map((n) => (
@@ -151,25 +151,25 @@ export function AppShell() {
                 </div>
               )}
             </div>
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-semibold">{user?.name}</p>
-              <p className="text-xs text-ink-faint">{roleLabel}</p>
-              {site && <p className="max-w-[10rem] truncate text-xs text-ink-faint">{label}</p>}
+            <div className="hidden text-right md:block">
+              <p className="text-xs font-semibold sm:text-sm">{user?.name}</p>
+              <p className="text-[10px] text-ink-faint sm:text-xs">{roleLabel}</p>
+              {site && <p className="max-w-[8rem] truncate text-[10px] text-ink-faint sm:max-w-[10rem] sm:text-xs">{label}</p>}
             </div>
             <button
               type="button"
-              className="btn-ghost !px-2.5 !py-2"
+              className="btn-ghost !px-2 !py-1.5 sm:!px-2.5 sm:!py-2"
               aria-label={isGuest ? 'Leave guest session' : 'Sign out'}
               onClick={() => {
                 logout();
                 navigate('/');
               }}
             >
-              <LogOut size={16} />
+              <LogOut size={16} className="sm:size-4" />
             </button>
           </div>
         </div>
-        <nav className="flex gap-1 overflow-x-auto border-t border-line px-3 py-2 md:hidden">
+        <nav className="flex gap-1 overflow-x-auto border-t border-line px-2 py-1.5 md:hidden">
           {sites.length > 1 && (
             <select
               className="input mr-1 !w-auto !py-1.5 !text-xs"
@@ -189,8 +189,8 @@ export function AppShell() {
               key={to}
               to={to}
               className={({ isActive }) =>
-                `inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-xs font-medium ${
-                  isActive ? 'bg-accent text-white' : 'text-ink-mute'
+                `inline-flex shrink-0 items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  isActive ? 'bg-accent text-white' : 'text-ink-mute hover:bg-paper-soft'
                 }`
               }
             >
@@ -201,7 +201,7 @@ export function AppShell() {
         </nav>
       </header>
       <PreviewBanner />
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-6">
         <Outlet />
       </main>
     </div>

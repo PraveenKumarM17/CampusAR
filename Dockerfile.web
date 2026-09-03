@@ -1,0 +1,42 @@
+# Dockerfile for CampusAR Web (Frontend)
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Copy all workspace files
+COPY package*.json ./
+COPY apps/web ./apps/web
+COPY packages/shared ./packages/shared
+
+# Build arguments for environment variables
+ARG VITE_API_URL=/api
+ARG VITE_WS_URL=/ws
+ARG VITE_GOOGLE_MAPS_API_KEY=
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
+
+# Install dependencies and build
+RUN npm ci && \
+    cd packages/shared && npm run build && \
+    cd ../../apps/web && npm run build
+
+# Production stage with nginx
+FROM nginx:alpine AS runner
+
+# Copy custom nginx config
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+
+# Copy built static files
+COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+
+# Create self-signed SSL certificate for local HTTPS (required for WebXR)
+RUN apk add --no-cache openssl && \
+    mkdir -p /etc/nginx/ssl && \
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /etc/nginx/ssl/nginx-selfsigned.key \
+    -out /etc/nginx/ssl/nginx-selfsigned.crt \
+    -subj "/C=US/ST=State/L=City/O=CampusAR/CN=localhost"
+
+EXPOSE 80 443
+
+CMD ["nginx", "-g", "daemon off;"]

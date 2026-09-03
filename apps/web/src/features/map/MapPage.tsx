@@ -305,35 +305,35 @@ export function MapPage() {
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex flex-col gap-2 sm:gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="page-title">Campus map</h1>
-          <p className="page-sub">
+          <h1 className="page-title text-2xl sm:text-3xl">Campus map</h1>
+          <p className="page-sub text-xs sm:text-sm">
             {label} — gate to every block, with live GPS tracking.
             {live.connected ? ' · IoT live' : ' · IoT offline'}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <div className="relative flex-1 sm:w-64">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <div className="relative flex-1 sm:min-w-[240px] sm:flex-none lg:w-64">
             <Search
-              className="pointer-events-none absolute left-3 top-3 text-ink-faint"
+              className="pointer-events-none absolute left-3 top-2.5 text-ink-faint sm:top-3"
               size={16}
             />
             <input
-              className="input pl-9"
+              className="input w-full pl-9 !py-2 !text-sm sm:!py-2.5"
               placeholder="Search Admin, ECE, Ground A…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <div className="relative">
+          <div className="relative flex-1 sm:min-w-[120px] sm:flex-none">
             <Filter
-              className="pointer-events-none absolute left-3 top-3 text-ink-faint"
+              className="pointer-events-none absolute left-3 top-2.5 text-ink-faint sm:top-3"
               size={16}
             />
             <select
-              className="input appearance-none pl-9 pr-8"
+              className="input w-full appearance-none pl-9 pr-8 !py-2 !text-sm sm:!py-2.5"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
@@ -347,16 +347,16 @@ export function MapPage() {
           </div>
           <button
             type="button"
-            className={`btn-ghost inline-flex items-center gap-2 ${followGps ? '!border-accent !text-accent' : ''}`}
+            className={`btn-ghost inline-flex w-full items-center justify-center gap-2 !py-2 !text-sm sm:w-auto sm:!py-2.5 ${followGps ? '!border-accent !text-accent' : ''}`}
             disabled={!pose && !watching}
             onClick={handleTrackMe}
           >
             <Navigation size={16} />
-            {followGps ? 'Tracking' : 'Track me'}
+            <span className="sm:inline">{followGps ? 'Tracking' : 'Track me'}</span>
           </button>
           <button
             type="button"
-            className="btn-primary inline-flex items-center gap-2"
+            className="btn-primary inline-flex w-full items-center justify-center gap-2 !py-2 !text-sm sm:w-auto sm:!py-2.5"
             disabled={!pose || placeNodes.length === 0}
             onClick={() => {
               if (!pose) return;
@@ -373,7 +373,8 @@ export function MapPage() {
               );
             }}
           >
-            Route to closest place
+            <span className="hidden sm:inline">Route to closest place</span>
+            <span className="sm:hidden">Nearest place</span>
           </button>
         </div>
       </div>
@@ -425,7 +426,7 @@ export function MapPage() {
           <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
           {useMapLibre ? (
             <CampusMapLibreMap
-              className="h-[62vh] w-full"
+              className="h-[50vh] w-full sm:h-[55vh] md:h-[60vh] lg:h-[65vh]"
               center={mapCenter}
               basemapMode={basemapMode}
               buildings={filteredBuildings}
@@ -446,7 +447,7 @@ export function MapPage() {
             />
           ) : useGoogle ? (
             <GoogleCampusMap
-              className="h-[62vh] w-full"
+              className="h-[50vh] w-full sm:h-[55vh] md:h-[60vh] lg:h-[65vh]"
               mode={basemapMode}
               center={mapCenter}
               placeNodes={placeNodes}
@@ -471,7 +472,7 @@ export function MapPage() {
             <MapContainer
               center={mapCenter}
               zoom={CAMPUS_DEFAULT_ZOOM}
-              className="h-[62vh] w-full"
+              className="h-[50vh] w-full sm:h-[55vh] md:h-[60vh] lg:h-[65vh]"
               scrollWheelZoom
               maxZoom={CAMPUS_MAX_ZOOM}
             >
@@ -622,35 +623,36 @@ export function MapPage() {
           {(useGoogle || useMapLibre) && pose && (
             <button
               type="button"
-              className={`absolute bottom-4 right-4 z-[1000] inline-flex items-center gap-2 rounded-md border border-line bg-paper-raised px-3 py-2 text-sm font-semibold text-ink shadow-sm hover:border-accent ${
+              className={`absolute bottom-3 right-3 z-[1000] inline-flex items-center gap-1.5 rounded-md border border-line bg-paper-raised px-2.5 py-1.5 text-xs font-semibold text-ink shadow-sm hover:border-accent sm:bottom-4 sm:right-4 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
                 followGps ? 'border-accent text-accent' : ''
               }`}
               onClick={handleTrackMe}
             >
-              <LocateFixed size={16} className="text-accent" /> Track me
+              <LocateFixed size={14} className="text-accent sm:size-4" /> 
+              <span className="hidden sm:inline">Track me</span>
             </button>
           )}
           {!useGoogle && !useMapLibre && (
-            <p className="pointer-events-none absolute bottom-3 left-3 z-[1000] max-w-xs rounded-md bg-ink/75 px-2 py-1 text-[10px] text-white/90">
+            <p className="pointer-events-none absolute bottom-2 left-2 z-[1000] max-w-[200px] rounded-md bg-ink/75 px-2 py-1 text-[9px] text-white/90 sm:bottom-3 sm:left-3 sm:max-w-xs sm:text-[10px]">
               Real satellite + roads. Add VITE_GOOGLE_MAPS_API_KEY for Google Maps 3D tilt.
             </p>
           )}
         </div>
 
-        <aside className="space-y-3">
-          <div className="panel rounded-md p-4">
-            <p className="label">Route</p>
-            <p className="text-sm text-ink-mute">
+        <aside className="space-y-2 sm:space-y-3">
+          <div className="panel rounded-md p-3 sm:p-4">
+            <p className="label text-xs sm:text-sm">Route</p>
+            <p className="text-xs text-ink-mute sm:text-sm">
               From:{' '}
               <span className="font-medium text-ink">{sourceNode?.name ?? '— (enable GPS or tap map)'}</span>
             </p>
-            <p className="mt-1 text-sm text-ink-mute">
+            <p className="mt-1 text-xs text-ink-mute sm:text-sm">
               To:{' '}
               <span className="font-medium text-ink">{destNode?.name ?? '—'}</span>
             </p>
-            <label className="label mt-3">Go to</label>
+            <label className="label mt-2 text-xs sm:mt-3 sm:text-sm">Go to</label>
             <select
-              className="input"
+              className="input !text-xs sm:!text-sm"
               value={destinationNodeId ?? ''}
               onChange={(e) => {
                 const id = e.target.value;
@@ -668,7 +670,7 @@ export function MapPage() {
                 ))}
             </select>
             {route && (
-              <div className="mt-3 space-y-1 text-sm">
+              <div className="mt-2 space-y-1 text-xs sm:mt-3 sm:text-sm">
                 <p>
                   Distance: <strong>{route.totalDistanceM} m</strong>
                 </p>
@@ -676,14 +678,14 @@ export function MapPage() {
                   ETA: <strong>{route.etaMinutes} min</strong>
                 </p>
                 <button
-                  className="btn-primary mt-3 w-full"
+                  className="btn-primary mt-2 w-full !py-2 !text-xs sm:mt-3 sm:!py-2.5 sm:!text-sm"
                   type="button"
                   onClick={() => navigate('/navigate')}
                 >
                   Open navigation
                 </button>
                 <button
-                  className="btn-ghost mt-2 w-full"
+                  className="btn-ghost mt-2 w-full !py-2 !text-xs sm:!py-2.5 sm:!text-sm"
                   type="button"
                   onClick={() => navigate('/ar')}
                 >
@@ -693,9 +695,9 @@ export function MapPage() {
             )}
           </div>
 
-          <div className="panel rounded-md p-4">
-            <p className="label">Campus places</p>
-            <ul className="max-h-72 space-y-1.5 overflow-auto text-sm">
+          <div className="panel rounded-md p-3 sm:p-4">
+            <p className="label text-xs sm:text-sm">Campus places</p>
+            <ul className="max-h-60 space-y-1.5 overflow-auto text-xs sm:max-h-72 sm:text-sm">
               {filteredBuildings
                 .slice()
                 .sort((a, b) => a.name.localeCompare(b.name))
@@ -703,13 +705,13 @@ export function MapPage() {
                     <li key={b.id}>
                       <button
                         type="button"
-                        className="w-full rounded-md border border-line bg-paper-soft px-2 py-1.5 text-left hover:border-accent/40"
+                        className="w-full rounded-md border border-line bg-paper-soft px-2 py-1.5 text-left transition-colors hover:border-accent/40"
                         onClick={() => {
                           void startBuildingRoute(b.id);
                         }}
                       >
-                        <p className="font-medium">{b.name}</p>
-                        <p className="text-xs text-ink-faint">{b.code}</p>
+                        <p className="text-xs font-medium sm:text-sm">{b.name}</p>
+                        <p className="text-[10px] text-ink-faint sm:text-xs">{b.code}</p>
                       </button>
                     </li>
                   ))}
