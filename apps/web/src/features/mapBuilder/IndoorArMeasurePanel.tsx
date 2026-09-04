@@ -6,17 +6,18 @@ import { api } from '../../lib/api';
 import {
   arSessionToFloorPlan,
   attachCameraToVideo,
+  CameraPoseTracker,
   detectMeasureMode,
   distance3D,
   formatMeasureDistance,
-  hitHorizontalPlaneFromOrientation,
   measureLabelRotationDeg,
   openCameraStream,
   polylineLength3D,
-  projectSessionPointToScreen,
   projectWorldToScreen,
+  requestDeviceMotionAccess,
   requestDeviceOrientationAccess,
   stopMediaStream,
+  type AnchoredWorldPoint,
   type MeasureMode,
   verticalSpan3D,
 } from './indoorArMeasure';
@@ -37,7 +38,10 @@ type GpsFix = {
 };
 
 type PlacedPoint = {
+  /** Session-local coords (first point = origin) for floor-plan export. */
   world: LocalVec3;
+  /** Locked absolute world position (camera mode only). */
+  anchor?: AnchoredWorldPoint;
   gps: GpsFix | null;
 };
 
@@ -324,7 +328,9 @@ export function IndoorArMeasurePanel({
   const pathIdRef = useRef<string | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const sessionOriginRef = useRef<LocalVec3 | null>(null);
-  const orientationRef = useRef({ beta: 90, gamma: 0 });
+  const poseTrackerRef = useRef(new CameraPoseTracker());
+  const orientationRef = useRef({ alpha: 0, beta: 90, gamma: 0 });
+  const trackingWarningRef = useRef(false);
   const cameraLoopRef = useRef<number | null>(null);
   const projectedLiveRef = useRef<(ScreenPt | null)[]>([]);
   const overlayMarkersRef = useRef<HTMLDivElement>(null);
@@ -363,9 +369,11 @@ export function IndoorArMeasurePanel({
     const { width, height } = stage.getBoundingClientRect();
 
     if (measureMode === 'camera') {
-      const { beta, gamma } = orientationRef.current;
+      const tracker = poseTrackerRef.current;
+      const origin = sessionOriginRef.current;
+      if (!origin) return [];
       return placedRef.current.map(({ world }) =>
-        projectSessionPointToScreen(world, sessionOriginRef.current, beta, gamma, width, height),
+        tracker.projectSessionLocal(world, origin, width, height),
       );
     }
 
@@ -531,12 +539,49 @@ export function IndoorArMeasurePanel({
   );
 
   const placeArPoint = useCallback(async () => {
+    if (measureMode === 'camera') {
+      const anchor = poseTrackerRef.current.lockFloorAnchor();
+      if (!anchor) {
+        setError('Point the center dot at the floor and hold steady until it turns green.');
+        return;
+      }
+      setError(null);
+      let gps: GpsFix | null = null;
+      try {
+        gps = await readGpsFix();
+      } catch {
+        setError('Could not read GPS for this point. Enable location and try again.');
+        return;
+      }
+
+      let world: LocalVec3;
+      if (!sessionOriginRef.current) {
+        sessionOriginRef.current = { ...anchor.world };
+        world = { x: 0, y: 0, z: 0 };
+      } else {
+        const o = sessionOriginRef.current;
+        world = {
+          x: anchor.world.x - o.x,
+          y: anchor.world.y - o.y,
+          z: anchor.world.z - o.z,
+        };
+      }
+
+      const entry: PlacedPoint = { world, anchor, gps };
+      const next = [...placedRef.current, entry];
+      placedRef.current = next;
+      setPlaced(next);
+      void persistPoint(entry, next.length);
+      requestAnimationFrame(() => {
+        if (arActive) syncArOverlay(projectPlacedPoints());
+      });
+      return;
+    }
+
     const hit = latestHitRef.current;
     if (!hit) {
       setError(
-        measureMode === 'camera'
-          ? 'Point the center dot at the floor and hold steady until it turns green.'
-          : 'No flat surface detected. Move the phone slowly over a well-lit floor or wall until the center dot turns green.',
+        'No flat surface detected. Move the phone slowly over a well-lit floor or wall until the center dot turns green.',
       );
       return;
     }
@@ -549,20 +594,7 @@ export function IndoorArMeasurePanel({
       return;
     }
 
-    let world: LocalVec3;
-    if (measureMode === 'camera') {
-      if (!sessionOriginRef.current) {
-        sessionOriginRef.current = hit;
-        world = { x: 0, y: 0, z: 0 };
-      } else {
-        const o = sessionOriginRef.current;
-        world = { x: hit.x - o.x, y: hit.y - o.y, z: hit.z - o.z };
-      }
-    } else {
-      world = { ...hit };
-    }
-
-    const entry: PlacedPoint = { world, gps };
+    const entry: PlacedPoint = { world: { ...hit }, gps };
     const next = [...placedRef.current, entry];
     placedRef.current = next;
     setPlaced(next);
@@ -603,7 +635,18 @@ export function IndoorArMeasurePanel({
 
   const onDeviceOrientation = useCallback((e: DeviceOrientationEvent) => {
     if (e.beta == null || e.gamma == null) return;
-    orientationRef.current = { beta: e.beta, gamma: e.gamma };
+    const alpha = e.alpha ?? 0;
+    orientationRef.current = { alpha, beta: e.beta, gamma: e.gamma };
+    poseTrackerRef.current.updateOrientation(alpha, e.beta, e.gamma);
+  }, []);
+
+  const onDeviceMotion = useCallback((e: DeviceMotionEvent) => {
+    const acc = e.acceleration;
+    if (!acc || acc.x == null || acc.y == null || acc.z == null) return;
+    poseTrackerRef.current.updateMotion(
+      { x: acc.x, y: acc.y, z: acc.z },
+      performance.now(),
+    );
   }, []);
 
   const stopCameraMeasureLoop = useCallback(() => {
@@ -612,16 +655,29 @@ export function IndoorArMeasurePanel({
       cameraLoopRef.current = null;
     }
     window.removeEventListener('deviceorientation', onDeviceOrientation);
-  }, [onDeviceOrientation]);
+    window.removeEventListener('devicemotion', onDeviceMotion);
+    poseTrackerRef.current.reset();
+    trackingWarningRef.current = false;
+  }, [onDeviceMotion, onDeviceOrientation]);
 
   const updateCameraModeHit = useCallback(() => {
-    const { beta, gamma } = orientationRef.current;
-    const hit = hitHorizontalPlaneFromOrientation(beta, gamma);
+    const tracker = poseTrackerRef.current;
+    const hit = tracker.hitFloor();
     latestHitRef.current = hit;
     const detected = hit != null;
     if (detected !== surfaceDetectedRef.current) {
       surfaceDetectedRef.current = detected;
       setSurfaceDetected(detected);
+    }
+
+    if (tracker.isOrientationStale() && !trackingWarningRef.current) {
+      trackingWarningRef.current = true;
+      setError(
+        'Motion tracking paused — move the phone slightly or reload if points drift.',
+      );
+    } else if (!tracker.isOrientationStale() && trackingWarningRef.current) {
+      trackingWarningRef.current = false;
+      setError(null);
     }
 
     if (placedRef.current.length > 0) {
@@ -631,21 +687,45 @@ export function IndoorArMeasurePanel({
 
   const startCameraMeasureLoop = useCallback(() => {
     window.addEventListener('deviceorientation', onDeviceOrientation, true);
+    window.addEventListener('devicemotion', onDeviceMotion, true);
     const tick = () => {
       updateCameraModeHit();
       cameraLoopRef.current = requestAnimationFrame(tick);
     };
     cameraLoopRef.current = requestAnimationFrame(tick);
-  }, [onDeviceOrientation, updateCameraModeHit]);
+  }, [onDeviceMotion, onDeviceOrientation, updateCameraModeHit]);
 
   const startCameraSession = useCallback(async () => {
-    const ok = await requestDeviceOrientationAccess();
-    if (!ok) {
+    const orientationOk = await requestDeviceOrientationAccess();
+    if (!orientationOk) {
       throw new Error(
         'Motion sensor permission denied. Allow motion/orientation access to place measure points.',
       );
     }
+    await requestDeviceMotionAccess();
+
     sessionOriginRef.current = null;
+    trackingWarningRef.current = false;
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener('deviceorientation', onFirstOrientation);
+        poseTrackerRef.current.calibrate(orientationRef.current);
+        resolve();
+      };
+      const onFirstOrientation = (e: DeviceOrientationEvent) => {
+        if (e.beta == null || e.gamma == null) return;
+        const alpha = e.alpha ?? 0;
+        orientationRef.current = { alpha, beta: e.beta, gamma: e.gamma };
+        finish();
+      };
+      window.addEventListener('deviceorientation', onFirstOrientation, true);
+      window.setTimeout(finish, 600);
+    });
+
     startCameraMeasureLoop();
     updateCameraModeHit();
     setArActive(true);
@@ -832,7 +912,11 @@ export function IndoorArMeasurePanel({
     const next = placed.slice(0, -1);
     placedRef.current = next;
     setPlaced(next);
-    if (next.length === 0) sessionOriginRef.current = null;
+    if (next.length === 0) {
+      sessionOriginRef.current = null;
+      poseTrackerRef.current.reset();
+      poseTrackerRef.current.calibrate(orientationRef.current);
+    }
     if (arActive) {
       syncArOverlay(next.length ? projectPlacedPoints() : []);
     } else {
@@ -847,6 +931,7 @@ export function IndoorArMeasurePanel({
     projectedLiveRef.current = [];
     pathIdRef.current = null;
     sessionOriginRef.current = null;
+    poseTrackerRef.current.reset();
     clearArOverlay(overlayMarkersRef.current, overlaySvgRef.current, overlayPillsRef.current);
   };
 
