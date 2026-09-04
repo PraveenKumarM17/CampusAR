@@ -16,6 +16,7 @@ import {
   Trash2,
   ArrowUpDown,
   Camera,
+  Undo2,
 } from 'lucide-react';
 import type {
   Building,
@@ -46,11 +47,15 @@ import {
   type UnsavedChoice,
 } from './indoorLayoutUtils';
 import {
+  collectMeasureSnapTargets,
+  distance2D,
   floorElevationM,
   formatMeasureDistance,
   geometryFromMeasurePoints,
   measuredRoomExtents,
+  openCameraStream,
   polylineLength2D,
+  segmentMidpoint2D,
 } from './indoorArMeasure';
 
 const LAYOUT_TOOLS: { id: IndoorTool; label: string; icon: typeof MousePointer2 }[] = [
@@ -89,6 +94,7 @@ const POI_CATEGORIES: FloorPoiCategory[] = [
   'stairs',
   'information',
   'waiting',
+  'measurement',
   'other',
 ];
 
@@ -119,6 +125,10 @@ export function IndoorMapBuilderPage() {
   >('floor_plan');
   const [measuredHeightM, setMeasuredHeightM] = useState<number | null>(null);
   const [arPanelOpen, setArPanelOpen] = useState(false);
+  const [arCameraStream, setArCameraStream] = useState<MediaStream | null>(null);
+  const [arOpenError, setArOpenError] = useState<string | null>(null);
+  const [arOpening, setArOpening] = useState(false);
+  const [draftVersionId, setDraftVersionId] = useState<string | null>(null);
   const [floorHeightM, setFloorHeightM] = useState(DEFAULT_FLOOR_HEIGHT_M);
   const [floorHeightBusy, setFloorHeightBusy] = useState(false);
   const [pendingTool, setPendingTool] = useState<IndoorTool | null>(null);
@@ -176,6 +186,17 @@ export function IndoorMapBuilderPage() {
     );
   }, [snapshot, floorNodes]);
 
+  const measureSnapTargets = useMemo(
+    () =>
+      collectMeasureSnapTargets({
+        nodes: floorNodes,
+        pois: floorPois,
+        rooms: floorRooms,
+        corridors: floorCorridors,
+      }),
+    [floorNodes, floorPois, floorRooms, floorCorridors],
+  );
+
   const requestUnsavedChoice = useCallback(
     (title: string, message: string): Promise<UnsavedChoice> =>
       new Promise((resolve) => {
@@ -199,6 +220,7 @@ export function IndoorMapBuilderPage() {
     if (!token) return;
     const snap = await api.mapBuilder.snapshot(token);
     setBuildings(snap.buildings);
+    setDraftVersionId(snap.version.id);
     setBuildingsReady(true);
   }, [token]);
 
@@ -352,6 +374,36 @@ export function IndoorMapBuilderPage() {
     setError(null);
   }
 
+  function closeArMeasure() {
+    arCameraStream?.getTracks().forEach((t) => t.stop());
+    setArCameraStream(null);
+    setArOpenError(null);
+    setArPanelOpen(false);
+  }
+
+  async function openArMeasure() {
+    setArOpenError(null);
+    if (!window.isSecureContext) {
+      setArOpenError(
+        'Camera requires HTTPS. Open https:// plus your PC IP (not http://), accept the certificate warning, then try again.',
+      );
+      setArPanelOpen(true);
+      return;
+    }
+    setArOpening(true);
+    try {
+      const stream = await openCameraStream();
+      setArCameraStream(stream);
+      setArPanelOpen(true);
+    } catch (err) {
+      setArCameraStream(null);
+      setArOpenError(err instanceof Error ? err.message : 'Could not open the camera');
+      setArPanelOpen(true);
+    } finally {
+      setArOpening(false);
+    }
+  }
+
   function applyArMeasurePoints(
     planPoints: LocalVec2[],
     measurement: { source: 'camera_ar'; heightM?: number },
@@ -359,7 +411,16 @@ export function IndoorMapBuilderPage() {
     setMeasurePoints(planPoints);
     setMeasurementSource(measurement.source);
     setMeasuredHeightM(measurement.heightM ?? null);
-    setTool('measure');
+    const ring = geometryFromMeasurePoints(planPoints);
+    if (ring.length) {
+      setDraftRect(ring);
+      setPendingTool(measureSaveAs);
+      setTool(measureSaveAs);
+    } else {
+      setTool('measure');
+    }
+    arCameraStream?.getTracks().forEach((t) => t.stop());
+    setArCameraStream(null);
     setArPanelOpen(false);
   }
 
@@ -428,6 +489,32 @@ export function IndoorMapBuilderPage() {
       await reloadSnapshot();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save POI');
+    }
+  }
+
+  async function saveMeasurement() {
+    if (!token || !buildingId || !selectedFloorId || measurePoints.length < 2) return;
+    try {
+      for (let i = 1; i < measurePoints.length; i++) {
+        const a = measurePoints[i - 1];
+        const b = measurePoints[i];
+        const mid = segmentMidpoint2D(a, b);
+        await api.mapBuilder.createPoi(
+          {
+            buildingId,
+            floorId: selectedFloorId,
+            name: formatMeasureDistance(distance2D(a, b)),
+            category: 'measurement',
+            localX: Number(mid.x.toFixed(3)),
+            localY: Number(mid.y.toFixed(3)),
+          },
+          token,
+        );
+      }
+      setError(null);
+      await reloadSnapshot();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save measurement');
     }
   }
 
@@ -625,27 +712,27 @@ export function IndoorMapBuilderPage() {
 
   if (!buildingId) {
     return (
-      <div className="space-y-4 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
           <div>
-            <h1 className="page-title">Indoor Map Builder</h1>
-            <p className="page-sub">Select a building to manage floors and floor plans. Site: {label}</p>
+            <h1 className="page-title text-xl sm:text-2xl md:text-3xl">Indoor Map Builder</h1>
+            <p className="page-sub text-xs sm:text-sm">Select a building to manage floors and floor plans. Site: {label}</p>
           </div>
           <MapBuilderNav mode="indoor" />
         </div>
         {error && (
-          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 sm:px-3 sm:text-sm">{error}</p>
         )}
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
           {buildings.map((b) => (
             <Link
               key={b.id}
               to={`/admin/map-builder/indoor/${b.id}`}
-              className="rounded-lg border border-line bg-paper-raised p-4 hover:border-accent"
+              className="rounded-lg border border-line bg-paper-raised p-3 transition-colors hover:border-accent sm:p-4"
             >
-              <Building2 className="mb-2 h-5 w-5 text-accent" />
-              <p className="font-semibold text-ink">{b.name}</p>
-              <p className="text-sm text-muted">{b.code}</p>
+              <Building2 className="mb-2 h-4 w-4 text-accent sm:h-5 sm:w-5" />
+              <p className="text-sm font-semibold text-ink sm:text-base">{b.name}</p>
+              <p className="text-xs text-muted sm:text-sm">{b.code}</p>
             </Link>
           ))}
         </div>
@@ -661,20 +748,20 @@ export function IndoorMapBuilderPage() {
   const shapeTool = pendingTool ?? tool;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col gap-3 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex min-h-screen flex-col gap-2 p-2 sm:h-[calc(100vh-4rem)] sm:gap-3 sm:p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div>
-          <h1 className="page-title">Indoor Map Builder</h1>
-          <p className="text-sm text-muted">
+          <h1 className="page-title text-xl sm:text-2xl lg:text-3xl">Indoor Map Builder</h1>
+          <p className="text-xs text-muted sm:text-sm">
             {buildingName} · {FLOOR_PLAN_COORDINATE_SYSTEM} · {label}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <MapBuilderNav mode="indoor" />
-          <button type="button" className="btn-secondary text-sm" onClick={() => void runValidation()}>
+          <button type="button" className="btn-secondary w-full text-xs sm:w-auto sm:text-sm" onClick={() => void runValidation()}>
             Validate
           </button>
-          <Link to="/admin/map-builder/indoor" className="btn-secondary text-sm">
+          <Link to="/admin/map-builder/indoor" className="btn-secondary w-full text-xs sm:w-auto sm:text-sm">
             Change building
           </Link>
         </div>
@@ -684,10 +771,10 @@ export function IndoorMapBuilderPage() {
         <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
       )}
 
-      <div className="flex min-h-0 flex-1 gap-3">
-        <aside className="w-56 shrink-0 space-y-3 overflow-y-auto rounded-lg border border-line bg-paper-raised p-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Layers className="h-4 w-4" /> Floors
+      <div className="flex min-h-0 flex-1 flex-col gap-2 sm:gap-3 lg:flex-row">
+        <aside className="w-full shrink-0 space-y-2 overflow-y-auto rounded-lg border border-line bg-paper-raised p-2.5 sm:space-y-3 sm:p-3 lg:w-64 lg:max-h-[calc(100vh-12rem)] xl:w-72">
+          <h2 className="flex items-center gap-1.5 text-xs font-semibold sm:gap-2 sm:text-sm">
+            <Layers className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Floors
           </h2>
           <ul className="space-y-1">
             {(snapshot?.floors ?? []).map((f: Floor) => (
@@ -764,10 +851,11 @@ export function IndoorMapBuilderPage() {
             ))}
             <button
               type="button"
-              className="flex items-center gap-1 rounded-md border border-line bg-paper-raised px-2 py-1 text-sm"
-              onClick={() => setArPanelOpen(true)}
+              className="flex items-center gap-1 rounded-md border border-line bg-paper-raised px-2 py-1 text-sm disabled:opacity-50"
+              disabled={arOpening}
+              onClick={() => void openArMeasure()}
             >
-              <Camera className="h-3.5 w-3.5" /> AR Measure
+              <Camera className="h-3.5 w-3.5" /> {arOpening ? 'Opening…' : 'AR Measure'}
             </button>
           </div>
           <div className="flex flex-wrap gap-1 border-t border-line pt-2">
@@ -776,8 +864,8 @@ export function IndoorMapBuilderPage() {
               <button
                 key={t.id}
                 type="button"
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-sm ${
-                  tool === t.id ? 'bg-violet-600 text-white' : 'border border-line bg-paper-raised'
+                className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors sm:text-sm ${
+                  tool === t.id ? 'bg-violet-600 text-white' : 'border border-line bg-paper-raised hover:bg-paper-soft'
                 }`}
                 onClick={() => {
                   setTool(t.id);
@@ -785,17 +873,20 @@ export function IndoorMapBuilderPage() {
                   setPendingHandoffOutdoorId(null);
                 }}
               >
-                <t.icon className="h-3.5 w-3.5" /> {t.label}
+                <t.icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> 
+                <span className="hidden sm:inline">{t.label}</span>
+                <span className="sm:hidden">{t.label === 'Nav node' ? 'Node' : t.label === 'Connect' ? 'Link' : t.label === 'Room link' ? 'Room' : t.label}</span>
               </button>
             ))}
           </div>
           {tool === 'measure' && (
             <p className="text-xs text-emerald-700">
-              Tap floor-plan corners to measure. Segment distances use AR-Measure vector math (
+              Tap two points for a live distance, or keep tapping to chain segments. Drag an endpoint to
+              adjust. Distances are 2D floor-plan meters
               {measurePoints.length > 1
-                ? `total ${formatMeasureDistance(polylineLength2D(measurePoints))}`
-                : '2+ points'}
-              ).
+                ? ` · total ${formatMeasureDistance(polylineLength2D(measurePoints))}`
+                : ''}
+              .
             </p>
           )}
           {connectFromId && (
@@ -818,11 +909,15 @@ export function IndoorMapBuilderPage() {
               selectedKind={selectedKind}
               draftRect={editSession?.draftGeometry ?? draftRect}
               measurePoints={tool === 'measure' ? measurePoints : []}
+              measureSnapTargets={measureSnapTargets}
               onDraftRect={(ring) => {
                 if (editSession) setEditSession({ ...editSession, draftGeometry: ring ?? [] });
                 else setDraftRect(ring);
               }}
               onMeasurePoint={(pt) => setMeasurePoints((prev) => [...prev, pt])}
+              onMeasurePointMove={(index, pt) =>
+                setMeasurePoints((prev) => prev.map((p, i) => (i === index ? pt : p)))
+              }
               onSelect={(kind, id) => {
                 if (kind === 'node') void handleNodeSelect(id);
                 else {
@@ -852,15 +947,51 @@ export function IndoorMapBuilderPage() {
         </div>
 
         <aside className="w-72 shrink-0 space-y-3 overflow-y-auto rounded-lg border border-line bg-paper-raised p-3">
-          {tool === 'measure' && measurePoints.length > 0 && !draftRect?.length && (
+          {tool === 'measure' && (
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Measured shape</h3>
+              <h3 className="text-sm font-semibold">Point-to-point measure</h3>
               <p className="text-xs text-muted">
-                {measurePoints.length} point(s) ·{' '}
+                {measurePoints.length} point(s)
                 {measurePoints.length > 1
-                  ? formatMeasureDistance(polylineLength2D(measurePoints))
-                  : 'add another point'}
+                  ? ` · ${formatMeasureDistance(polylineLength2D(measurePoints))}`
+                  : ' · tap a second point'}
               </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary flex-1 text-sm"
+                  disabled={measurePoints.length === 0}
+                  onClick={() => setMeasurePoints((prev) => prev.slice(0, -1))}
+                >
+                  <Undo2 className="mr-1 inline h-3.5 w-3.5" /> Undo
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary text-sm"
+                  disabled={measurePoints.length === 0}
+                  onClick={() => setMeasurePoints([])}
+                >
+                  <Trash2 className="mr-1 inline h-3.5 w-3.5" />
+                </button>
+              </div>
+              <button
+                type="button"
+                className="btn-primary w-full text-sm"
+                disabled={measurePoints.length < 2}
+                onClick={() => void saveMeasurement()}
+              >
+                <Save className="mr-1 inline h-3.5 w-3.5" /> Save Measurement
+              </button>
+              <p className="text-[11px] text-muted">
+                Saves each segment as a labeled POI at the midpoint (same pattern as Save POI).
+              </p>
+            </div>
+          )}
+
+          {tool === 'measure' && measurePoints.length > 0 && !draftRect?.length && (
+            <div className="space-y-2 border-t border-line pt-2">
+              <h3 className="text-sm font-semibold">Measured shape</h3>
+              <p className="text-xs text-muted">Optional: turn these corners into a room or corridor polygon.</p>
               <select
                 className="input w-full text-sm"
                 value={measureSaveAs}
@@ -869,14 +1000,9 @@ export function IndoorMapBuilderPage() {
                 <option value="room">Save as room</option>
                 <option value="corridor">Save as corridor</option>
               </select>
-              <div className="flex gap-2">
-                <button type="button" className="btn-primary flex-1 text-sm" onClick={applyMeasureToDraft}>
-                  Build &amp; save…
-                </button>
-                <button type="button" className="btn-secondary text-sm" onClick={() => setMeasurePoints([])}>
-                  Clear
-                </button>
-              </div>
+              <button type="button" className="btn-primary w-full text-sm" onClick={applyMeasureToDraft}>
+                Build &amp; save…
+              </button>
             </div>
           )}
 
@@ -1156,7 +1282,16 @@ export function IndoorMapBuilderPage() {
 
       {arPanelOpen && (
         <IndoorArMeasurePanel
-          onClose={() => setArPanelOpen(false)}
+          onClose={closeArMeasure}
+          initialCameraStream={arCameraStream}
+          openError={arOpenError}
+          onCameraStreamChange={setArCameraStream}
+          accessToken={token}
+          siteId={activeSiteId}
+          buildingId={buildingId}
+          floorId={selectedFloorId}
+          mapVersionId={draftVersionId}
+          floorLevel={snapshot?.floors.find((f) => f.id === selectedFloorId)?.level ?? null}
           onApplyPlanPoints={applyArMeasurePoints}
           onSuggestFloorHeight={(h) => setFloorHeightM(h)}
         />

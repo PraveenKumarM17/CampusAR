@@ -14,6 +14,7 @@ import { adminRouter, analyticsRouter } from './routes/adminRoutes';
 import { iotRouter } from './routes/iotRoutes';
 import { indoorRouter } from './routes/indoorRoutes';
 import { sitesRouter } from './routes/siteRoutes';
+import measurementRouter from './routes/measurementRoutes';
 
 export function createApp() {
   const app = express();
@@ -58,6 +59,7 @@ export function createApp() {
   app.use('/api/analytics', analyticsRouter);
   app.use('/api/iot', iotRouter);
   app.use('/api/indoor', indoorRouter);
+  app.use('/api/measurements', measurementRouter);
 
   app.use(errorHandler);
   return app;

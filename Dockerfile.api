@@ -1,0 +1,44 @@
+# Dockerfile for CampusAR API (Backend)
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Copy all workspace files
+COPY package*.json ./
+COPY apps/api ./apps/api
+COPY packages/shared ./packages/shared
+
+# Install all dependencies and build
+RUN npm ci && \
+    cd packages/shared && npm run build && \
+    cd ../../apps/api && npm run build
+
+# Production stage
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Copy built application and dependencies
+COPY --from=builder /app/apps/api/dist ./dist
+COPY --from=builder /app/apps/api/package*.json ./
+# Copy source files needed for migrations (db + config)
+COPY --from=builder /app/apps/api/src/infrastructure/db ./src/infrastructure/db
+COPY --from=builder /app/apps/api/src/infrastructure/config ./src/infrastructure/config
+COPY --from=builder /app/node_modules ./node_modules
+
+# Replace the workspace symlink with actual built shared package
+RUN rm -rf ./node_modules/@campusar/shared && \
+    mkdir -p ./node_modules/@campusar
+COPY --from=builder /app/packages/shared/dist ./node_modules/@campusar/shared/dist
+COPY --from=builder /app/packages/shared/package.json ./node_modules/@campusar/shared/package.json
+
+# Create non-root user and set permissions
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 apiuser && \
+    chown -R apiuser:nodejs /app
+
+USER apiuser
+
+EXPOSE 4000
+
+CMD ["node", "dist/server.js"]
