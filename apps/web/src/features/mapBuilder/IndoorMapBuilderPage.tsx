@@ -53,6 +53,7 @@ import {
   formatMeasureDistance,
   geometryFromMeasurePoints,
   measuredRoomExtents,
+  openCameraStream,
   polylineLength2D,
   segmentMidpoint2D,
 } from './indoorArMeasure';
@@ -124,6 +125,10 @@ export function IndoorMapBuilderPage() {
   >('floor_plan');
   const [measuredHeightM, setMeasuredHeightM] = useState<number | null>(null);
   const [arPanelOpen, setArPanelOpen] = useState(false);
+  const [arCameraStream, setArCameraStream] = useState<MediaStream | null>(null);
+  const [arOpenError, setArOpenError] = useState<string | null>(null);
+  const [arOpening, setArOpening] = useState(false);
+  const [draftVersionId, setDraftVersionId] = useState<string | null>(null);
   const [floorHeightM, setFloorHeightM] = useState(DEFAULT_FLOOR_HEIGHT_M);
   const [floorHeightBusy, setFloorHeightBusy] = useState(false);
   const [pendingTool, setPendingTool] = useState<IndoorTool | null>(null);
@@ -215,6 +220,7 @@ export function IndoorMapBuilderPage() {
     if (!token) return;
     const snap = await api.mapBuilder.snapshot(token);
     setBuildings(snap.buildings);
+    setDraftVersionId(snap.version.id);
     setBuildingsReady(true);
   }, [token]);
 
@@ -368,6 +374,36 @@ export function IndoorMapBuilderPage() {
     setError(null);
   }
 
+  function closeArMeasure() {
+    arCameraStream?.getTracks().forEach((t) => t.stop());
+    setArCameraStream(null);
+    setArOpenError(null);
+    setArPanelOpen(false);
+  }
+
+  async function openArMeasure() {
+    setArOpenError(null);
+    if (!window.isSecureContext) {
+      setArOpenError(
+        'Camera requires HTTPS. Open https:// plus your PC IP (not http://), accept the certificate warning, then try again.',
+      );
+      setArPanelOpen(true);
+      return;
+    }
+    setArOpening(true);
+    try {
+      const stream = await openCameraStream();
+      setArCameraStream(stream);
+      setArPanelOpen(true);
+    } catch (err) {
+      setArCameraStream(null);
+      setArOpenError(err instanceof Error ? err.message : 'Could not open the camera');
+      setArPanelOpen(true);
+    } finally {
+      setArOpening(false);
+    }
+  }
+
   function applyArMeasurePoints(
     planPoints: LocalVec2[],
     measurement: { source: 'camera_ar'; heightM?: number },
@@ -375,7 +411,16 @@ export function IndoorMapBuilderPage() {
     setMeasurePoints(planPoints);
     setMeasurementSource(measurement.source);
     setMeasuredHeightM(measurement.heightM ?? null);
-    setTool('measure');
+    const ring = geometryFromMeasurePoints(planPoints);
+    if (ring.length) {
+      setDraftRect(ring);
+      setPendingTool(measureSaveAs);
+      setTool(measureSaveAs);
+    } else {
+      setTool('measure');
+    }
+    arCameraStream?.getTracks().forEach((t) => t.stop());
+    setArCameraStream(null);
     setArPanelOpen(false);
   }
 
@@ -806,10 +851,11 @@ export function IndoorMapBuilderPage() {
             ))}
             <button
               type="button"
-              className="flex items-center gap-1 rounded-md border border-line bg-paper-raised px-2 py-1 text-sm"
-              onClick={() => setArPanelOpen(true)}
+              className="flex items-center gap-1 rounded-md border border-line bg-paper-raised px-2 py-1 text-sm disabled:opacity-50"
+              disabled={arOpening}
+              onClick={() => void openArMeasure()}
             >
-              <Camera className="h-3.5 w-3.5" /> AR Measure
+              <Camera className="h-3.5 w-3.5" /> {arOpening ? 'Opening…' : 'AR Measure'}
             </button>
           </div>
           <div className="flex flex-wrap gap-1 border-t border-line pt-2">
@@ -1236,7 +1282,16 @@ export function IndoorMapBuilderPage() {
 
       {arPanelOpen && (
         <IndoorArMeasurePanel
-          onClose={() => setArPanelOpen(false)}
+          onClose={closeArMeasure}
+          initialCameraStream={arCameraStream}
+          openError={arOpenError}
+          onCameraStreamChange={setArCameraStream}
+          accessToken={token}
+          siteId={activeSiteId}
+          buildingId={buildingId}
+          floorId={selectedFloorId}
+          mapVersionId={draftVersionId}
+          floorLevel={snapshot?.floors.find((f) => f.id === selectedFloorId)?.level ?? null}
           onApplyPlanPoints={applyArMeasurePoints}
           onSuggestFloorHeight={(h) => setFloorHeightM(h)}
         />

@@ -27,7 +27,21 @@ interface XRViewerPose {
   readonly views: readonly XRView[];
 }
 
-interface XRWebGLLayer {
+interface XRWebGLLayerInit {
+  alpha?: boolean;
+  antialias?: boolean;
+  depth?: boolean;
+  stencil?: boolean;
+  ignoreDepthValues?: boolean;
+  framebufferScaleFactor?: number;
+}
+
+declare class XRWebGLLayer {
+  constructor(
+    session: XRSession,
+    context: WebGLRenderingContext | WebGL2RenderingContext,
+    layerInit?: XRWebGLLayerInit,
+  );
   readonly framebuffer: WebGLFramebuffer | null;
   readonly framebufferWidth: number;
   readonly framebufferHeight: number;
@@ -70,5 +84,9 @@ interface Navigator {
 }
 
 interface WebGLRenderingContext {
+  makeXRCompatible(): Promise<void>;
+}
+
+interface WebGL2RenderingContext {
   makeXRCompatible(): Promise<void>;
 }

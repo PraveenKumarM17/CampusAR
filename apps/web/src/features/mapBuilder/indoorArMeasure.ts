@@ -3,6 +3,107 @@ import type { LocalVec2, LocalVec3 } from '@campusar/shared';
 /** Default floor-to-floor height when building has no override (meters). */
 export const DEFAULT_FLOOR_HEIGHT_M = 3.5;
 
+const CAMERA_OPEN_TIMEOUT_MS = 12_000;
+const VIDEO_PLAY_TIMEOUT_MS = 4_000;
+
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]);
+}
+
+/** Open the rear camera with fallbacks — avoids hanging forever on strict constraints. */
+export async function openCameraStream(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Camera API is not available. Use Chrome on Android over HTTPS.');
+  }
+
+  const attempts: MediaStreamConstraints[] = [
+    { video: { facingMode: { ideal: 'environment' } }, audio: false },
+    { video: { facingMode: 'environment' }, audio: false },
+    { video: true, audio: false },
+  ];
+
+  let lastError: unknown;
+  for (const constraints of attempts) {
+    try {
+      return await withTimeout(
+        navigator.mediaDevices.getUserMedia(constraints),
+        CAMERA_OPEN_TIMEOUT_MS,
+        'Camera timed out. In browser site settings, allow Camera for this site, then try again.',
+      );
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Could not open the camera');
+}
+
+/** Bind a MediaStream to a video element without hanging indefinitely on play(). */
+export async function attachCameraToVideo(
+  stream: MediaStream,
+  video: HTMLVideoElement,
+): Promise<void> {
+  video.srcObject = stream;
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute('playsinline', 'true');
+  video.setAttribute('webkit-playsinline', 'true');
+
+  await new Promise<void>((resolve, reject) => {
+    const track = stream.getVideoTracks()[0];
+    if (!track) {
+      reject(new Error('No video track in camera stream'));
+      return;
+    }
+
+    let settled = false;
+    const finish = (ok: boolean, err?: unknown) => {
+      if (settled) return;
+      settled = true;
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('playing', onReady);
+      if (ok) resolve();
+      else reject(err instanceof Error ? err : new Error('Camera preview failed to start'));
+    };
+
+    const onReady = () => {
+      if (video.videoWidth > 0 || track.readyState === 'live') finish(true);
+    };
+
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('playing', onReady);
+
+    void withTimeout(video.play(), VIDEO_PLAY_TIMEOUT_MS, 'Video play timed out')
+      .then(() => finish(true))
+      .catch((err) => {
+        if (track.readyState === 'live') finish(true);
+        else finish(false, err);
+      });
+
+    window.setTimeout(() => {
+      if (track.readyState === 'live') finish(true);
+    }, VIDEO_PLAY_TIMEOUT_MS + 500);
+  });
+}
+
+export async function probeCameraPermission(): Promise<'granted' | 'denied' | 'prompt' | 'unknown'> {
+  try {
+    const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
+    return status.state;
+  } catch {
+    return 'unknown';
+  }
+}
+
 /**
  * 3D vector distance — same formula as AR-Measure LineManager (Unity Vector3.Distance).
  * @see https://github.com/lightlessdays/AR-Measure
@@ -214,4 +315,113 @@ export function arSessionToFloorPlan(points: LocalVec3[], origin: LocalVec3): Lo
 
 export function floorElevationM(level: number, floorHeightM: number): number {
   return level * floorHeightM;
+}
+
+export type MeasureMode = 'webxr' | 'camera';
+
+/** WebXR immersive-ar when available; otherwise camera + device-orientation fallback (iOS). */
+export async function detectMeasureMode(): Promise<MeasureMode> {
+  if (!window.isSecureContext || !navigator.xr?.isSessionSupported) return 'camera';
+  const ok = await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
+  return ok ? 'webxr' : 'camera';
+}
+
+export function stopMediaStream(stream: MediaStream | null | undefined): void {
+  stream?.getTracks().forEach((t) => t.stop());
+}
+
+const CAMERA_EYE_Y = 1.45;
+const DEFAULT_FOV_DEG = 63;
+
+/** Approximate view direction from DeviceOrientation (portrait phone, Y-up world). */
+export function forwardFromDeviceOrientation(beta: number, gamma: number): LocalVec3 {
+  const b = (beta * Math.PI) / 180;
+  const g = (gamma * Math.PI) / 180;
+  const x = Math.sin(g) * Math.cos(b);
+  const y = -Math.sin(b);
+  const z = -Math.cos(g) * Math.cos(b);
+  const len = Math.hypot(x, y, z) || 1;
+  return { x: x / len, y: y / len, z: z / len };
+}
+
+/** Intersect view ray with a horizontal floor plane for camera-only measure mode. */
+export function hitHorizontalPlaneFromOrientation(
+  beta: number,
+  gamma: number,
+  planeY = 0,
+  eyeY = CAMERA_EYE_Y,
+): LocalVec3 | null {
+  const dir = forwardFromDeviceOrientation(beta, gamma);
+  if (Math.abs(dir.y) < 0.05) return null;
+  const t = (planeY - eyeY) / dir.y;
+  if (t < 0.15 || t > 25) return null;
+  return { x: dir.x * t, y: planeY, z: dir.z * t };
+}
+
+/** Project a session-local floor point to screen pixels (camera-only measure mode). */
+export function projectSessionPointToScreen(
+  point: LocalVec3,
+  sessionOrigin: LocalVec3 | null,
+  beta: number,
+  gamma: number,
+  width: number,
+  height: number,
+): { x: number; y: number } | null {
+  const abs: LocalVec3 = sessionOrigin
+    ? {
+        x: sessionOrigin.x + point.x,
+        y: sessionOrigin.y + point.y,
+        z: sessionOrigin.z + point.z,
+      }
+    : point;
+
+  const eye = { x: 0, y: CAMERA_EYE_Y, z: 0 };
+  const forward = forwardFromDeviceOrientation(beta, gamma);
+  const upWorld = { x: 0, y: 1, z: 0 };
+
+  let rx = forward.y * upWorld.z - forward.z * upWorld.y;
+  let ry = forward.z * upWorld.x - forward.x * upWorld.z;
+  let rz = forward.x * upWorld.y - forward.y * upWorld.x;
+  const rlen = Math.hypot(rx, ry, rz) || 1;
+  rx /= rlen;
+  ry /= rlen;
+  rz /= rlen;
+
+  let ux = ry * forward.z - rz * forward.y;
+  let uy = rz * forward.x - rx * forward.z;
+  let uz = rx * forward.y - ry * forward.x;
+  const ulen = Math.hypot(ux, uy, uz) || 1;
+  ux /= ulen;
+  uy /= ulen;
+  uz /= ulen;
+
+  const vx = abs.x - eye.x;
+  const vy = abs.y - eye.y;
+  const vz = abs.z - eye.z;
+  const camZ = vx * forward.x + vy * forward.y + vz * forward.z;
+  if (camZ < 0.1) return null;
+  const camX = vx * rx + vy * ry + vz * rz;
+  const camY = vx * ux + vy * uy + vz * uz;
+
+  const fovRad = (DEFAULT_FOV_DEG * Math.PI) / 180;
+  const scale = (height / 2) / Math.tan(fovRad / 2);
+  return {
+    x: width / 2 + (camX / camZ) * scale,
+    y: height / 2 - (camY / camZ) * scale,
+  };
+}
+
+/** iOS 13+ requires a user gesture before deviceorientation events fire. */
+export async function requestDeviceOrientationAccess(): Promise<boolean> {
+  const req = (
+    DeviceOrientationEvent as unknown as {
+      requestPermission?: () => Promise<'granted' | 'denied'>;
+    }
+  ).requestPermission;
+  if (!req) return true;
+  try {
+    return (await req()) === 'granted';
+  } catch {
+    return false;
+  }
 }

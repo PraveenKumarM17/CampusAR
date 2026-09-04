@@ -82,12 +82,12 @@ SELECT
   SUM(me.length_m) as total_length_m,
   ST_MakeLine(
     ARRAY(
-      SELECT ST_Point(mpt2.longitude, mpt2.latitude)::geography
+      SELECT ST_SetSRID(ST_MakePoint(mpt2.longitude, mpt2.latitude), 4326)::geometry
       FROM measurement_points mpt2
       WHERE mpt2.path_id = mp.id
       ORDER BY mpt2.ordinal
     )
-  ) as path_geom
+  )::geography as path_geom
 FROM measurement_paths mp
 LEFT JOIN measurement_points mpt ON mpt.path_id = mp.id
 LEFT JOIN measurement_edges me ON me.path_id = mp.id
@@ -136,9 +136,9 @@ BEGIN
           ST_SetSRID(ST_MakePoint(v_point_record.longitude, v_point_record.latitude), 4326)
         )),
         ST_MakeLine(
-          ST_SetSRID(ST_MakePoint(v_prev_lon, v_prev_lat), 4326)::geography,
-          ST_SetSRID(ST_MakePoint(v_point_record.longitude, v_point_record.latitude), 4326)::geography
-        )
+          ST_SetSRID(ST_MakePoint(v_prev_lon, v_prev_lat), 4326)::geometry,
+          ST_SetSRID(ST_MakePoint(v_point_record.longitude, v_point_record.latitude), 4326)::geometry
+        )::geography
       );
       v_edge_ordinal := v_edge_ordinal + 1;
     END IF;

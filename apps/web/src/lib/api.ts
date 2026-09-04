@@ -37,6 +37,10 @@ import type {
   LocalVec2,
   RoomCategory,
   FloorPoiCategory,
+  CreateMeasurementPathDto,
+  MeasurementPath,
+  MeasurementPoint,
+  GpsPoint,
 } from '@campusar/shared';
 
 import { useAuthStore } from '../stores/authStore';
@@ -881,6 +885,24 @@ export const api = {
       request<MapVersionPublishResponse>(
         `/admin/map-builder/versions/${encodeURIComponent(versionId)}/publish`,
         { method: 'POST' },
+        token,
+      ),
+  },
+  measurements: {
+    createPath: (body: CreateMeasurementPathDto, token?: string | null) =>
+      request<MeasurementPath>(
+        '/measurements/paths',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    addPoint: (
+      pathId: string,
+      body: { point: GpsPoint; label?: string },
+      token?: string | null,
+    ) =>
+      request<MeasurementPoint>(
+        `/measurements/paths/${encodeURIComponent(pathId)}/points`,
+        { method: 'POST', body: JSON.stringify(body) },
         token,
       ),
   },
