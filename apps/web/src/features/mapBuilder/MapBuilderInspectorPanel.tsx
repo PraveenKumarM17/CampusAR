@@ -149,9 +149,39 @@ export function MapBuilderInspectorPanel({
     if (inConflict) return;
     if (selectedBuilding) {
       setBuildingDraft({ name: selectedBuilding.name, code: selectedBuilding.code });
+    } else if (selectedNode) {
+      setNodeDraft({
+        name: selectedNode.name ?? '',
+        kind: selectedNode.kind,
+        buildingId: selectedNode.buildingId ?? '',
+      });
+    } else if (selectedEdge) {
+      setEdgeDraft({
+        distanceM: selectedEdge.distanceM,
+        accessibilityScore: selectedEdge.accessibilityScore,
+        blocked: selectedEdge.blocked,
+      });
+    } else if (selectedArea) {
+      setAreaDraft({ name: selectedArea.name, type: selectedArea.type });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBuilding?.updatedAt, selectedBuilding?.name, selectedBuilding?.code, inConflict]);
+  }, [
+    selectedBuilding?.updatedAt,
+    selectedBuilding?.name,
+    selectedBuilding?.code,
+    selectedNode?.updatedAt,
+    selectedNode?.name,
+    selectedNode?.kind,
+    selectedNode?.buildingId,
+    selectedEdge?.updatedAt,
+    selectedEdge?.distanceM,
+    selectedEdge?.accessibilityScore,
+    selectedEdge?.blocked,
+    selectedArea?.updatedAt,
+    selectedArea?.name,
+    selectedArea?.type,
+    inConflict,
+  ]);
 
   function scheduleSave(
     kind: 'building' | 'node' | 'edge' | 'area',
@@ -177,7 +207,8 @@ export function MapBuilderInspectorPanel({
         } catch (err) {
           if (gen !== saveGenRef.current) return;
           setAutosave('error');
-          if (err instanceof ApiError && err.status === 409) {
+          // Only true OCC conflicts open the Resolve dialog — not NODE_HAS_EDGES / publish 409s.
+          if (err instanceof ApiError && err.status === 409 && err.code === 'STALE_EDIT') {
             onConflict({
               kind,
               id,
@@ -310,6 +341,7 @@ export function MapBuilderInspectorPanel({
                   name: name || null,
                   kind: nodeDraft.kind,
                   buildingId: nodeDraft.buildingId || null,
+                  expectedUpdatedAt: selectedNode.updatedAt,
                 });
               }}
             />
@@ -327,6 +359,7 @@ export function MapBuilderInspectorPanel({
                   name: nodeDraft.name || null,
                   kind,
                   buildingId: nodeDraft.buildingId || null,
+                  expectedUpdatedAt: selectedNode.updatedAt,
                 });
               }}
             >
@@ -350,6 +383,7 @@ export function MapBuilderInspectorPanel({
                   name: nodeDraft.name || null,
                   kind: nodeDraft.kind,
                   buildingId: buildingId || null,
+                  expectedUpdatedAt: selectedNode.updatedAt,
                 });
               }}
             >
@@ -389,6 +423,7 @@ export function MapBuilderInspectorPanel({
                   distanceM,
                   accessibilityScore: edgeDraft.accessibilityScore,
                   blocked: edgeDraft.blocked,
+                  expectedUpdatedAt: selectedEdge.updatedAt,
                 });
               }}
             />
@@ -407,6 +442,7 @@ export function MapBuilderInspectorPanel({
                   distanceM: edgeDraft.distanceM,
                   accessibilityScore,
                   blocked: edgeDraft.blocked,
+                  expectedUpdatedAt: selectedEdge.updatedAt,
                 });
               }}
             />
@@ -423,6 +459,7 @@ export function MapBuilderInspectorPanel({
                   distanceM: edgeDraft.distanceM,
                   accessibilityScore: edgeDraft.accessibilityScore,
                   blocked,
+                  expectedUpdatedAt: selectedEdge.updatedAt,
                 });
               }}
             />
@@ -451,7 +488,11 @@ export function MapBuilderInspectorPanel({
               onChange={(e) => {
                 const name = e.target.value;
                 setAreaDraft((d) => (d ? { ...d, name } : d));
-                scheduleSave('area', selectedArea.id, { name, type: areaDraft.type });
+                scheduleSave('area', selectedArea.id, {
+                  name,
+                  type: areaDraft.type,
+                  expectedUpdatedAt: selectedArea.updatedAt,
+                });
               }}
             />
           </label>
@@ -464,7 +505,11 @@ export function MapBuilderInspectorPanel({
               onChange={(e) => {
                 const type = e.target.value as SiteArea['type'];
                 setAreaDraft((d) => (d ? { ...d, type } : d));
-                scheduleSave('area', selectedArea.id, { name: areaDraft.name, type });
+                scheduleSave('area', selectedArea.id, {
+                  name: areaDraft.name,
+                  type,
+                  expectedUpdatedAt: selectedArea.updatedAt,
+                });
               }}
             >
               {AREA_TYPES.map((t) => (

@@ -2,7 +2,7 @@
  * @deprecated Legacy outdoor map editor (Phase 2.5A). Use /admin/map-builder instead.
  * Retained temporarily for reference; no longer mounted from AdminPage.
  */
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MapContainer,
   CircleMarker,
@@ -15,9 +15,9 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import type { LeafletEvent } from 'leaflet';
-import { LocateFixed, MapPin, Plus, Route, Scissors, Trash2, Waypoints } from 'lucide-react';
+import { GitCommitHorizontal, LocateFixed, MapPin, Route, Scissors, Trash2, Waypoints } from 'lucide-react';
 import type { GraphEdge, GraphNode } from '@campusar/shared';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAX_ZOOM } from '../../lib/campus';
@@ -31,7 +31,7 @@ import {
 import { RecenterOnSite } from '../../components/maps/GpsTracker';
 import { useActiveSite } from '../../hooks/useActiveSite';
 
-type Tool = 'pin-live' | 'pin-click' | 'draw' | 'break-segment' | 'break-route';
+type Tool = 'pin-live' | 'pin-click' | 'draw' | 'add-bend' | 'break-segment' | 'break-route';
 
 type PinDetails = {
   name: string;
@@ -39,7 +39,7 @@ type PinDetails = {
   notes: string;
 };
 
-/** In-progress route: start place → optional bend clicks → end place */
+/** In-progress route: start (place or bend) → optional new bends → end (place or bend) */
 type RouteSketch = {
   startId: string;
   bends: { lat: number; lon: number }[];
@@ -60,6 +60,12 @@ type ConfirmState =
       bendIds: string[];
     }
   | null;
+
+/** During Draw, treat a map click within this distance as selecting that pin/bend. */
+const DRAW_SNAP_M = 16;
+/** Max distance from a click to snap onto an existing path when adding a bend. */
+const ADD_BEND_SNAP_M = 28;
+const PIN_AUTOSAVE_MS = 700;
 
 const KIND_OPTIONS: { value: GraphNode['kind']; label: string }[] = [
   { value: 'outdoor', label: 'Outdoor place' },
@@ -86,16 +92,47 @@ const BEND_ICON_SELECTED = L.divIcon({
 });
 
 function stopMapPropagation(e: LeafletEvent) {
+  // Stop Leaflet + DOM bubbling so map click handlers do not also fire.
+  L.DomEvent.stopPropagation(e as unknown as Event);
   if ('originalEvent' in e && e.originalEvent instanceof Event) {
     L.DomEvent.stopPropagation(e.originalEvent);
   }
 }
 
 function haltMapPointerEvent(e: LeafletEvent) {
+  L.DomEvent.stopPropagation(e as unknown as Event);
+  L.DomEvent.preventDefault(e as unknown as Event);
   if ('originalEvent' in e && e.originalEvent instanceof Event) {
     L.DomEvent.stopPropagation(e.originalEvent);
     L.DomEvent.preventDefault(e.originalEvent);
   }
+}
+
+/** Project a lat/lon onto segment A→B (local equirectangular). */
+function projectOntoSegment(
+  lat: number,
+  lon: number,
+  aLat: number,
+  aLon: number,
+  bLat: number,
+  bLon: number,
+): { lat: number; lon: number; t: number; distM: number } {
+  const cos = Math.cos((aLat * Math.PI) / 180);
+  const bx = (bLon - aLon) * cos * 111320;
+  const by = (bLat - aLat) * 110540;
+  const px = (lon - aLon) * cos * 111320;
+  const py = (lat - aLat) * 110540;
+  const len2 = bx * bx + by * by;
+  let t = len2 === 0 ? 0 : (px * bx + py * by) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const projLat = aLat + t * (bLat - aLat);
+  const projLon = aLon + t * (bLon - aLon);
+  return {
+    lat: projLat,
+    lon: projLon,
+    t,
+    distM: haversineMeters(lat, lon, projLat, projLon),
+  };
 }
 
 function pinIcon(selected: boolean, pathEndpoint: boolean) {
@@ -194,8 +231,12 @@ function DraggablePin({
       icon={icon}
       eventHandlers={{
         click: (e) => {
-          stopMapPropagation(e);
+          haltMapPointerEvent(e);
           onSelect();
+        },
+        mousedown: (e) => {
+          if (!draggable) haltMapPointerEvent(e);
+          else stopMapPropagation(e);
         },
         dragend: (e) => {
           const { lat, lng } = e.target.getLatLng();
@@ -218,20 +259,22 @@ function DraggablePin({
 function BendMarker({
   node,
   selected,
+  drawMode,
   onSelect,
   onMoved,
 }: {
   node: GraphNode;
   selected: boolean;
+  drawMode?: boolean;
   onSelect: () => void;
   onMoved: (lat: number, lon: number) => void;
 }) {
   return (
     <Marker
       position={[node.latitude, node.longitude]}
-      draggable
+      draggable={!drawMode}
       autoPan={false}
-      zIndexOffset={1200}
+      zIndexOffset={drawMode ? 2500 : 1200}
       icon={selected ? BEND_ICON_SELECTED : BEND_ICON}
       eventHandlers={{
         click: (e) => {
@@ -239,7 +282,7 @@ function BendMarker({
           onSelect();
         },
         mousedown: (e) => {
-          stopMapPropagation(e);
+          haltMapPointerEvent(e);
         },
         dragstart: (e) => {
           stopMapPropagation(e);
@@ -251,7 +294,9 @@ function BendMarker({
       }}
     >
       <Tooltip direction="top" opacity={1}>
-        Bend · drag to move · click to select/delete
+        {drawMode
+          ? 'Click to start or finish a connection here'
+          : 'Bend · drag to move · switch to Draw to connect'}
       </Tooltip>
     </Marker>
   );
@@ -284,18 +329,25 @@ export function AdminMapEditor() {
   const [messageTone, setMessageTone] = useState<'ok' | 'err'>('ok');
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
+  const [pinAutosave, setPinAutosave] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>(
+    'idle',
+  );
+  const pinSaveGenRef = useRef(0);
+  const skipNextPinAutosaveRef = useRef(false);
 
   const showDetails =
     Boolean(draftPos) ||
     (Boolean(editingId) &&
       tool !== 'draw' &&
+      tool !== 'add-bend' &&
       tool !== 'break-segment' &&
       tool !== 'break-route');
 
   async function refresh() {
     if (!token) return;
     const [n, e] = await Promise.all([api.adminNodes.list(token), api.adminEdges.list(token)]);
-    setNodes(n);
+    // Defense in depth: never render soft-deleted nodes even if an older API returns them.
+    setNodes(n.filter((node) => node.active !== false));
     setEdges(e);
   }
 
@@ -319,11 +371,22 @@ export function AdminMapEditor() {
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
   const placePins = useMemo(
-    () => nodes.filter((n) => Boolean(n.name?.trim()) || n.kind === 'entrance' || n.kind === 'exit'),
+    () =>
+      nodes.filter(
+        (n) =>
+          n.active !== false &&
+          (Boolean(n.name?.trim()) || n.kind === 'entrance' || n.kind === 'exit'),
+      ),
     [nodes],
   );
 
   const placeIdSet = useMemo(() => new Set(placePins.map((p) => p.id)), [placePins]);
+
+  /** All non-place waypoints (unnamed outdoor bends) — not only those already on a place route. */
+  const waypointNodes = useMemo(
+    () => nodes.filter((n) => n.active !== false && !placeIdSet.has(n.id)),
+    [nodes, placeIdSet],
+  );
 
   const edgeLines = useMemo(() => {
     return edges
@@ -340,7 +403,7 @@ export function AdminMapEditor() {
             [from.latitude, from.longitude] as [number, number],
             [to.latitude, to.longitude] as [number, number],
           ],
-          label: `${from.name ?? 'A'} → ${to.name ?? 'B'}`,
+          label: `${from.name ?? 'bend'} → ${to.name ?? 'bend'}`,
         };
       })
       .filter(Boolean) as Array<{
@@ -362,42 +425,71 @@ export function AdminMapEditor() {
     setDrawFromId(null);
     setSketch(null);
     setRemoveRouteFromId(null);
-    if (next === 'draw' || next === 'break-segment' || next === 'break-route') {
+    if (next === 'draw' || next === 'add-bend' || next === 'break-segment' || next === 'break-route') {
       setDraftPos(null);
       setEditingId(null);
+      setSelectedBendId(null);
     }
     if (next === 'pin-live') setFollowLive(true);
   }
 
+  async function createPinAt(lat: number, lon: number, preferredName?: string) {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const autoName =
+        preferredName?.trim() ||
+        `Pin ${placePins.length + 1}`;
+      const created = await api.adminNodes.create(
+        {
+          name: autoName,
+          latitude: lat,
+          longitude: lon,
+          kind: 'outdoor',
+          floorId: null,
+          buildingId: null,
+        },
+        token,
+      );
+      skipNextPinAutosaveRef.current = true;
+      setDraftPos(null);
+      setEditingId(created.id);
+      setDetails({ name: created.name ?? autoName, kind: created.kind, notes: '' });
+      setPinAutosave('saved');
+      await refresh();
+      flash(`“${created.name ?? autoName}” saved — rename anytime (autosaves).`);
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not save pin', 'err');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function openDraftAtLive() {
     if (!pose) {
-      flash('No live GPS yet — allow location, or use “Click map to pin”.', 'err');
+      flash('No live GPS yet — allow location, or use “Click to pin”.', 'err');
       return;
     }
-    setEditingId(null);
-    setDraftPos({ lat: pose.latitude, lon: pose.longitude });
-    setDetails(emptyDetails());
     setFollowLive(false);
-    setMessage(null);
+    void createPinAt(pose.latitude, pose.longitude);
   }
 
   function openDraftAtClick(lat: number, lon: number) {
-    if (showDetails) return;
-    setEditingId(null);
-    setDraftPos({ lat, lon });
-    setDetails(emptyDetails());
-    setFollowLive(false);
-    setMessage(null);
+    void createPinAt(lat, lon);
   }
 
   function selectPinForEdit(node: GraphNode) {
+    skipNextPinAutosaveRef.current = true;
     setDraftPos(null);
     setEditingId(node.id);
+    const raw = node.name ?? '';
+    const parts = raw.split(' — ');
     setDetails({
-      name: node.name ?? '',
+      name: parts[0] ?? '',
       kind: node.kind,
-      notes: '',
+      notes: parts.length > 1 ? parts.slice(1).join(' — ') : '',
     });
+    setPinAutosave('idle');
     setFollowLive(false);
     setMessage(null);
   }
@@ -406,31 +498,46 @@ export function AdminMapEditor() {
     setDraftPos(null);
     setEditingId(null);
     setDetails(emptyDetails());
+    setPinAutosave('idle');
   }
 
-  const waypointNodes = useMemo(() => {
-    const adj = new Map<string, string[]>();
-    for (const e of edges) {
-      if (!adj.has(e.fromNodeId)) adj.set(e.fromNodeId, []);
-      if (!adj.has(e.toNodeId)) adj.set(e.toNodeId, []);
-      adj.get(e.fromNodeId)!.push(e.toNodeId);
-      adj.get(e.toNodeId)!.push(e.fromNodeId);
+  // Autosave pin name/kind/notes while editing (skip the first tick after open/create).
+  useEffect(() => {
+    if (!editingId || !token) return;
+    if (skipNextPinAutosaveRef.current) {
+      skipNextPinAutosaveRef.current = false;
+      return;
     }
-    const bends = new Set<string>();
-    const queue = [...placeIdSet];
-    const seen = new Set(placeIdSet);
-    while (queue.length) {
-      const cur = queue.shift()!;
-      for (const next of adj.get(cur) ?? []) {
-        if (seen.has(next)) continue;
-        seen.add(next);
-        if (placeIdSet.has(next)) continue;
-        bends.add(next);
-        queue.push(next);
-      }
+    if (!details.name.trim()) {
+      setPinAutosave('idle');
+      return;
     }
-    return nodes.filter((n) => bends.has(n.id));
-  }, [nodes, edges, placeIdSet]);
+    setPinAutosave('pending');
+    const gen = ++pinSaveGenRef.current;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setPinAutosave('saving');
+        try {
+          const displayName = details.notes.trim()
+            ? `${details.name.trim()} — ${details.notes.trim()}`
+            : details.name.trim();
+          await api.adminNodes.update(
+            editingId,
+            { name: displayName, kind: details.kind },
+            token,
+          );
+          if (pinSaveGenRef.current !== gen) return;
+          setPinAutosave('saved');
+        } catch (err) {
+          if (pinSaveGenRef.current !== gen) return;
+          setPinAutosave('error');
+          flash(err instanceof Error ? err.message : 'Autosave failed', 'err');
+        }
+      })();
+    }, PIN_AUTOSAVE_MS);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [details.name, details.kind, details.notes, editingId, token]);
 
   const sketchPreview = useMemo(() => {
     if (!sketch) return null;
@@ -444,17 +551,35 @@ export function AdminMapEditor() {
     return pts;
   }, [sketch, nodeById]);
 
+  function nodeLabel(node: GraphNode): string {
+    if (node.name?.trim()) return `“${node.name.trim()}”`;
+    return placeIdSet.has(node.id) ? 'pin' : 'bend';
+  }
+
   async function onPinClick(node: GraphNode) {
     if (tool === 'draw') {
-      await handleDrawPinClick(node);
+      await handleDrawEndpointClick(node);
       return;
     }
+    if (tool === 'add-bend') return;
     if (tool === 'break-route') {
       handleRemoveRoutePinClick(node);
       return;
     }
     if (tool === 'break-segment') return;
     selectPinForEdit(node);
+  }
+
+  function handleBendClick(node: GraphNode) {
+    if (tool === 'draw') {
+      void handleDrawEndpointClick(node);
+      return;
+    }
+    if (tool === 'add-bend') return;
+    setSelectedBendId(node.id);
+    setEditingId(null);
+    setDraftPos(null);
+    flash('Bend selected — drag to move, or delete it from the panel.');
   }
 
   function handleRemoveRoutePinClick(node: GraphNode) {
@@ -491,9 +616,29 @@ export function AdminMapEditor() {
     setRemoveRouteFromId(null);
   }
 
+  function findNearestDrawEndpoint(lat: number, lon: number): GraphNode | null {
+    let best: GraphNode | null = null;
+    let bestD = DRAW_SNAP_M;
+    for (const n of nodes) {
+      if (n.active === false) continue;
+      const d = haversineMeters(lat, lon, n.latitude, n.longitude);
+      if (d <= bestD) {
+        bestD = d;
+        best = n;
+      }
+    }
+    return best;
+  }
+
   function onDrawMapClick(lat: number, lon: number) {
+    // Prefer linking an existing pin/bend over dropping a duplicate bend on top of it.
+    const snap = findNearestDrawEndpoint(lat, lon);
+    if (snap) {
+      void handleDrawEndpointClick(snap);
+      return;
+    }
     if (!sketch) {
-      flash('First click a start place pin, then click along the road to add turns.', 'err');
+      flash('First click a start pin or bend, then click the map to add turns.', 'err');
       return;
     }
     setSketch((s) => (s ? { ...s, bends: [...s.bends, { lat, lon }] } : s));
@@ -542,13 +687,14 @@ export function AdminMapEditor() {
     );
   }
 
-  async function handleDrawPinClick(node: GraphNode) {
+  async function handleDrawEndpointClick(node: GraphNode) {
     if (!token) return;
     if (!sketch) {
       setSketch({ startId: node.id, bends: [], cursor: null });
       setDrawFromId(node.id);
+      setSelectedBendId(null);
       flash(
-        `Start: “${node.name ?? 'pin'}”. Click the map to add turns/bends, then click the end place pin.`,
+        `Start: ${nodeLabel(node)}. Click the map for new turns, or click another pin/bend to connect directly.`,
       );
       return;
     }
@@ -558,10 +704,13 @@ export function AdminMapEditor() {
       return;
     }
 
+    // Avoid finishing on a node already used as a new bend in this sketch (impossible for existing ids)
     const start = nodeById.get(sketch.startId);
     if (!start) return;
     const bendsSnapshot = [...sketch.bends];
     const startId = sketch.startId;
+    const endIsPlace = placeIdSet.has(node.id);
+    const startIsPlace = placeIdSet.has(startId);
 
     setBusy(true);
     try {
@@ -590,12 +739,19 @@ export function AdminMapEditor() {
       chainPos.push({ latitude: node.latitude, longitude: node.longitude });
 
       for (let i = 0; i < chainIds.length - 1; i++) {
-        const edge = await createEdgeBetween(chainIds[i], chainIds[i + 1], chainPos[i], chainPos[i + 1]);
+        const a = chainIds[i];
+        const b = chainIds[i + 1];
+        const already = edges.some(
+          (e) =>
+            (e.fromNodeId === a && e.toNodeId === b) || (e.fromNodeId === b && e.toNodeId === a),
+        );
+        if (already) continue;
+        const edge = await createEdgeBetween(a, b, chainPos[i], chainPos[i + 1]);
         if (!edge) return;
       }
 
       // Optional circuit highlight when closing a place loop with a direct (0-bend) link
-      if (bendsSnapshot.length === 0) {
+      if (bendsSnapshot.length === 0 && startIsPlace && endIsPlace) {
         const cycle = cycleClosedByNewEdge(
           placeIdSet,
           edges.filter((e) => placeIdSet.has(e.fromNodeId) && placeIdSet.has(e.toNodeId)),
@@ -610,14 +766,16 @@ export function AdminMapEditor() {
 
       setSketch(null);
       setDrawFromId(null);
+      setSelectedBendId(null);
       await refresh();
       flash(
         bendsSnapshot.length > 0
-          ? `Route saved: “${start.name}” → ${bendsSnapshot.length} turn${bendsSnapshot.length === 1 ? '' : 's'} → “${node.name}”. Drag orange bend points to adjust.`
-          : `Straight path saved: “${start.name}” → “${node.name}”. For turns, add map clicks between start and end next time.`,
+          ? `Route saved: ${nodeLabel(start)} → ${bendsSnapshot.length} turn${bendsSnapshot.length === 1 ? '' : 's'} → ${nodeLabel(node)}. Drag orange bends to adjust, or Draw again to link more bends.`
+          : `Connected ${nodeLabel(start)} → ${nodeLabel(node)}. Click another pin or bend to keep linking.`,
       );
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not save route', 'err');
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -640,46 +798,130 @@ export function AdminMapEditor() {
     );
   }
 
-  async function saveDetails(e: FormEvent) {
-    e.preventDefault();
-    if (!token) return;
-    if (!details.name.trim()) {
-      flash('Place name is required.', 'err');
+  function findNearestEdgeProjection(
+    lat: number,
+    lon: number,
+  ): { edge: GraphEdge; lat: number; lon: number; distM: number } | null {
+    let best: { edge: GraphEdge; lat: number; lon: number; distM: number } | null = null;
+    for (const edge of edges) {
+      const from = nodeById.get(edge.fromNodeId);
+      const to = nodeById.get(edge.toNodeId);
+      if (!from || !to) continue;
+      const proj = projectOntoSegment(
+        lat,
+        lon,
+        from.latitude,
+        from.longitude,
+        to.latitude,
+        to.longitude,
+      );
+      // Avoid placing a bend almost on top of an endpoint.
+      if (proj.t < 0.02 || proj.t > 0.98) continue;
+      if (proj.distM > ADD_BEND_SNAP_M) continue;
+      if (!best || proj.distM < best.distM) {
+        best = { edge, lat: proj.lat, lon: proj.lon, distM: proj.distM };
+      }
+    }
+    return best;
+  }
+
+  /** Insert a bend on an existing segment: A—B → A—bend—B. */
+  async function insertBendOnPath(lat: number, lon: number, preferredEdgeId?: string) {
+    if (!token || busy) return;
+
+    let target: { edge: GraphEdge; lat: number; lon: number } | null = null;
+
+    if (preferredEdgeId) {
+      const edge = edges.find((e) => e.id === preferredEdgeId);
+      const from = edge ? nodeById.get(edge.fromNodeId) : undefined;
+      const to = edge ? nodeById.get(edge.toNodeId) : undefined;
+      if (edge && from && to) {
+        const proj = projectOntoSegment(
+          lat,
+          lon,
+          from.latitude,
+          from.longitude,
+          to.latitude,
+          to.longitude,
+        );
+        if (proj.t > 0.02 && proj.t < 0.98) {
+          target = { edge, lat: proj.lat, lon: proj.lon };
+        }
+      }
+    }
+
+    if (!target) {
+      const nearest = findNearestEdgeProjection(lat, lon);
+      if (nearest) target = { edge: nearest.edge, lat: nearest.lat, lon: nearest.lon };
+    }
+
+    if (!target) {
+      flash('Click on or near a path line to add a bend.', 'err');
       return;
     }
+
+    const fromId = target.edge.fromNodeId;
+    const toId = target.edge.toNodeId;
+    const from = nodeById.get(fromId);
+    const to = nodeById.get(toId);
+    if (!from || !to) {
+      flash('Path endpoints missing — refresh and try again.', 'err');
+      return;
+    }
+
     setBusy(true);
     try {
-      const displayName = details.notes.trim()
-        ? `${details.name.trim()} — ${details.notes.trim()}`
-        : details.name.trim();
-      if (draftPos) {
-        await api.adminNodes.create(
-          {
-            name: displayName,
-            latitude: draftPos.lat,
-            longitude: draftPos.lon,
-            kind: details.kind,
-            floorId: null,
-            buildingId: null,
-          },
-          token,
-        );
-        flash(
-          `Saved “${details.name.trim()}”. Switch to Draw path and click two pins to connect them.`,
-        );
-        cancelDetails();
+      const bendNode = await api.adminNodes.create(
+        {
+          name: null,
+          latitude: target.lat,
+          longitude: target.lon,
+          kind: 'outdoor',
+          floorId: null,
+          buildingId: null,
+        },
+        token,
+      );
+
+      await api.adminEdges.remove(target.edge.id, token);
+
+      const left = await createEdgeBetween(
+        fromId,
+        bendNode.id,
+        { latitude: from.latitude, longitude: from.longitude },
+        { latitude: bendNode.latitude, longitude: bendNode.longitude },
+      );
+      const right = await createEdgeBetween(
+        bendNode.id,
+        toId,
+        { latitude: bendNode.latitude, longitude: bendNode.longitude },
+        { latitude: to.latitude, longitude: to.longitude },
+      );
+      if (!left || !right) {
+        flash('Bend created but path split failed — try Draw route to reconnect.', 'err');
         await refresh();
-      } else if (editingId) {
-        await api.adminNodes.update(editingId, { name: displayName, kind: details.kind }, token);
-        flash(`Updated “${details.name.trim()}”.`);
-        cancelDetails();
-        await refresh();
+        return;
       }
+
+      setCleanEdgeIds((prev) => {
+        const next = new Set(prev);
+        next.delete(target.edge.id);
+        return next;
+      });
+      setSelectedBendId(bendNode.id);
+      setEditingId(null);
+      await refresh();
+      flash('Bend added on path — drag it to reshape, or delete to stitch the path back.');
     } catch (err) {
-      flash(err instanceof Error ? err.message : 'Could not save pin', 'err');
+      flash(err instanceof Error ? err.message : 'Could not add bend', 'err');
+      await refresh();
     } finally {
       setBusy(false);
     }
+  }
+
+  function onAddBendMapClick(lat: number, lon: number) {
+    void insertBendOnPath(lat, lon);
   }
 
   async function onPinMoved(node: GraphNode, lat: number, lon: number) {
@@ -742,8 +984,10 @@ export function AdminMapEditor() {
       await refresh();
       flash(
         uniqueNeighbors.length === 2
-          ? 'Bend removed — path stitched between its neighbors.'
-          : 'Bend removed.',
+          ? 'Bend removed — path stitched between its two neighbors.'
+          : uniqueNeighbors.length === 0
+            ? 'Bend removed.'
+            : `Bend removed. It had ${uniqueNeighbors.length} connections, so neighbors were not auto-joined (only 2-way bends stitch).`,
       );
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not remove bend', 'err');
@@ -758,12 +1002,31 @@ export function AdminMapEditor() {
     setBusy(true);
     setConfirm(null);
     try {
-      await api.adminNodes.remove(id, token);
+      try {
+        await api.mapBuilder.deleteNode(id, false, token);
+      } catch (err) {
+        if (err instanceof ApiError && (err.code === 'NODE_HAS_EDGES' || err.status === 409)) {
+          if (
+            !window.confirm(
+              `${err.message}\n\nDelete this pin and its connected walkways/bends links?`,
+            )
+          ) {
+            return;
+          }
+          await api.mapBuilder.deleteNode(id, true, token);
+        } else {
+          throw err;
+        }
+      }
       if (editingId === id) cancelDetails();
+      // Optimistic local clear so the marker disappears immediately.
+      setNodes((prev) => prev.filter((n) => n.id !== id));
+      setEdges((prev) => prev.filter((e) => e.fromNodeId !== id && e.toNodeId !== id));
       await refresh();
       flash('Pin removed.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Delete failed', 'err');
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -773,14 +1036,24 @@ export function AdminMapEditor() {
     if (!token) return;
     setBusy(true);
     setConfirm(null);
+    const toRemove = [...placePins];
     try {
-      for (const n of placePins) {
-        await api.adminNodes.remove(n.id, token);
+      for (const n of toRemove) {
+        try {
+          await api.mapBuilder.deleteNode(n.id, false, token);
+        } catch (err) {
+          if (err instanceof ApiError && (err.code === 'NODE_HAS_EDGES' || err.status === 409)) {
+            await api.mapBuilder.deleteNode(n.id, true, token);
+          } else {
+            throw err;
+          }
+        }
       }
       cancelDetails();
       setCleanEdgeIds(new Set());
+      setNodes((prev) => prev.filter((n) => !toRemove.some((p) => p.id === n.id)));
       await refresh();
-      flash(`Removed ${placePins.length} pin${placePins.length === 1 ? '' : 's'}.`);
+      flash(`Removed ${toRemove.length} pin${toRemove.length === 1 ? '' : 's'}.`);
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not remove all pins', 'err');
       await refresh();
@@ -853,6 +1126,7 @@ export function AdminMapEditor() {
     { id: 'pin-live', label: 'Pin at GPS', icon: LocateFixed },
     { id: 'pin-click', label: 'Click to pin', icon: MapPin },
     { id: 'draw', label: 'Draw route', icon: Route },
+    { id: 'add-bend', label: 'Add bend', icon: GitCommitHorizontal },
     { id: 'break-segment', label: 'Remove segment', icon: Scissors },
     { id: 'break-route', label: 'Remove A→B route', icon: Waypoints },
   ];
@@ -863,9 +1137,9 @@ export function AdminMapEditor() {
         <div>
           <h2 className="font-display text-xl font-semibold">Map pins</h2>
           <p className="mt-1 max-w-2xl text-sm text-ink-mute">
-            Pin places, then <strong>Draw route</strong> with turns. Remove a wrong path with{' '}
-            <strong>Remove segment</strong> (one line) or <strong>Remove A→B route</strong> (full
-            path between two places).
+            Pins autosave on place and rename. Draw routes between pins/bends, or use{' '}
+            <strong>Add bend</strong> to insert a turn on an existing path. Deleting a bend
+            stitches the path back together when it has two neighbors.
           </p>
         </div>
         <button
@@ -956,8 +1230,8 @@ export function AdminMapEditor() {
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-accent/25 bg-accent/5 px-3 py-2 text-sm text-ink">
           <span className="flex-1">
             {!sketch
-              ? '1) Click a start place pin. 2) Click the map along the walkway for turns. 3) Click the end place pin.'
-              : `Drawing from start · ${sketch.bends.length} bend${sketch.bends.length === 1 ? '' : 's'} — click map to add turns, then click end pin.`}
+              ? '1) Click a start pin or bend. 2) Optional: click empty map for new turns. 3) Click any other pin or bend to connect (clicks near a bend snap to it).'
+              : `Drawing from start · ${sketch.bends.length} new bend${sketch.bends.length === 1 ? '' : 's'} — click empty map for turns, or click/snap to a pin or bend to finish.`}
           </span>
           {sketch && (
             <>
@@ -980,6 +1254,12 @@ export function AdminMapEditor() {
             </>
           )}
         </div>
+      )}
+      {tool === 'add-bend' && (
+        <p className="rounded-md border border-accent/25 bg-accent/5 px-3 py-2 text-sm text-ink">
+          Click anywhere on a path line (or near it) to insert a bend. The path splits around the new
+          turn — drag to reshape; delete the bend to reconnect the two sides.
+        </p>
       )}
       {tool === 'break-segment' && (
         <p className="rounded-md border border-accent/25 bg-accent/5 px-3 py-2 text-sm text-ink">
@@ -1042,15 +1322,19 @@ export function AdminMapEditor() {
               />
             )}
             <MapClickCapture
-              enabled={tool === 'pin-click' && !showDetails}
+              enabled={tool === 'pin-click'}
               onClick={openDraftAtClick}
             />
             <MapClickCapture
-              enabled={tool === 'draw' && !selectedBendId}
+              enabled={tool === 'draw'}
               onClick={onDrawMapClick}
             />
+            <MapClickCapture
+              enabled={tool === 'add-bend' && !busy}
+              onClick={onAddBendMapClick}
+            />
             <MapCursorTracker
-              enabled={tool === 'draw' && Boolean(sketch) && !selectedBendId}
+              enabled={tool === 'draw' && Boolean(sketch)}
               onMove={(lat, lon) =>
                 setSketch((s) => (s ? { ...s, cursor: { lat, lon } } : s))
               }
@@ -1094,18 +1378,34 @@ export function AdminMapEditor() {
                           });
                         },
                       }
-                    : undefined
+                    : tool === 'add-bend'
+                      ? {
+                          click: (e) => {
+                            stopMapPropagation(e);
+                            const { lat, lng } = e.latlng;
+                            void insertBendOnPath(lat, lng, line.id);
+                          },
+                        }
+                      : undefined
                 }
                 pathOptions={{
                   color: line.clean ? '#1d4ed8' : line.bothPlaces ? '#0F6B63' : '#8a97a1',
-                  weight: line.clean ? 6 : tool === 'break-segment' ? 8 : 4,
-                  opacity: tool === 'break-segment' ? 0.95 : 0.8,
+                  weight:
+                    line.clean
+                      ? 6
+                      : tool === 'break-segment' || tool === 'add-bend'
+                        ? 8
+                        : 4,
+                  opacity: tool === 'break-segment' || tool === 'add-bend' ? 0.95 : 0.8,
                   dashArray: line.bothPlaces ? undefined : '6 8',
-                  interactive: tool === 'break-segment',
+                  interactive: tool === 'break-segment' || tool === 'add-bend',
                 }}
               >
                 {tool === 'break-segment' && (
                   <Tooltip sticky>Click to remove this segment only</Tooltip>
+                )}
+                {tool === 'add-bend' && (
+                  <Tooltip sticky>Click to add a bend on this path</Tooltip>
                 )}
               </Polyline>
             ))}
@@ -1130,13 +1430,13 @@ export function AdminMapEditor() {
               <BendMarker
                 key={node.id}
                 node={node}
-                selected={selectedBendId === node.id}
-                onSelect={() => {
-                  setSelectedBendId(node.id);
-                  setEditingId(null);
-                  setDraftPos(null);
-                  flash('Bend selected — drag to move, or delete it from the panel.');
-                }}
+                drawMode={tool === 'draw'}
+                selected={
+                  selectedBendId === node.id ||
+                  sketch?.startId === node.id ||
+                  drawFromId === node.id
+                }
+                onSelect={() => handleBendClick(node)}
                 onMoved={(lat, lon) => void onPinMoved(node, lat, lon)}
               />
             ))}
@@ -1185,7 +1485,7 @@ export function AdminMapEditor() {
             )}
           </MapContainer>
 
-          {tool === 'pin-live' && !showDetails && (
+          {tool === 'pin-live' && (
             <div className="absolute left-3 bottom-4 z-[1000]">
               <button
                 type="button"
@@ -1197,26 +1497,37 @@ export function AdminMapEditor() {
               </button>
             </div>
           )}
-          {tool === 'pin-click' && !showDetails && (
+          {tool === 'pin-click' && (
             <p className="pointer-events-none absolute bottom-4 left-3 z-[1000] rounded-md border border-line bg-paper-raised/95 px-3 py-2 text-xs font-medium shadow-sm">
-              Click the map to place a pin
+              Click the map to place a pin — saved automatically
+            </p>
+          )}
+          {tool === 'add-bend' && (
+            <p className="pointer-events-none absolute bottom-4 left-3 z-[1000] rounded-md border border-line bg-paper-raised/95 px-3 py-2 text-xs font-medium shadow-sm">
+              Click a path to insert a bend
             </p>
           )}
         </div>
 
         <aside className="panel h-fit space-y-4 rounded-md p-4">
           {showDetails ? (
-            <form className="space-y-3" onSubmit={(e) => void saveDetails(e)}>
+            <div className="space-y-3">
               <div>
-                <p className="text-sm font-semibold text-ink">
-                  {draftPos ? 'Add place details' : 'Edit place details'}
-                </p>
+                <p className="text-sm font-semibold text-ink">Place details</p>
                 <p className="mt-1 text-xs text-ink-faint">
-                  {draftPos
-                    ? `${draftPos.lat.toFixed(5)}, ${draftPos.lon.toFixed(5)}`
-                    : editingId && nodeById.get(editingId)
-                      ? `${nodeById.get(editingId)!.latitude.toFixed(5)}, ${nodeById.get(editingId)!.longitude.toFixed(5)}`
-                      : ''}
+                  {editingId && nodeById.get(editingId)
+                    ? `${nodeById.get(editingId)!.latitude.toFixed(5)}, ${nodeById.get(editingId)!.longitude.toFixed(5)}`
+                    : ''}
+                  {' · '}
+                  {pinAutosave === 'pending'
+                    ? 'Saving soon…'
+                    : pinAutosave === 'saving'
+                      ? 'Saving…'
+                      : pinAutosave === 'saved'
+                        ? 'Saved'
+                        : pinAutosave === 'error'
+                          ? 'Save failed'
+                          : 'Autosaves as you type'}
                 </p>
               </div>
               <div>
@@ -1229,7 +1540,6 @@ export function AdminMapEditor() {
                   value={details.name}
                   onChange={(e) => setDetails((d) => ({ ...d, name: e.target.value }))}
                   placeholder="e.g. Library, Block A"
-                  required
                   autoFocus
                 />
               </div>
@@ -1265,11 +1575,8 @@ export function AdminMapEditor() {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                <button className="btn-primary" type="submit" disabled={busy || !details.name.trim()}>
-                  <Plus size={16} /> {draftPos ? 'Save pin' : 'Save changes'}
-                </button>
                 <button className="btn-ghost" type="button" disabled={busy} onClick={cancelDetails}>
-                  Cancel
+                  Done
                 </button>
               </div>
               {editingId && (
@@ -1288,13 +1595,13 @@ export function AdminMapEditor() {
                   <Trash2 size={14} /> Remove this pin
                 </button>
               )}
-            </form>
+            </div>
           ) : selectedBendId ? (
             <div className="space-y-3 text-sm">
               <p className="font-semibold text-ink">Bend selected</p>
               <p className="text-ink-mute">
-                Drag the orange point on the map to move it. Or delete it below — the path reconnects
-                around it when possible.
+                Drag the orange point on the map to move it. Delete it to reconnect the path between
+                its two neighbors automatically.
               </p>
               <button
                 type="button"
@@ -1322,10 +1629,10 @@ export function AdminMapEditor() {
             <div className="space-y-2 text-sm text-ink-mute">
               <p className="font-semibold text-ink">Workflow</p>
               <ol className="list-decimal space-y-1 pl-4">
-                <li>Pin places</li>
-                <li>Draw route with turns</li>
-                <li>Click/drag orange bends to edit</li>
-                <li>Remove segment or full A→B route</li>
+                <li>Pin places (autosaved)</li>
+                <li>Draw routes between pins/bends</li>
+                <li>Add bend on a path, or drag orange bends</li>
+                <li>Delete a bend to stitch the path back</li>
               </ol>
             </div>
           )}

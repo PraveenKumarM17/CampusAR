@@ -1732,6 +1732,12 @@ export function MapBuilderPage() {
               return n ? { latitude: n.latitude, longitude: n.longitude } : undefined;
             })()
           : undefined;
+      const expectedUpdatedAt =
+        commit.kind === 'building'
+          ? buildings.find((b) => b.id === commit.id)?.updatedAt
+          : commit.kind === 'area'
+            ? areas.find((a) => a.id === commit.id)?.updatedAt
+            : nodes.find((n) => n.id === commit.id)?.updatedAt;
 
       geometrySaveTimerRef.current = window.setTimeout(() => {
         void (async () => {
@@ -1741,12 +1747,11 @@ export function MapBuilderPage() {
           const idempotencyKey = newIdempotencyKey();
           try {
             if (commit.kind === 'building') {
-              const building = buildings.find((b) => b.id === commit.id);
               const updated = await api.mapBuilder.updateBuilding(
                 commit.id,
                 {
                   footprint: commit.footprint,
-                  expectedUpdatedAt: building?.updatedAt,
+                  expectedUpdatedAt,
                 },
                 token,
                 { idempotencyKey },
@@ -1784,7 +1789,7 @@ export function MapBuilderPage() {
             } else if (commit.kind === 'area') {
               const updated = await api.mapBuilder.updateArea(
                 commit.id,
-                { footprint: commit.footprint },
+                { footprint: commit.footprint, expectedUpdatedAt },
                 token,
                 { idempotencyKey },
               );
@@ -1821,7 +1826,11 @@ export function MapBuilderPage() {
             } else {
               const updated = await api.mapBuilder.updateNode(
                 commit.id,
-                { latitude: commit.latitude, longitude: commit.longitude },
+                {
+                  latitude: commit.latitude,
+                  longitude: commit.longitude,
+                  expectedUpdatedAt,
+                },
                 token,
                 { idempotencyKey },
               );
@@ -1856,7 +1865,7 @@ export function MapBuilderPage() {
           } catch (err) {
             setSaveStatus('error');
             setInspectorAutosave('error');
-            if (err instanceof ApiError && err.status === 409) {
+            if (err instanceof ApiError && err.status === 409 && err.code === 'STALE_EDIT') {
               const patch =
                 commit.kind === 'building'
                   ? { footprint: commit.footprint }
@@ -1926,19 +1935,28 @@ export function MapBuilderPage() {
         );
         setBuildings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
       } else if (conflict.kind === 'node') {
+        const remote = snap.nodes.find((n) => n.id === conflict.id);
+        if (!remote) throw new Error('Node no longer exists');
+        patch.expectedUpdatedAt = remote.updatedAt;
         const updated = await api.mapBuilder.updateNode(conflict.id, patch, token);
         setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
       } else if (conflict.kind === 'edge') {
+        const remote = snap.edges.find((e) => e.id === conflict.id);
+        if (!remote) throw new Error('Walkway no longer exists');
+        patch.expectedUpdatedAt = remote.updatedAt;
         const updated = await api.mapBuilder.updateEdge(
           conflict.id,
-          patch as Partial<GraphEdge>,
+          patch as Partial<GraphEdge> & { expectedUpdatedAt?: string },
           token,
         );
         setEdges((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
       } else {
+        const remote = snap.areas.find((a) => a.id === conflict.id);
+        if (!remote) throw new Error('Area no longer exists');
+        patch.expectedUpdatedAt = remote.updatedAt;
         const updated = await api.mapBuilder.updateArea(
           conflict.id,
-          patch as Partial<SiteArea>,
+          patch as Partial<SiteArea> & { expectedUpdatedAt?: string },
           token,
         );
         setAreas((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
@@ -1947,7 +1965,7 @@ export function MapBuilderPage() {
       setSaveStatus('saved');
       setInspectorAutosave('saved');
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.status === 409 && err.code === 'STALE_EDIT') {
         setConflict((c) => (c ? { ...c, message: err.message } : c));
       } else {
         setError(err instanceof ApiError ? err.message : 'Retry failed');
@@ -2101,7 +2119,7 @@ export function MapBuilderPage() {
           setSaveStatus('saved');
           void refreshValidation();
         } catch (err) {
-          if (err instanceof ApiError && err.status === 409) {
+          if (err instanceof ApiError && err.status === 409 && err.code === 'STALE_EDIT') {
             setConflict({
               kind: 'building',
               id: attachFootprintBuildingId,
@@ -2573,7 +2591,7 @@ export function MapBuilderPage() {
         try {
           await api.mapBuilder.deleteNode(selection.id, false, token);
         } catch (err) {
-          if (err instanceof ApiError && err.status === 409) {
+          if (err instanceof ApiError && (err.code === 'NODE_HAS_EDGES' || err.status === 409)) {
             if (window.confirm(`${err.message}\n\nDelete connected walkways too?`)) {
               await api.mapBuilder.deleteNode(selection.id, true, token);
               setEdges((prev) =>
@@ -3573,7 +3591,7 @@ export function MapBuilderPage() {
                   setSaveStatus('saved');
                   void refreshValidation();
                 } catch (err) {
-                  if (err instanceof ApiError && err.status === 409) {
+                  if (err instanceof ApiError && err.status === 409 && err.code === 'STALE_EDIT') {
                     setConflict({
                       kind,
                       id,
@@ -3910,6 +3928,7 @@ function PropertiesPanel({
           onUpdate('node', n.id, {
             name: values.name || null,
             kind: values.kind as GraphNode['kind'],
+            expectedUpdatedAt: n.updatedAt,
           })
         }
         onDelete={onDelete}

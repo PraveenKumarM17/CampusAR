@@ -84,7 +84,7 @@ body {
 }
 
 .admin-bend-pin {
-  cursor: grab !important;
+  cursor: pointer !important;
 }
 
 .admin-bend-dot {

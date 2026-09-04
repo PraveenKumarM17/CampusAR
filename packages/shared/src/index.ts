@@ -133,6 +133,8 @@ export interface SiteArea {
   name: string;
   type: SiteAreaType;
   footprint: GeoPoint[];
+  /** ISO timestamp for optimistic concurrency on updates. */
+  updatedAt?: string;
 }
 
 export type MapValidationLevel = 'error' | 'warning';
@@ -359,6 +361,8 @@ export interface GraphNode {
   /** Present on admin listings; defaults to true when omitted. */
   active?: boolean;
   siteId?: string;
+  /** ISO timestamp for optimistic concurrency on updates. */
+  updatedAt?: string;
 }
 
 /** Named, navigable campus place for user-facing pickers. */
@@ -394,6 +398,8 @@ export interface GraphEdge {
   crowdScore: number;
   accessibilityScore: number;
   siteId?: string;
+  /** ISO timestamp for optimistic concurrency on updates. */
+  updatedAt?: string;
 }
 
 export interface RouteWeights {

@@ -23,4 +23,10 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
   nodeEnv: process.env.NODE_ENV ?? 'development',
   iotSimulator: (process.env.IOT_SIMULATOR ?? 'true').toLowerCase() !== 'false',
+  /**
+   * Map-editor rate limits (read by mapEditorRateLimit middleware):
+   * MAP_EDITOR_RATE_LIMIT_WINDOW_MS, MAP_EDITOR_RATE_LIMIT_MAX,
+   * MAP_EDITOR_WRITE_RATE_LIMIT_MAX, MAP_EDITOR_HEAVY_RATE_LIMIT_MAX,
+   * MAP_EDITOR_RATE_LIMIT_FORCE (test only).
+   */
 };
