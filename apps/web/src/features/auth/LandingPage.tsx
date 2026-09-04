@@ -49,23 +49,23 @@ export function LandingPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-heroMap text-ink">
       <div className="pointer-events-none absolute inset-0 hero-paths" aria-hidden />
-      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col justify-end gap-10 px-5 pb-10 pt-16 lg:justify-center lg:py-16">
+      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col justify-end gap-6 px-4 pb-8 pt-12 sm:gap-10 sm:px-6 sm:pb-10 sm:pt-16 lg:justify-center lg:py-16">
         <header className="animate-fade-up max-w-2xl">
-          <p className="font-display text-5xl font-semibold leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
+          <p className="font-display text-4xl font-semibold leading-[0.95] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
             CampusAR
           </p>
-          <h1 className="mt-5 max-w-xl font-display text-2xl font-medium leading-snug text-ink sm:text-3xl">
+          <h1 className="mt-4 max-w-xl font-display text-xl font-medium leading-snug text-ink sm:mt-5 sm:text-2xl md:text-3xl">
             Find any room at RNSIT without asking for directions.
           </h1>
-          <p className="mt-3 max-w-md text-base text-ink-mute sm:text-lg">
+          <p className="mt-2 max-w-md text-sm text-ink-mute sm:mt-3 sm:text-base md:text-lg">
             Channasandra, Bengaluru — scan, allow location, and navigate. No account needed.
           </p>
-          <div className="mt-8 flex flex-col items-start gap-3 animate-fade-up-delay sm:flex-row sm:flex-wrap sm:items-center">
-            <button className="btn-primary" type="button" onClick={enterGuest} disabled={loading}>
+          <div className="mt-6 flex flex-col items-start gap-3 animate-fade-up-delay sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center">
+            <button className="btn-primary w-full sm:w-auto" type="button" onClick={enterGuest} disabled={loading}>
               Continue as Guest <ArrowRight size={16} />
             </button>
             <button
-              className="text-sm font-medium text-ink-mute underline-offset-4 hover:text-ink hover:underline"
+              className="w-full text-center text-sm font-medium text-ink-mute underline-offset-4 hover:text-ink hover:underline sm:w-auto sm:text-left"
               type="button"
               onClick={() => {
                 setShowAdmin(true);
@@ -88,12 +88,12 @@ export function LandingPage() {
         {showAdmin && (
           <section
             id="admin-sign-in"
-            className="animate-fade-up-delay-2 w-full max-w-md border border-line bg-paper-raised p-6 sm:p-7"
+            className="animate-fade-up-delay-2 w-full max-w-md border border-line bg-paper-raised p-5 sm:p-6 md:p-7"
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
               Administrators only
             </p>
-            <h2 className="mt-1 font-display text-xl font-semibold">Admin sign in</h2>
+            <h2 className="mt-1 font-display text-lg font-semibold sm:text-xl">Admin sign in</h2>
             <p className="mt-1 text-sm text-ink-mute">
               Manage the map, nodes, branding, safety, and analytics for this organization.
             </p>

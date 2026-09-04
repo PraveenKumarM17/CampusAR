@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import cesium from 'vite-plugin-cesium';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import path from 'path';
 
 const cesiumBuildRoot = path.resolve(__dirname, '../../node_modules/cesium/Build');
@@ -8,6 +9,7 @@ const cesiumBuildPath = path.join(cesiumBuildRoot, 'Cesium');
 
 export default defineConfig({
   plugins: [
+    basicSsl(),
     react(),
     cesium({
       rebuildCesium: true,
@@ -26,6 +28,7 @@ export default defineConfig({
     },
   },
   server: {
+    https: true,
     port: 5173,
     host: true,
     proxy: {

@@ -456,47 +456,52 @@ export function NavigatePage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex flex-col gap-2 sm:gap-2 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="page-title">Navigation</h1>
-          <p className="page-sub">
+          <h1 className="page-title text-2xl sm:text-3xl">Navigation</h1>
+          <p className="page-sub text-xs sm:text-sm">
             Live GPS sets your start · routes around crowd and hazards on RNSIT campus.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           <button
-            className={`btn-ghost inline-flex items-center gap-2 ${followGps ? '!border-accent !text-accent' : ''}`}
+            className={`btn-ghost inline-flex items-center justify-center gap-1.5 !py-2 !text-xs sm:gap-2 sm:!py-2.5 sm:!text-sm ${followGps ? '!border-accent !text-accent' : ''}`}
             type="button"
             disabled={!pose && !watching}
             onClick={handleTrackMe}
           >
-            <Navigation size={16} />
-            {followGps ? 'Tracking' : 'Track me'}
+            <Navigation size={14} className="sm:size-4" />
+            <span className="hidden sm:inline">{followGps ? 'Tracking' : 'Track me'}</span>
+            <span className="sm:hidden">{followGps ? 'Track' : 'Track'}</span>
           </button>
           <button
-            className="btn-ghost"
+            className="btn-ghost inline-flex items-center justify-center gap-1.5 !py-2 !text-xs sm:gap-2 sm:!py-2.5 sm:!text-sm"
             type="button"
             onClick={() => setVoiceEnabled(!voiceEnabled)}
           >
-            {voiceEnabled ? <Mic size={16} /> : <MicOff size={16} />}
+            {voiceEnabled ? <Mic size={14} className="sm:size-4" /> : <MicOff size={14} className="sm:size-4" />}
             Voice
           </button>
           <button
-            className="btn-ghost inline-flex items-center gap-2"
+            className="btn-ghost inline-flex items-center justify-center gap-1.5 !py-2 !text-xs sm:gap-2 sm:!py-2.5 sm:!text-sm"
             type="button"
             disabled={!sourceNodeId || !destinationNodeId}
             onClick={() => void handleShareRoute()}
           >
-            <Share2 size={16} /> Share route
+            <Share2 size={14} className="sm:size-4" />
+            <span className="hidden sm:inline">Share route</span>
+            <span className="sm:hidden">Share</span>
           </button>
           <button
-            className="btn-primary inline-flex items-center gap-2"
+            className="btn-primary inline-flex items-center justify-center gap-1.5 !py-2 !text-xs sm:gap-2 sm:!py-2.5 sm:!text-sm"
             type="button"
             disabled={!sourceNodeId || !destinationNodeId || recalcBusy}
             onClick={() => void compute(true)}
           >
-            <RefreshCw size={16} className={recalcBusy ? 'animate-spin' : ''} /> Recalculate
+            <RefreshCw size={14} className={`sm:size-4 ${recalcBusy ? 'animate-spin' : ''}`} />
+            <span className="hidden lg:inline">Recalculate</span>
+            <span className="lg:hidden">Recalc</span>
           </button>
         </div>
       </div>
@@ -513,7 +518,7 @@ export function NavigatePage() {
       )}
 
       {(gpsError || gpsNote || pose) && (
-        <p className={`text-sm ${gpsError ? 'text-accent-warn' : 'text-ink-mute'}`}>
+        <p className={`text-xs sm:text-sm ${gpsError ? 'text-accent-warn' : 'text-ink-mute'}`}>
           {gpsError ??
             gpsNote ??
             (pose
@@ -524,7 +529,7 @@ export function NavigatePage() {
         </p>
       )}
 
-      {shareNote && <p className="text-sm text-accent">{shareNote}</p>}
+      {shareNote && <p className="text-xs text-accent sm:text-sm">{shareNote}</p>}
 
       {indoorHandoff && !(hasIndoorMap && selectedBuildingId) && (
         <div className="rounded-md border border-accent/40 bg-accent/10 px-4 py-3 text-sm">
@@ -539,11 +544,11 @@ export function NavigatePage() {
         </div>
       )}
 
-      {error && <p className="text-sm text-accent-danger">{error}</p>}
+      {error && <p className="text-xs text-accent-danger sm:text-sm">{error}</p>}
 
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-3">
-          <div className="panel rounded-md space-y-3 p-4">
+      <div className="grid gap-3 sm:gap-4 lg:grid-cols-[280px_1fr] xl:grid-cols-[320px_1fr]">
+        <div className="space-y-2 sm:space-y-3">
+          <div className="panel rounded-md space-y-2.5 p-3 sm:space-y-3 sm:p-4">
             <PlaceSearchSelect
               label="Source (GPS / manual)"
               placeholder="Search start place…"
@@ -553,7 +558,7 @@ export function NavigatePage() {
               onChange={handleSourceChange}
             />
             {sourceNode && (
-              <p className="text-xs text-ink-faint">
+              <p className="text-[10px] text-ink-faint sm:text-xs">
                 Start: {formatNodeLabel(sourceNode)}
                 {sourceManual ? ' · manual' : followGps ? ' · GPS' : ''}
               </p>
@@ -562,12 +567,12 @@ export function NavigatePage() {
             <div className="flex justify-center">
               <button
                 type="button"
-                className="btn-ghost inline-flex items-center gap-2 !py-2 text-sm"
+                className="btn-ghost inline-flex items-center gap-1.5 !py-1.5 text-xs sm:gap-2 sm:!py-2 sm:text-sm"
                 disabled={!sourceNodeId || !destinationNodeId}
                 aria-label="Swap source and destination"
                 onClick={handleSwap}
               >
-                <ArrowUpDown size={16} /> Swap
+                <ArrowUpDown size={14} className="sm:size-4" /> Swap
               </button>
             </div>
 
@@ -587,16 +592,16 @@ export function NavigatePage() {
               }
             />
             {destNode && (
-              <p className="text-xs text-ink-faint">To: {formatNodeLabel(destNode)}</p>
+              <p className="text-[10px] text-ink-faint sm:text-xs">To: {formatNodeLabel(destNode)}</p>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex gap-1.5 sm:gap-2">
               <button
                 type="button"
-                className={`flex-1 rounded-md border px-3 py-2 text-xs font-semibold ${
+                className={`flex-1 rounded-md border px-2 py-1.5 text-[10px] font-semibold transition-colors sm:px-3 sm:py-2 sm:text-xs ${
                   mapPickMode === 'source'
                     ? 'border-accent bg-accent/10 text-accent'
-                    : 'border-line text-ink-mute'
+                    : 'border-line text-ink-mute hover:bg-paper-soft'
                 }`}
                 onClick={() => setMapPickMode('source')}
               >
@@ -604,10 +609,10 @@ export function NavigatePage() {
               </button>
               <button
                 type="button"
-                className={`flex-1 rounded-md border px-3 py-2 text-xs font-semibold ${
+                className={`flex-1 rounded-md border px-2 py-1.5 text-[10px] font-semibold transition-colors sm:px-3 sm:py-2 sm:text-xs ${
                   mapPickMode === 'destination'
                     ? 'border-accent bg-accent/10 text-accent'
-                    : 'border-line text-ink-mute'
+                    : 'border-line text-ink-mute hover:bg-paper-soft'
                 }`}
                 onClick={() => setMapPickMode('destination')}
               >
@@ -615,7 +620,7 @@ export function NavigatePage() {
               </button>
             </div>
 
-            <label className="flex items-center justify-between text-sm">
+            <label className="flex items-center justify-between text-xs sm:text-sm">
               <span>Crowd prediction</span>
               <input
                 type="checkbox"
@@ -624,19 +629,19 @@ export function NavigatePage() {
               />
             </label>
             <button
-              className="btn-primary w-full"
+              className="btn-primary w-full !py-2 !text-xs sm:!py-2.5 sm:!text-sm"
               type="button"
               disabled={loading || !sourceNodeId || !destinationNodeId}
               onClick={() => void compute(false)}
             >
               {loading ? 'Finding route…' : 'Get route'}
             </button>
-            {error && <p className="text-sm text-accent-danger">{error}</p>}
+            {error && <p className="text-xs text-accent-danger sm:text-sm">{error}</p>}
           </div>
 
-          <div className="panel rounded-md space-y-3 p-4">
-            <p className="inline-flex items-center gap-2 text-sm font-semibold">
-              <Accessibility size={16} className="text-accent" /> Accessibility
+          <div className="panel rounded-md space-y-2.5 p-3 sm:space-y-3 sm:p-4">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold sm:gap-2 sm:text-sm">
+              <Accessibility size={14} className="text-accent sm:size-4" /> Accessibility
             </p>
             {(
               [
@@ -646,7 +651,7 @@ export function NavigatePage() {
                 ['avoidStairs', 'Avoid stairs'],
               ] as const
             ).map(([key, label]) => (
-              <label key={key} className="flex items-center justify-between text-sm">
+              <label key={key} className="flex items-center justify-between text-xs sm:text-sm">
                 <span>{label}</span>
                 <input
                   type="checkbox"
@@ -658,19 +663,19 @@ export function NavigatePage() {
           </div>
 
           {route && (
-            <div className="panel rounded-md p-4">
-              <p className="text-sm">
+            <div className="panel rounded-md p-3 sm:p-4">
+              <p className="text-xs sm:text-sm">
                 <strong>{route.totalDistanceM} m</strong> total · ETA{' '}
                 <strong>{route.etaMinutes} min</strong>
                 {route.predictionUsed ? ' · predicted crowd' : ''}
               </p>
               {distanceRemainingM != null && pose && (
-                <p className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-accent">
-                  <MapPin size={14} />
+                <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-accent sm:gap-1.5 sm:text-sm">
+                  <MapPin size={12} className="sm:size-[14px]" />
                   {formatDistance(distanceRemainingM)} remaining on route
                 </p>
               )}
-              <ol className="mt-3 max-h-64 space-y-2 overflow-auto text-sm text-ink-mute">
+              <ol className="mt-2 max-h-48 space-y-1.5 overflow-auto text-xs text-ink-mute sm:mt-3 sm:max-h-64 sm:space-y-2 sm:text-sm">
                 {route.path.map((step, i) => {
                   const done = i < stepIndex;
                   const current = i === stepIndex && !arrived;
@@ -680,7 +685,7 @@ export function NavigatePage() {
                       ref={(el) => {
                         stepRefs.current[i] = el;
                       }}
-                      className={`rounded-lg px-2 py-1.5 ${
+                      className={`rounded-lg px-2 py-1.5 transition-colors ${
                         current
                           ? 'border border-accent bg-accent/10 font-semibold text-ink'
                           : done
@@ -696,7 +701,7 @@ export function NavigatePage() {
                 })}
               </ol>
               <button
-                className="btn-primary mt-3 w-full"
+                className="btn-primary mt-2 w-full !py-2 !text-xs sm:mt-3 sm:!py-2.5 sm:!text-sm"
                 type="button"
                 onClick={() => navigate('/ar')}
               >
@@ -711,13 +716,13 @@ export function NavigatePage() {
         <div className="relative overflow-hidden rounded-md border border-line">
           <BasemapModeSwitcher mode={basemapMode} onChange={setBasemapMode} />
           {distanceRemainingM != null && route && pose && (
-            <div className="pointer-events-none absolute left-3 top-14 z-[1000] rounded-md border border-line bg-paper-raised/95 px-3 py-2 text-sm font-semibold shadow-sm">
+            <div className="pointer-events-none absolute left-2 top-12 z-[1000] rounded-md border border-line bg-paper-raised/95 px-2 py-1.5 text-xs font-semibold shadow-sm sm:left-3 sm:top-14 sm:px-3 sm:py-2 sm:text-sm">
               {formatDistance(distanceRemainingM)} left
             </div>
           )}
           {useMapLibre ? (
             <CampusMapLibreMap
-              className="h-[70vh] w-full"
+              className="h-[50vh] w-full sm:h-[55vh] md:h-[60vh] lg:h-[70vh]"
               center={mapCenter}
               basemapMode={basemapMode}
               buildings={buildings}
@@ -738,7 +743,7 @@ export function NavigatePage() {
             />
           ) : useGoogle ? (
             <GoogleCampusMap
-              className="h-[70vh] w-full"
+              className="h-[50vh] w-full sm:h-[55vh] md:h-[60vh] lg:h-[70vh]"
               mode={basemapMode}
               center={mapCenter}
               placeNodes={placeNodes}
@@ -755,7 +760,7 @@ export function NavigatePage() {
             <MapContainer
               center={mapCenter}
               zoom={CAMPUS_DEFAULT_ZOOM}
-              className="h-[70vh] w-full"
+              className="h-[50vh] w-full sm:h-[55vh] md:h-[60vh] lg:h-[70vh]"
               maxZoom={CAMPUS_MAX_ZOOM}
             >
               <InvalidateMapSize />
@@ -799,13 +804,13 @@ export function NavigatePage() {
           )}
           <button
             type="button"
-            className={`absolute bottom-4 right-4 z-[1000] inline-flex items-center gap-2 rounded-md border border-line bg-paper-raised px-3 py-2 text-sm font-semibold shadow-sm hover:border-accent ${
+            className={`absolute bottom-3 right-3 z-[1000] inline-flex items-center gap-1.5 rounded-md border border-line bg-paper-raised px-2.5 py-1.5 text-xs font-semibold shadow-sm hover:border-accent sm:bottom-4 sm:right-4 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
               followGps ? 'border-accent text-accent' : ''
             }`}
             onClick={handleTrackMe}
           >
-            <LocateFixed size={16} className="text-accent" />
-            {followGps ? 'Tracking' : 'Track me'}
+            <LocateFixed size={14} className="text-accent sm:size-4" />
+            <span className="hidden sm:inline">{followGps ? 'Tracking' : 'Track me'}</span>
           </button>
         </div>
       </div>

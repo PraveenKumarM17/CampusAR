@@ -88,10 +88,10 @@ export function AdminPage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       <div>
-        <h1 className="page-title">Admin dashboard</h1>
-        <p className="page-sub">
+        <h1 className="page-title text-2xl sm:text-3xl">Admin dashboard</h1>
+        <p className="page-sub text-xs sm:text-sm">
           Tune route weights, hazards, and simulation. Outdoor map editing lives in{' '}
           <Link to="/admin/map-builder" className="text-accent underline">
             Map Builder
@@ -100,20 +100,20 @@ export function AdminPage() {
         </p>
       </div>
       {message && (
-        <p className="rounded-md border border-accent/25 bg-accent/5 text-ink px-3 py-2 text-sm">
+        <p className="rounded-md border border-accent/25 bg-accent/5 text-ink px-2.5 py-2 text-xs sm:px-3 sm:text-sm">
           {message}
         </p>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
-            className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+            className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors sm:px-3 sm:text-sm ${
               tab === t.id
                 ? 'bg-accent text-white'
-                : 'border border-line bg-paper-raised text-ink-mute'
+                : 'border border-line bg-paper-raised text-ink-mute hover:bg-paper-soft'
             }`}
             onClick={() => setTab(t.id)}
           >
@@ -123,8 +123,8 @@ export function AdminPage() {
       </div>
 
       {tab === 'weights' && (
-        <form className="panel rounded-md p-4 space-y-4 max-w-xl" onSubmit={saveWeights}>
-          <p className="text-sm text-ink-mute">
+        <form className="panel rounded-md p-3 space-y-3 max-w-xl sm:p-4 sm:space-y-4" onSubmit={saveWeights}>
+          <p className="text-xs text-ink-mute sm:text-sm">
             cost = w_d·dist + w_s·(1−safety) + w_c·crowd + w_a·(1−accessibility) + blocked penalty
           </p>
           {(
@@ -136,7 +136,7 @@ export function AdminPage() {
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="block">
-              <span className="label">
+              <span className="label text-xs sm:text-sm">
                 {label}: {weights[key].toFixed(2)}
               </span>
               <input
@@ -151,37 +151,37 @@ export function AdminPage() {
             </label>
           ))}
           <label className="block">
-            <span className="label">Blocked penalty</span>
+            <span className="label text-xs sm:text-sm">Blocked penalty</span>
             <input
-              className="input"
+              className="input !text-xs sm:!text-sm"
               type="number"
               value={weights.wBlockedPenalty}
               onChange={(e) => setWeights({ ...weights, wBlockedPenalty: Number(e.target.value) })}
             />
           </label>
-          <button className="btn-primary" type="submit">
+          <button className="btn-primary w-full !py-2 !text-xs sm:w-auto sm:!py-2.5 sm:!text-sm" type="submit">
             Save weights
           </button>
         </form>
       )}
 
       {tab === 'buildings' && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <form className="panel rounded-md p-4 space-y-3" onSubmit={addBuilding}>
-            <p className="font-semibold">Create building</p>
+        <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+          <form className="panel rounded-md p-3 space-y-2.5 sm:p-4 sm:space-y-3" onSubmit={addBuilding}>
+            <p className="text-sm font-semibold sm:text-base">Create building</p>
             {['name', 'code', 'description', 'latitude', 'longitude', 'floorsCount'].map((f) => (
               <div key={f}>
-                <label className="label">{f}</label>
-                <input className="input" name={f} required={f !== 'description'} />
+                <label className="label text-xs sm:text-sm">{f}</label>
+                <input className="input !py-2 !text-xs sm:!py-2.5 sm:!text-sm" name={f} required={f !== 'description'} />
               </div>
             ))}
-            <button className="btn-primary" type="submit">
+            <button className="btn-primary w-full !py-2 !text-xs sm:!py-2.5 sm:!text-sm" type="submit">
               Create
             </button>
           </form>
-          <div className="panel rounded-md p-4">
-            <p className="mb-3 font-semibold">Buildings</p>
-            <ul className="space-y-2 max-h-[28rem] overflow-auto text-sm">
+          <div className="panel rounded-md p-3 sm:p-4">
+            <p className="mb-2 text-sm font-semibold sm:mb-3 sm:text-base">Buildings</p>
+            <ul className="space-y-1.5 max-h-[20rem] overflow-auto text-xs sm:space-y-2 sm:max-h-[28rem] sm:text-sm">
               {buildings.map((b) => (
                 <li
                   key={b.id}
