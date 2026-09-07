@@ -13,7 +13,6 @@ import {
   measureLabelRotationDeg,
   openCameraStream,
   polylineLength3D,
-  projectWorldToScreen,
   requestDeviceMotionAccess,
   requestDeviceOrientationAccess,
   stopMediaStream,
@@ -21,6 +20,17 @@ import {
   type MeasureMode,
   verticalSpan3D,
 } from './indoorArMeasure';
+import {
+  clearAnchorPoints,
+  deleteAnchorPoint,
+  placePoint,
+  renderPoints,
+  resetPlaneLock,
+  saveFloorPlane,
+  updateDistances,
+  updatePoints,
+  type AnchorMeasurePoint,
+} from './arMeasureAnchors';
 import { MeasureDistancePill } from './MeasureDistancePill';
 
 type ScreenPt = { x: number; y: number };
@@ -42,6 +52,8 @@ type PlacedPoint = {
   world: LocalVec3;
   /** Locked absolute world position (camera mode only). */
   anchor?: AnchoredWorldPoint;
+  /** WebXR persistent anchor (Android WebXR mode). */
+  xrPoint?: AnchorMeasurePoint;
   gps: GpsFix | null;
 };
 
@@ -192,6 +204,8 @@ function paintArOverlay(
   pillsEl: HTMLDivElement,
   screenPts: (ScreenPt | null)[],
   segments: OverlaySeg[],
+  ringColors?: string[],
+  segmentOpacity?: number[],
 ) {
   while (markersEl.children.length < screenPts.length) {
     const span = document.createElement('span');
@@ -209,10 +223,13 @@ function paintArOverlay(
     el.style.display = '';
     el.style.left = `${pt.x}px`;
     el.style.top = `${pt.y}px`;
+    if (ringColors?.[i]) {
+      el.style.boxShadow = `0 0 0 3px ${ringColors[i]}`;
+    }
   }
 
   while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-  for (const seg of segments) {
+  segments.forEach((seg, i) => {
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     line.setAttribute('x1', String(seg.from.x));
     line.setAttribute('y1', String(seg.from.y));
@@ -221,8 +238,11 @@ function paintArOverlay(
     line.setAttribute('stroke', '#10b981');
     line.setAttribute('stroke-width', '3');
     line.setAttribute('stroke-linecap', 'round');
+    if (segmentOpacity?.[i] != null) {
+      line.setAttribute('opacity', String(segmentOpacity[i]));
+    }
     svgEl.appendChild(line);
-  }
+  });
 
   pillsEl.innerHTML = '';
   for (const seg of segments) {
@@ -268,12 +288,12 @@ async function requestArSession(overlayRoot: HTMLElement): Promise<XRSessionWith
   const attempts: XRSessionInit[] = [
     {
       requiredFeatures: ['hit-test', 'dom-overlay'],
-      optionalFeatures: ['local-floor'],
+      optionalFeatures: ['local-floor', 'anchors'],
       domOverlay: { root: overlayRoot },
     },
     {
       requiredFeatures: ['hit-test'],
-      optionalFeatures: ['local-floor', 'dom-overlay'],
+      optionalFeatures: ['local-floor', 'dom-overlay', 'anchors'],
       domOverlay: { root: overlayRoot },
     },
     {
@@ -323,6 +343,8 @@ export function IndoorArMeasurePanel({
   const refSpaceRef = useRef<XRReferenceSpace | null>(null);
   const hitTestSourceRef = useRef<XRHitTestSource | null>(null);
   const latestHitRef = useRef<LocalVec3 | null>(null);
+  const latestHitResultRef = useRef<XRHitTestResult | null>(null);
+  const latestFrameRef = useRef<XRFrame | null>(null);
   const surfaceDetectedRef = useRef(false);
   const placedRef = useRef<PlacedPoint[]>([]);
   const pathIdRef = useRef<string | null>(null);
@@ -353,15 +375,30 @@ export function IndoorArMeasurePanel({
   placedRef.current = placed;
   const worldPoints = placed.map((p) => p.world);
 
-  const syncArOverlay = useCallback((screenPts: (ScreenPt | null)[]) => {
-    const markers = overlayMarkersRef.current;
-    const svg = overlaySvgRef.current;
-    const pills = overlayPillsRef.current;
-    if (!markers || !svg || !pills) return;
-    projectedLiveRef.current = screenPts;
-    const worlds = placedRef.current.map((p) => p.world);
-    paintArOverlay(markers, svg, pills, screenPts, buildOverlaySegments(screenPts, worlds));
+  const getXrAnchorPoints = useCallback((): AnchorMeasurePoint[] => {
+    return placedRef.current
+      .map((p) => p.xrPoint)
+      .filter((p): p is AnchorMeasurePoint => p != null);
   }, []);
+
+  const syncArOverlay = useCallback(
+    (
+      screenPts: (ScreenPt | null)[],
+      segments?: OverlaySeg[],
+      ringColors?: string[],
+      segmentOpacity?: number[],
+    ) => {
+      const markers = overlayMarkersRef.current;
+      const svg = overlaySvgRef.current;
+      const pills = overlayPillsRef.current;
+      if (!markers || !svg || !pills) return;
+      projectedLiveRef.current = screenPts;
+      const worlds = placedRef.current.map((p) => p.world);
+      const segs = segments ?? buildOverlaySegments(screenPts, worlds);
+      paintArOverlay(markers, svg, pills, screenPts, segs, ringColors, segmentOpacity);
+    },
+    [],
+  );
 
   const projectPlacedPoints = useCallback((): (ScreenPt | null)[] => {
     const stage = stageRef.current;
@@ -383,27 +420,6 @@ export function IndoorArMeasurePanel({
     // Fallback when WebXR frame is not available (should not happen during active AR).
     return placedRef.current.map(() => null);
   }, [measureMode]);
-
-  const projectPlacedPointsFromXrFrame = useCallback(
-    (frame: XRFrame, ref: XRReferenceSpace): (ScreenPt | null)[] => {
-      const stage = stageRef.current;
-      if (!stage) return [];
-      const viewer = frame.getViewerPose(ref);
-      const view = viewer?.views[0];
-      if (!view) return placedRef.current.map(() => null);
-      const { width, height } = stage.getBoundingClientRect();
-      return placedRef.current.map(({ world }) =>
-        projectWorldToScreen(
-          world,
-          view.transform.inverse.matrix,
-          view.projectionMatrix,
-          width,
-          height,
-        ),
-      );
-    },
-    [],
-  );
 
   useLayoutEffect(() => {
     let cancelled = false;
@@ -578,8 +594,10 @@ export function IndoorArMeasurePanel({
       return;
     }
 
-    const hit = latestHitRef.current;
-    if (!hit) {
+    const hitResult = latestHitResultRef.current;
+    const frame = latestFrameRef.current;
+    const ref = refSpaceRef.current;
+    if (!hitResult || !frame || !ref) {
       setError(
         'No flat surface detected. Move the phone slowly over a well-lit floor or wall until the center dot turns green.',
       );
@@ -594,15 +612,19 @@ export function IndoorArMeasurePanel({
       return;
     }
 
-    const entry: PlacedPoint = { world: { ...hit }, gps };
+    const xrPoint = await placePoint(hitResult, frame, ref, gps);
+    if (!xrPoint) {
+      setError('Place points on the same surface as the first point.');
+      return;
+    }
+
+    const sessionLocal = xrPoint.sessionLocal ?? { x: 0, y: 0, z: 0 };
+    const entry: PlacedPoint = { world: sessionLocal, xrPoint, gps };
     const next = [...placedRef.current, entry];
     placedRef.current = next;
     setPlaced(next);
     void persistPoint(entry, next.length);
-    requestAnimationFrame(() => {
-      if (arActive) syncArOverlay(projectPlacedPoints());
-    });
-  }, [arActive, measureMode, persistPoint, projectPlacedPoints, syncArOverlay]);
+  }, [measureMode, persistPoint, arActive, projectPlacedPoints, syncArOverlay]);
 
   useEffect(() => {
     let cancelled = false;
@@ -818,12 +840,16 @@ export function IndoorArMeasurePanel({
       const ref = refSpaceRef.current;
       const source = hitTestSourceRef.current;
       let hit: LocalVec3 | null = null;
-      if (ref && source) {
-        const results = source.getHitTestResults(frame);
-        const pose = results[0]?.getPose(ref);
+      let hitResult: XRHitTestResult | null = null;
+      if (ref && source && frame.getHitTestResults) {
+        const results = frame.getHitTestResults(source);
+        hitResult = results[0] ?? null;
+        const pose = hitResult?.getPose(ref);
         if (pose) hit = poseToVec3(pose);
       }
       latestHitRef.current = hit;
+      latestHitResultRef.current = hitResult;
+      latestFrameRef.current = frame;
       const detected = hit != null;
       if (detected !== surfaceDetectedRef.current) {
         surfaceDetectedRef.current = detected;
@@ -831,9 +857,28 @@ export function IndoorArMeasurePanel({
       }
 
       const stage = stageRef.current;
-      if (ref && stage && placedRef.current.length > 0) {
-        const screenPts = projectPlacedPointsFromXrFrame(frame, ref);
-        syncArOverlay(screenPts);
+      const xrPoints = getXrAnchorPoints();
+      if (ref && stage && xrPoints.length > 0) {
+        updatePoints(xrPoints, frame, ref);
+        const { width, height } = stage.getBoundingClientRect();
+        const rendered = renderPoints(xrPoints, frame, ref, width, height);
+        const distSegments = updateDistances(xrPoints, rendered);
+        const screenPts = rendered.map((r) => r.screen);
+        const ringColors = rendered.map((r) => r.ringColor);
+        const segments: OverlaySeg[] = distSegments.map((s) => ({
+          from: s.from,
+          to: s.to,
+          label: s.label,
+        }));
+        const opacities = distSegments.map((s) => s.opacity);
+        for (let i = 0; i < xrPoints.length; i++) {
+          const local = xrPoints[i].sessionLocal;
+          if (local) {
+            const idx = placedRef.current.findIndex((p) => p.xrPoint?.id === xrPoints[i].id);
+            if (idx >= 0) placedRef.current[idx].world = local;
+          }
+        }
+        syncArOverlay(screenPts, segments, ringColors, opacities);
       }
       sess.requestAnimationFrame(onFrame);
     };
@@ -842,7 +887,7 @@ export function IndoorArMeasurePanel({
     setVideoTrackLive(false);
     setArActive(true);
     setStatus('Aim the center dot at a flat surface, then tap Place.');
-  }, [releasePreviewForWebXr, restorePreviewCamera, projectPlacedPointsFromXrFrame, syncArOverlay]);
+  }, [releasePreviewForWebXr, restorePreviewCamera, getXrAnchorPoints, syncArOverlay]);
 
   useEffect(
     () => () => {
@@ -862,6 +907,9 @@ export function IndoorArMeasurePanel({
     sessionRef.current = null;
     refSpaceRef.current = null;
     glRef.current = null;
+    latestHitResultRef.current = null;
+    latestFrameRef.current = null;
+    resetPlaneLock();
     setArActive(false);
     setSurfaceDetected(false);
     surfaceDetectedRef.current = false;
@@ -909,11 +957,14 @@ export function IndoorArMeasurePanel({
 
   const undoPoint = () => {
     if (placed.length === 0) return;
+    const removed = placed[placed.length - 1];
+    if (removed.xrPoint) deleteAnchorPoint(removed.xrPoint);
     const next = placed.slice(0, -1);
     placedRef.current = next;
     setPlaced(next);
     if (next.length === 0) {
       sessionOriginRef.current = null;
+      resetPlaneLock();
       poseTrackerRef.current.reset();
       poseTrackerRef.current.calibrate(orientationRef.current);
     }
@@ -925,6 +976,7 @@ export function IndoorArMeasurePanel({
   };
 
   const clearPoints = () => {
+    clearAnchorPoints(getXrAnchorPoints());
     placedRef.current = [];
     setPlaced([]);
     setProjected([]);
@@ -938,6 +990,18 @@ export function IndoorArMeasurePanel({
   const applyToPlan = () => {
     if (!onApplyPlanPoints || worldPoints.length < 2) return;
     stopAr();
+
+    if (measureMode === 'webxr') {
+      const saved = saveFloorPlane(getXrAnchorPoints());
+      if (!saved) return;
+      onApplyPlanPoints(saved.planPoints, {
+        source: saved.metadata.source,
+        heightM: saved.metadata.heightM,
+      });
+      onClose();
+      return;
+    }
+
     const origin = worldPoints[0];
     onApplyPlanPoints(arSessionToFloorPlan(worldPoints, origin), {
       source: 'camera_ar',

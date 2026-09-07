@@ -1,6 +1,7 @@
-/** Minimal WebXR hit-test + DOM overlay typings for AR measure panel. */
+/** Minimal WebXR hit-test, anchors + DOM overlay typings for AR measure panel. */
 interface XRHitTestResult {
   getPose(baseSpace: XRReferenceSpace): XRPose | undefined;
+  createAnchor?(): Promise<XRAnchor | undefined>;
 }
 
 interface XRHitTestSource {
@@ -16,6 +17,16 @@ interface XRRigidTransform {
   readonly inverse: XRRigidTransform;
   readonly matrix: Float32Array;
   readonly position: DOMPointReadOnly;
+  readonly orientation: DOMPointReadOnly;
+}
+
+interface XRSpace {}
+
+interface XRReferenceSpace extends XRSpace {}
+
+interface XRAnchor {
+  readonly anchorSpace: XRSpace;
+  delete(): void;
 }
 
 interface XRView {
@@ -53,6 +64,7 @@ interface XRRenderState {
 
 interface XRFrame {
   getViewerPose(referenceSpace: XRReferenceSpace): XRViewerPose | undefined;
+  getPose?(space: XRSpace, baseSpace: XRReferenceSpace): XRPose | undefined;
   getHitTestResults?(hitTestSource: XRHitTestSource): readonly XRHitTestResult[];
 }
 
