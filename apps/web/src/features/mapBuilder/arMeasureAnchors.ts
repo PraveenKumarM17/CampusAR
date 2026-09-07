@@ -1,5 +1,6 @@
 import type { LocalVec2, LocalVec3 } from '@campusar/shared';
 import { arSessionToFloorPlan, distance3D, formatMeasureDistance } from './indoorArMeasure';
+import { logArLifecycle } from './arMeasureDiagnostics';
 
 export type Quat = { x: number; y: number; z: number; w: number };
 
@@ -255,6 +256,19 @@ export async function placePoint(
   referenceSpace: XRReferenceSpace,
   gps: GpsFix | null,
 ): Promise<AnchorMeasurePoint | null> {
+  return addMeasurePointFromHit(hitResult, frame, referenceSpace, gps);
+}
+
+/**
+ * Place a measure point from the current WebXR select (screen tap) hit-test result.
+ * Called when the user taps the AR view on Android — not from DOM click handlers.
+ */
+export async function addMeasurePointFromHit(
+  hitResult: XRHitTestResult,
+  frame: XRFrame,
+  referenceSpace: XRReferenceSpace,
+  gps: GpsFix | null,
+): Promise<AnchorMeasurePoint | null> {
   if (!validateHitTestForPlane(hitResult, referenceSpace)) return null;
 
   const hitPose = hitResult.getPose(referenceSpace);
@@ -268,10 +282,16 @@ export async function placePoint(
     if (hitResult.createAnchor) {
       xrAnchor = (await hitResult.createAnchor()) ?? null;
       hitFallback = !xrAnchor;
+      if (xrAnchor) {
+        logArLifecycle('ANCHOR_CREATED');
+      } else {
+        logArLifecycle('ANCHOR_FAILED', 'createAnchor returned null');
+      }
     }
   } catch {
     xrAnchor = null;
     hitFallback = true;
+    logArLifecycle('ANCHOR_FAILED', 'createAnchor threw');
   }
 
   const fallbackWorld = vec3FromDomPoint(hitPose.transform.position);
@@ -292,8 +312,85 @@ export async function placePoint(
     fallbackWorld,
   };
 
+  primeAnchorPointPose(point);
   void frame;
   return point;
+}
+
+/**
+ * Place a measure point from a resolved hit pose when select fires.
+ * Prefers the live hit-test result for XRAnchor creation; falls back to pose lock.
+ */
+export async function addMeasurePointFromPose(
+  hitPose: XRPose,
+  frame: XRFrame,
+  referenceSpace: XRReferenceSpace,
+  hitResult: XRHitTestResult | null,
+  gps: GpsFix | null,
+): Promise<AnchorMeasurePoint | null> {
+  if (hitResult) {
+    return addMeasurePointFromHit(hitResult, frame, referenceSpace, gps);
+  }
+
+  if (!activePlaneLock) {
+    activePlaneLock = {
+      planeId: planeIdFromPose(hitPose),
+      normal: planeNormalFromHitPose(hitPose),
+      pointOnPlane: vec3FromDomPoint(hitPose.transform.position),
+    };
+  }
+
+  const fallbackWorld = vec3FromDomPoint(hitPose.transform.position);
+  const point: AnchorMeasurePoint = {
+    id: `pt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    xrAnchor: null,
+    worldPose: null,
+    smoothedPose: null,
+    sessionLocal: null,
+    sourceData: {
+      planeId: activePlaneLock?.planeId ?? null,
+      timestamp: Date.now(),
+      gps,
+      confidence: 0.5,
+      hitFallback: true,
+    },
+    smoothing: new PoseSmoothingFilter(0.85),
+    fallbackWorld,
+  };
+
+  primeAnchorPointPose(point);
+  void frame;
+  void referenceSpace;
+  return point;
+}
+
+/** Initialize smoothed pose from locked fallback world position. */
+export function primeAnchorPointPose(point: AnchorMeasurePoint): void {
+  if (!point.fallbackWorld) return;
+  const locked: SmoothedPose = {
+    position: { ...point.fallbackWorld },
+    orientation: { x: 0, y: 0, z: 0, w: 1 },
+  };
+  point.worldPose = locked;
+  point.smoothedPose = locked;
+}
+
+/** Recompute session-local coords (first point = origin). Call after adding a point. */
+export function recomputeSessionLocals(points: AnchorMeasurePoint[]): void {
+  if (points.length === 0) return;
+  const originPos =
+    points[0].smoothedPose?.position ?? points[0].fallbackWorld ?? null;
+  if (!originPos) return;
+
+  for (const point of points) {
+    const pos = point.smoothedPose?.position ?? point.fallbackWorld;
+    if (!pos) continue;
+    point.sessionLocal = {
+      x: pos.x - originPos.x,
+      y: pos.y - originPos.y,
+      z: pos.z - originPos.z,
+    };
+  }
 }
 
 /** Query anchor poses each frame and apply smoothing + confidence. */
