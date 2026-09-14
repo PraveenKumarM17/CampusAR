@@ -49,6 +49,7 @@ type RouteSketch = {
 type ConfirmState =
   | { type: 'remove-one'; id: string; label: string }
   | { type: 'remove-all'; count: number }
+  | { type: 'remove-all-bends'; count: number }
   | { type: 'break-edge'; id: string; label: string }
   | { type: 'remove-bend'; id: string; label: string }
   | {
@@ -1062,6 +1063,41 @@ export function AdminMapEditor() {
     }
   }
 
+  async function executeRemoveAllBends() {
+    if (!token) return;
+    setBusy(true);
+    setConfirm(null);
+    const toRemove = [...waypointNodes];
+    try {
+      for (const n of toRemove) {
+        try {
+          await api.mapBuilder.deleteNode(n.id, false, token);
+        } catch (err) {
+          if (err instanceof ApiError && (err.code === 'NODE_HAS_EDGES' || err.status === 409)) {
+            await api.mapBuilder.deleteNode(n.id, true, token);
+          } else {
+            throw err;
+          }
+        }
+      }
+      setSelectedBendId(null);
+      setCleanEdgeIds(new Set());
+      setNodes((prev) => prev.filter((n) => !toRemove.some((b) => b.id === n.id)));
+      setEdges((prev) =>
+        prev.filter(
+          (e) => !toRemove.some((b) => b.id === e.fromNodeId || b.id === e.toNodeId),
+        ),
+      );
+      await refresh();
+      flash(`Removed ${toRemove.length} bend${toRemove.length === 1 ? '' : 's'}. Place pins kept.`);
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not remove all bends', 'err');
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function executeBreakEdge(id: string) {
     if (!token) return;
     setBusy(true);
@@ -1142,14 +1178,24 @@ export function AdminMapEditor() {
             stitches the path back together when it has two neighbors.
           </p>
         </div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-accent-danger/40 bg-accent-danger/5 px-3 py-1.5 text-sm font-semibold text-accent-danger disabled:opacity-50"
-          disabled={busy || placePins.length === 0}
-          onClick={() => setConfirm({ type: 'remove-all', count: placePins.length })}
-        >
-          <Trash2 size={14} /> Remove all pins
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent-danger/40 bg-accent-danger/5 px-3 py-1.5 text-sm font-semibold text-accent-danger disabled:opacity-50"
+            disabled={busy || placePins.length === 0}
+            onClick={() => setConfirm({ type: 'remove-all', count: placePins.length })}
+          >
+            <Trash2 size={14} /> Remove all pins
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent-danger/40 bg-accent-danger/5 px-3 py-1.5 text-sm font-semibold text-accent-danger disabled:opacity-50"
+            disabled={busy || waypointNodes.length === 0}
+            onClick={() => setConfirm({ type: 'remove-all-bends', count: waypointNodes.length })}
+          >
+            <Trash2 size={14} /> Remove all bends
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -1175,13 +1221,15 @@ export function AdminMapEditor() {
           <p className="font-semibold text-ink">
             {confirm.type === 'remove-all'
               ? `Remove all ${confirm.count} pins?`
-              : confirm.type === 'break-edge'
-                ? `Remove this segment “${confirm.label}”?`
-                : confirm.type === 'break-route'
-                  ? `Remove full route ${confirm.label}?`
-                  : confirm.type === 'remove-bend'
-                    ? `Remove bend ${confirm.label}?`
-                    : `Remove “${confirm.label}”?`}
+              : confirm.type === 'remove-all-bends'
+                ? `Remove all ${confirm.count} bends?`
+                : confirm.type === 'break-edge'
+                  ? `Remove this segment “${confirm.label}”?`
+                  : confirm.type === 'break-route'
+                    ? `Remove full route ${confirm.label}?`
+                    : confirm.type === 'remove-bend'
+                      ? `Remove bend ${confirm.label}?`
+                      : `Remove “${confirm.label}”?`}
           </p>
           <p className="mt-1 text-sm text-ink-mute">
             {confirm.type === 'break-edge'
@@ -1190,7 +1238,9 @@ export function AdminMapEditor() {
                 ? 'Deletes every segment and bend between those two end places. The place pins themselves stay.'
                 : confirm.type === 'remove-bend'
                   ? 'Removes this turn point and reconnects the path around it when possible.'
-                  : 'This cannot be undone.'}
+                  : confirm.type === 'remove-all-bends'
+                    ? 'Deletes every bend and the path segments attached to them. Place pins stay.'
+                    : 'This cannot be undone.'}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -1199,6 +1249,7 @@ export function AdminMapEditor() {
               disabled={busy}
               onClick={() => {
                 if (confirm.type === 'remove-all') void executeRemoveAll();
+                else if (confirm.type === 'remove-all-bends') void executeRemoveAllBends();
                 else if (confirm.type === 'break-edge') void executeBreakEdge(confirm.id);
                 else if (confirm.type === 'break-route')
                   void executeBreakRoute(confirm.edgeIds, confirm.bendIds);
