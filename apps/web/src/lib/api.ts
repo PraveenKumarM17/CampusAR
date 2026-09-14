@@ -491,7 +491,7 @@ export const api = {
         floorId: string | null;
         buildingId: string | null;
         kind: GraphNode['kind'];
-      }>,
+      }> & { expectedUpdatedAt?: string },
       token?: string | null,
       opts?: ApiRequestOpts,
     ) =>
@@ -540,7 +540,7 @@ export const api = {
       ),
     updateEdge: (
       id: string,
-      body: Partial<GraphEdge>,
+      body: Partial<GraphEdge> & { expectedUpdatedAt?: string },
       token?: string | null,
       opts?: ApiRequestOpts,
     ) =>
@@ -584,7 +584,7 @@ export const api = {
       ),
     updateArea: (
       id: string,
-      body: Partial<SiteArea>,
+      body: Partial<SiteArea> & { expectedUpdatedAt?: string },
       token?: string | null,
       opts?: ApiRequestOpts,
     ) =>

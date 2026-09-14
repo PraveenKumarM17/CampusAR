@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS nodes (
   kind TEXT NOT NULL CHECK (kind IN ('outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit')),
   active BOOLEAN NOT NULL DEFAULT TRUE,
   geometry_hash TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   geom GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (
     ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
   ) STORED
@@ -188,7 +189,8 @@ CREATE TABLE IF NOT EXISTS edges (
   safety_score DOUBLE PRECISION NOT NULL DEFAULT 0.9 CHECK (safety_score BETWEEN 0 AND 1),
   crowd_score DOUBLE PRECISION NOT NULL DEFAULT 0.2 CHECK (crowd_score BETWEEN 0 AND 1),
   accessibility_score DOUBLE PRECISION NOT NULL DEFAULT 0.9 CHECK (accessibility_score BETWEEN 0 AND 1),
-  geometry_hash TEXT
+  geometry_hash TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS edges_from_idx ON edges(from_node_id);
