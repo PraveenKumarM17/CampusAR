@@ -1,5 +1,6 @@
 /** Google Play listing for ARCore — shown when AR services are missing or outdated. */
 import { logArLifecycle } from './arMeasureDiagnostics';
+import { arDebugger } from '../../lib/ar/debugging/arDebugger';
 export const ARCORE_PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=com.google.ar.core';
 
@@ -25,7 +26,10 @@ export type WebXrErrorClassification = {
 };
 
 export type XRSessionWithHitTest = XRSession & {
-  requestHitTestSource?: (init: { space: XRReferenceSpace }) => Promise<XRHitTestSource | undefined>;
+  requestHitTestSource?: (init: {
+    space: XRReferenceSpace;
+    entityTypes?: string[];
+  }) => Promise<XRHitTestSource | undefined>;
   cancelAnimationFrame?: (handle: number) => void;
 };
 
@@ -43,7 +47,7 @@ export type WebXrStartOptions = {
   overlayRoot: HTMLElement;
   onFrame: (time: number, frame: XRFrame, ctx: WebXrFrameContext) => void;
   /** WebXR select (screen tap) — required for point placement on Android. */
-  onSelect?: (event: XRInputSourceEvent) => void;
+  onSelect?: (event: XRInputSourceEvent, transientHit?: XRHitTestResult, frame?: XRFrame) => void;
   /** Lingering preview stream tracks to stop on teardown (camera HAL release). */
   mediaStream?: MediaStream | null;
   /** Optional video element to fully release on teardown. */
@@ -53,6 +57,30 @@ export type WebXrStartOptions = {
   /** Hit-test could not be created — session may still run with limited placement. */
   onHitTestUnavailable?: (message: string) => void;
 };
+
+/** Resolve the hit belonging to the current native screen tap. */
+export function resolveSelectHitTest(
+  frame: XRFrame | undefined,
+  inputSource: XRInputSource,
+  transientSource: XRTransientInputHitTestSource | null,
+  persistentSource: XRHitTestSource | null,
+): XRHitTestResult | undefined {
+  if (!frame) return undefined;
+
+  if (transientSource && frame.getHitTestResultsForTransientInput) {
+    const transient = frame
+      .getHitTestResultsForTransientInput(transientSource)
+      .find((item) => item.inputSource === inputSource);
+    const hit = transient?.results[0];
+    if (hit) return hit;
+  }
+
+  if (persistentSource && frame.getHitTestResults) {
+    return frame.getHitTestResults(persistentSource)[0];
+  }
+
+  return undefined;
+}
 
 function resizeCanvasToViewport(canvas: HTMLCanvasElement): void {
   const dpr = window.devicePixelRatio || 1;
@@ -216,6 +244,7 @@ async function requestArSession(overlayRoot: HTMLElement): Promise<XRSessionWith
 export class WebXrSessionManager {
   private session: XRSessionWithHitTest | null = null;
   private hitTestSource: XRHitTestSource | null = null;
+  private transientHitTestSource: XRTransientInputHitTestSource | null = null;
   private refSpace: XRReferenceSpace | null = null;
   private glContext: WebGLRenderingContext | null = null;
   private mediaStream: MediaStream | null = null;
@@ -314,6 +343,10 @@ export class WebXrSessionManager {
     if (!gl) {
       throw new Error('WebGL not available');
     }
+    if (gl.isContextLost()) {
+      this.glContext = null;
+      throw new Error('WebGL context is already lost. Close and reopen AR to create a fresh context.');
+    }
     this.glContext = gl;
 
     try {
@@ -372,7 +405,16 @@ export class WebXrSessionManager {
     try {
       const viewerSpace = await session.requestReferenceSpace('viewer');
       if (session.requestHitTestSource) {
-        hitTestSource = (await session.requestHitTestSource({ space: viewerSpace })) ?? null;
+        try {
+          hitTestSource =
+            (await session.requestHitTestSource({
+              space: viewerSpace,
+              entityTypes: ['plane', 'point'],
+            })) ?? null;
+        } catch (entityTypeError) {
+          console.warn('[WebXR] Entity-specific hit-test request failed; retrying default source', entityTypeError);
+          hitTestSource = (await session.requestHitTestSource({ space: viewerSpace })) ?? null;
+        }
       }
     } catch (err) {
       const classified = classifyWebXrError(err);
@@ -380,6 +422,19 @@ export class WebXrSessionManager {
       hitTestSource = null;
     }
     this.hitTestSource = hitTestSource;
+
+    try {
+      if (session.requestHitTestSourceForTransientInput) {
+        this.transientHitTestSource =
+          (await session.requestHitTestSourceForTransientInput({ profile: 'generic-touchscreen' })) ?? null;
+        arDebugger.info('WebXR', 'Transient touch hit-test source created', {
+          persistent: Boolean(hitTestSource),
+        });
+      }
+    } catch (err) {
+      this.transientHitTestSource = null;
+      arDebugger.warn('WebXR', 'Transient touch hit-test unavailable', err);
+    }
 
     if (hitTestSource) {
       logArLifecycle('HIT_TEST_SOURCE_CREATED');
@@ -441,8 +496,19 @@ export class WebXrSessionManager {
       const handler = (event: XRInputSourceEvent) => {
         if (this.tearingDown || !this.onSelectCallback) return;
         logArLifecycle('XR_SELECT');
+        const frame = (event as XRInputSourceEvent & { frame?: XRFrame }).frame;
+        const tapHit = resolveSelectHitTest(
+          frame,
+          event.inputSource,
+          this.transientHitTestSource,
+          this.hitTestSource,
+        );
+        arDebugger.debug('WebXR', 'XR select received', {
+          hasTapHit: Boolean(tapHit),
+          usedTransientHit: Boolean(this.transientHitTestSource && tapHit),
+        });
         try {
-          this.onSelectCallback(event);
+          this.onSelectCallback(event, tapHit, frame);
         } catch (err) {
           console.error('[WebXR] onSelect callback failed', err);
         }
@@ -523,6 +589,10 @@ export class WebXrSessionManager {
       this.session = null;
       this.refSpace = null;
       this.hitTestSource = null;
+      if (this.transientHitTestSource) {
+        this.transientHitTestSource.cancel();
+        this.transientHitTestSource = null;
+      }
       this.animFrameId = null;
       this.sessionAlreadyEnded = false;
 
@@ -547,12 +617,6 @@ export class WebXrSessionManager {
 
   private releaseVideoAndGl(): void {
     if (this.glContext) {
-      try {
-        const loseContextExt = this.glContext.getExtension('WEBGL_lose_context');
-        loseContextExt?.loseContext();
-      } catch (err) {
-        console.warn('[WebXR] WEBGL_lose_context failed', err);
-      }
       this.glContext = null;
     }
 

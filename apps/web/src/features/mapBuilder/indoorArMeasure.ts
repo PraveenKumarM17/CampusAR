@@ -411,6 +411,11 @@ export async function detectMeasureMode(): Promise<MeasureMode> {
   return ok ? 'webxr' : 'camera';
 }
 
+export type SensorPermissionResult = {
+  orientation: boolean;
+  motion: boolean;
+};
+
 /** Who owns the device camera at a given moment. */
 export type CameraOwner = 'idle' | 'preview' | 'webxr';
 
@@ -867,4 +872,13 @@ export async function requestDeviceMotionAccess(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Request iOS sensor permissions from the same user gesture as camera startup. */
+export async function requestSensorPermissions(): Promise<SensorPermissionResult> {
+  const [orientation, motion] = await Promise.all([
+    requestDeviceOrientationAccess(),
+    requestDeviceMotionAccess(),
+  ]);
+  return { orientation, motion };
 }

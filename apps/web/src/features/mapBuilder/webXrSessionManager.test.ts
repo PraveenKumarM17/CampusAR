@@ -3,6 +3,7 @@ import {
   ARCORE_UPDATE_MESSAGE,
   checkWebXrArSupport,
   classifyWebXrError,
+  resolveSelectHitTest,
   WebXrSessionManager,
 } from './webXrSessionManager';
 
@@ -84,6 +85,28 @@ describe('webXrSessionManager', () => {
       });
       const result = await checkWebXrArSupport();
       expect(result.ok).toBe(true);
+    });
+  });
+
+  describe('resolveSelectHitTest', () => {
+    it('uses a same-frame persistent hit when transient input has no result', () => {
+      const persistentHit = {} as XRHitTestResult;
+      const frame = {
+        getHitTestResultsForTransientInput: vi.fn().mockReturnValue([]),
+        getHitTestResults: vi.fn().mockReturnValue([persistentHit]),
+      } as unknown as XRFrame;
+      const persistentSource = {} as XRHitTestSource;
+      const inputSource = {} as XRInputSource;
+
+      expect(
+        resolveSelectHitTest(
+          frame,
+          inputSource,
+          {} as XRTransientInputHitTestSource,
+          persistentSource,
+        ),
+      ).toBe(persistentHit);
+      expect(frame.getHitTestResults).toHaveBeenCalledWith(persistentSource);
     });
   });
 

@@ -13,8 +13,7 @@ import {
   measureLabelRotationDeg,
   openCameraStream,
   polylineLength3D,
-  requestDeviceMotionAccess,
-  requestDeviceOrientationAccess,
+  requestSensorPermissions,
   stopMediaStream,
   createWebXrMeasureHitState,
   hasPlaceableHit,
@@ -23,6 +22,7 @@ import {
   waitForMediaStreamReleased,
   syncWebXrMeasureHitState,
   updateWebXrHitTest,
+  posePositionToVec3,
   type AnchoredWorldPoint,
   type CameraOwner,
   type MeasureMode,
@@ -54,6 +54,8 @@ import {
   logArLifecycle,
   type ArDiagnosticSnapshot,
 } from './arMeasureDiagnostics';
+import { arDebugger } from '../../lib/ar/debugging/arDebugger';
+import { detectArDevice } from '../../lib/ar/platform/platformDetector';
 
 type ScreenPt = { x: number; y: number };
 
@@ -114,6 +116,36 @@ function attachGpsMetadata(
     logArDiagnostic('GPS_UNAVAILABLE', 'attachGpsMetadata', 'GPS optional metadata unavailable');
     logArLifecycle('GPS_UNAVAILABLE');
   });
+}
+
+function spatialPointPayload(point: PlacedPoint, floorId?: string | null, buildingId?: string | null) {
+  const world = point.world;
+  const xr = point.xrPoint;
+  const tracking = xr?.sourceData;
+  return {
+    worldPosition: {
+      x: world.x * 1000,
+      y: world.y * 1000,
+      z: world.z * 1000,
+    },
+    worldTransform: xr?.smoothedPose?.matrix,
+    raycastTarget: {
+      type: xr ? ('plane' as const) : ('manual' as const),
+      confidence: tracking?.confidence ?? (point.anchor ? 0.7 : 0.5),
+    },
+    trackingQuality: {
+      state: tracking ? ('normal' as const) : ('limited' as const),
+      featureDensity: tracking?.confidence ?? 0.5,
+      depthAvailable: false,
+      cameraMotionSmoothed: true,
+    },
+    estimatedAccuracy: tracking ? Math.max(10, (1 - tracking.confidence) * 100) : 100,
+    revisitCount: 0,
+    floorId: floorId ?? null,
+    buildingId: buildingId ?? null,
+    gps: point.gps ?? undefined,
+    timestamp: Date.now(),
+  };
 }
 
 function captureOverlayPng(
@@ -329,6 +361,7 @@ export function IndoorArMeasurePanel({
   const cameraOwnerRef = useRef<CameraOwner>('idle');
   const previewAcquirePromiseRef = useRef<Promise<boolean> | null>(null);
   const arDebugEnabled = isArDebugEnabled();
+  const deviceInfoRef = useRef(detectArDevice());
 
   const [measureMode, setMeasureMode] = useState<MeasureMode | null>(null);
   const [arcoreWarning, setArcoreWarning] = useState<string | null>(null);
@@ -566,7 +599,7 @@ export function IndoorArMeasurePanel({
 
   const persistPoint = useCallback(
     async (point: PlacedPoint, ordinal: number) => {
-      if (!accessToken || !siteId || !mapVersionId || !point.gps) return;
+      if (!accessToken || !siteId || !mapVersionId) return;
       setPersistBusy(true);
       try {
         if (!pathIdRef.current) {
@@ -588,13 +621,7 @@ export function IndoorArMeasurePanel({
         await api.measurements.addPoint(
           pathIdRef.current,
           {
-            point: {
-              latitude: point.gps.latitude,
-              longitude: point.gps.longitude,
-              altitude: point.gps.altitude,
-              accuracy: point.gps.accuracy,
-              timestamp: Date.now(),
-            },
+            point: spatialPointPayload(point, floorId, buildingId),
             label: `Point ${ordinal}`,
           },
           accessToken,
@@ -608,15 +635,27 @@ export function IndoorArMeasurePanel({
     [accessToken, siteId, buildingId, floorId, mapVersionId, floorLevel],
   );
 
-  const placeWebXrPoint = useCallback(async () => {
+  const placeWebXrPoint = useCallback(async (tap?: {
+    hitResult: XRHitTestResult | null;
+    frame: XRFrame | null;
+  }) => {
     if (placingRef.current || persistBusy) return;
 
-    const hitResult = latestHitResultRef.current;
-    const hitPose = latestHitPoseRef.current;
-    const frame = latestFrameRef.current;
+    const hitResult = tap ? tap.hitResult : latestHitResultRef.current;
+    const frame = tap?.frame ?? latestFrameRef.current;
     const ref = refSpaceRef.current;
+    const hitPose = tap
+      ? hitResult && ref
+        ? hitResult.getPose(ref) ?? null
+        : null
+      : latestHitPoseRef.current;
     if (!hasPlaceableHit(hitPose, hitResult) || !frame || !ref) {
       logArDiagnostic('NO_HIT_RESULT', 'placeWebXrPoint', 'No valid hit pose in refs');
+      arDebugger.warn('Placement', 'Placement rejected: no hit pose', {
+        platform: deviceInfoRef.current.platform,
+        hitTestSource: Boolean(hitTestSourceRef.current),
+        frame: Boolean(frame),
+      });
       setError(
         'No flat surface detected. Move the phone slowly over a well-lit floor or wall until the center dot turns green.',
       );
@@ -639,6 +678,12 @@ export function IndoorArMeasurePanel({
         setError('Place points on the same surface as the first point.');
         return;
       }
+
+      arDebugger.info('Placement', 'World-space point created', {
+        mode: 'webxr',
+        position: xrPoint.fallbackWorld,
+        anchor: Boolean(xrPoint.xrAnchor),
+      });
 
       const xrPoints = [...getXrAnchorPoints(), xrPoint];
       recomputeSessionLocals(xrPoints);
@@ -790,14 +835,8 @@ export function IndoorArMeasurePanel({
     cameraLoopRef.current = requestAnimationFrame(tick);
   }, [onDeviceMotion, onDeviceOrientation, updateCameraModeHit]);
 
-  const startCameraSession = useCallback(async () => {
-    const orientationOk = await requestDeviceOrientationAccess();
-    if (!orientationOk) {
-      throw new Error(
-        'Motion sensor permission denied. Allow motion/orientation access to place measure points.',
-      );
-    }
-    await requestDeviceMotionAccess();
+  const startCameraSession = useCallback(async (sensors?: Awaited<ReturnType<typeof requestSensorPermissions>>) => {
+    const resolvedSensors = sensors ?? (await requestSensorPermissions());
 
     sessionOriginRef.current = null;
     trackingWarningRef.current = false;
@@ -824,7 +863,13 @@ export function IndoorArMeasurePanel({
     startCameraMeasureLoop();
     updateCameraModeHit();
     setArActive(true);
-    setStatus('Aim the center dot at the floor, then tap Place.');
+    setStatus(
+      resolvedSensors.orientation
+        ? resolvedSensors.motion
+          ? 'Aim the center dot at the floor, then tap Place.'
+          : 'Motion access is limited. Keep the phone steady and tap Place on the detected surface.'
+        : 'Orientation access is limited. Keep the phone pointed at the floor and tap Place.',
+    );
   }, [startCameraMeasureLoop, updateCameraModeHit]);
 
   const handleWebXrSessionEnded = useCallback(async () => {
@@ -866,10 +911,29 @@ export function IndoorArMeasurePanel({
       overlayRoot,
       mediaStream: null,
       videoElement: videoRef.current,
-      onSelect: () => {
+      onSelect: (_event, transientHit, selectFrame) => {
+        if (transientHit) {
+          latestHitResultRef.current = transientHit;
+          latestHitPoseRef.current = refSpaceRef.current
+            ? transientHit.getPose(refSpaceRef.current) ?? null
+            : null;
+          latestFrameRef.current = selectFrame ?? latestFrameRef.current;
+          latestHitRef.current = latestHitPoseRef.current
+            ? posePositionToVec3(latestHitPoseRef.current)
+            : null;
+          canPlaceRef.current = hasPlaceableHit(latestHitPoseRef.current, transientHit);
+          arDebugger.info('Placement', 'Tap-time transient hit received', {
+            hasPose: Boolean(latestHitPoseRef.current),
+          });
+        } else {
+          arDebugger.warn('Placement', 'Native select received without transient hit');
+        }
         const { currentHitPose, currentHitResult } = webXrHitStateRef.current;
-        if (!currentHitPose && !currentHitResult) return;
-        void placeWebXrPoint();
+        if (!currentHitPose && !currentHitResult && !transientHit) return;
+        void placeWebXrPoint({
+          hitResult: transientHit ?? null,
+          frame: selectFrame ?? null,
+        });
       },
       onHitTestUnavailable: (message) => {
         setArcoreWarning(ARCORE_UPDATE_MESSAGE);
@@ -889,6 +953,13 @@ export function IndoorArMeasurePanel({
         latestHitPoseRef.current = snapshot.hitPose;
         latestFrameRef.current = frame;
         canPlaceRef.current = hasPlaceableHit(snapshot.hitPose, snapshot.hitResult);
+        if (snapshot.surfaceDetected) {
+          arDebugger.debug('WebXR', 'Persistent hit-test produced a surface', {
+            x: snapshot.hit?.x,
+            y: snapshot.hit?.y,
+            z: snapshot.hit?.z,
+          });
+        }
 
         if (snapshot.surfaceDetected !== surfaceDetectedRef.current) {
           surfaceDetectedRef.current = snapshot.surfaceDetected;
@@ -905,6 +976,12 @@ export function IndoorArMeasurePanel({
 
     cameraOwnerRef.current = 'webxr';
     logArLifecycle('CAMERA_OWNER', 'webxr');
+    arDebugger.info('WebXR', 'AR session running', {
+      platform: deviceInfoRef.current.platform,
+      browser: deviceInfoRef.current.browser,
+      webGl: deviceInfoRef.current.webGl,
+      touch: deviceInfoRef.current.touch,
+    });
 
     setVideoTrackLive(false);
     setArActive(true);
@@ -1035,11 +1112,12 @@ export function IndoorArMeasurePanel({
       if (measureMode === 'webxr') {
         await startWebXrSession();
       } else {
+        const sensors = await requestSensorPermissions();
         const previewOk = await acquirePreviewCamera();
         if (!previewOk) {
           throw new Error('Could not open the camera. Allow camera access and try again.');
         }
-        await startCameraSession();
+        await startCameraSession(sensors);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not start AR session';
@@ -1305,11 +1383,11 @@ export function IndoorArMeasurePanel({
                     ? measureMode === 'webxr'
                       ? 'Surface found — tap Place or tap the screen'
                       : 'Surface found — tap Place'
-                    : 'Move slowly to detect a flat surface'}
+                    : 'Scan or move the phone, then tap Place'}
                 </p>
                 <button
                   type="button"
-                  disabled={!surfaceDetected || persistBusy || isExiting}
+                  disabled={persistBusy || isExiting}
                   className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-black shadow-xl ring-4 ring-white/25 active:scale-95 disabled:opacity-40"
                   style={{ pointerEvents: 'auto' }}
                   onClick={() => void placeArPoint()}

@@ -9,6 +9,15 @@ interface XRHitTestSource {
   cancel(): void;
 }
 
+interface XRTransientInputHitTestResult {
+  inputSource: XRInputSource;
+  results: readonly XRHitTestResult[];
+}
+
+interface XRTransientInputHitTestSource {
+  cancel(): void;
+}
+
 interface XRPose {
   readonly transform: XRRigidTransform;
 }
@@ -66,11 +75,17 @@ interface XRFrame {
   getViewerPose(referenceSpace: XRReferenceSpace): XRViewerPose | undefined;
   getPose?(space: XRSpace, baseSpace: XRReferenceSpace): XRPose | undefined;
   getHitTestResults?(hitTestSource: XRHitTestSource): readonly XRHitTestResult[];
+  getHitTestResultsForTransientInput?(
+    hitTestSource: XRTransientInputHitTestSource,
+  ): readonly XRTransientInputHitTestResult[];
 }
 
 interface XRSession {
   readonly renderState: XRRenderState;
   requestHitTestSource?(init: { space: XRReferenceSpace }): Promise<XRHitTestSource | undefined>;
+  requestHitTestSourceForTransientInput?(init: {
+    profile: string;
+  }): Promise<XRTransientInputHitTestSource | undefined>;
   requestReferenceSpace(type: string): Promise<XRReferenceSpace>;
   updateRenderState(state: {
     baseLayer?: XRWebGLLayer | null;

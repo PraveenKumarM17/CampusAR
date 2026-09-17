@@ -7,6 +7,7 @@ export type Quat = { x: number; y: number; z: number; w: number };
 export type SmoothedPose = {
   position: LocalVec3;
   orientation: Quat;
+  matrix?: number[];
 };
 
 export type GpsFix = {
@@ -135,6 +136,7 @@ export function poseToSmoothed(pose: XRPose): SmoothedPose {
   return {
     position: vec3FromDomPoint(pose.transform.position),
     orientation: quatFromDomPoint(pose.transform.orientation),
+    matrix: Array.from(pose.transform.matrix),
   };
 }
 
@@ -370,6 +372,7 @@ export function primeAnchorPointPose(point: AnchorMeasurePoint): void {
   const locked: SmoothedPose = {
     position: { ...point.fallbackWorld },
     orientation: { x: 0, y: 0, z: 0, w: 1 },
+    matrix: undefined,
   };
   point.worldPose = locked;
   point.smoothedPose = locked;
@@ -416,6 +419,7 @@ export function updatePoints(points: AnchorMeasurePoint[], frame: XRFrame, refer
       const locked: SmoothedPose = {
         position: { ...point.fallbackWorld },
         orientation: { x: 0, y: 0, z: 0, w: 1 },
+        matrix: undefined,
       };
       point.worldPose = locked;
       point.smoothedPose = locked;
