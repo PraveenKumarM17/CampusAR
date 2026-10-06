@@ -1,5 +1,11 @@
 import { pool } from '../db/pool';
 import type { QueryResult } from 'pg';
+import type {
+  Matrix4x4,
+  RaycastTargetType,
+  TrackingState,
+  Vector3D,
+} from '@campusar/shared';
 
 export interface MeasurementPath {
   id: string;
@@ -23,8 +29,8 @@ export interface MeasurementPoint {
   id: string;
   pathId: string;
   ordinal: number;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   altitude: number | null;
   floorLevel: number | null;
   accuracyM: number | null;
@@ -35,6 +41,14 @@ export interface MeasurementPoint {
   snappedY: number | null;
   snappedZ: number | null;
   snappedToNodeId: string | null;
+  worldPosition: Vector3D | null;
+  worldTransform: Matrix4x4 | null;
+  raycastTarget: { type: RaycastTargetType; confidence: number } | null;
+  trackingState: TrackingState | null;
+  featureDensity: number | null;
+  depthAvailable: boolean | null;
+  estimatedAccuracyMM: number | null;
+  revisitCount: number;
 }
 
 export interface MeasurementEdge {
@@ -65,14 +79,22 @@ export interface CreatePathInput {
 export interface CreatePointInput {
   pathId: string;
   ordinal: number;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   altitude?: number | null;
   floorLevel?: number | null;
   accuracyM?: number | null;
   label?: string | null;
   recordedAt?: Date;
   metadata?: Record<string, unknown>;
+  worldPosition?: Vector3D | null;
+  worldTransform?: Matrix4x4 | null;
+  raycastTarget?: { type: RaycastTargetType; confidence: number } | null;
+  trackingState?: TrackingState | null;
+  featureDensity?: number | null;
+  depthAvailable?: boolean | null;
+  estimatedAccuracyMM?: number | null;
+  revisitCount?: number;
 }
 
 function rowToPath(row: any): MeasurementPath {
@@ -100,8 +122,8 @@ function rowToPoint(row: any): MeasurementPoint {
     id: row.id,
     pathId: row.path_id,
     ordinal: row.ordinal,
-    latitude: parseFloat(row.latitude),
-    longitude: parseFloat(row.longitude),
+    latitude: row.latitude == null ? null : parseFloat(row.latitude),
+    longitude: row.longitude == null ? null : parseFloat(row.longitude),
     altitude: row.altitude ? parseFloat(row.altitude) : null,
     floorLevel: row.floor_level,
     accuracyM: row.accuracy_m ? parseFloat(row.accuracy_m) : null,
@@ -112,6 +134,18 @@ function rowToPoint(row: any): MeasurementPoint {
     snappedY: row.snapped_y ? parseFloat(row.snapped_y) : null,
     snappedZ: row.snapped_z ? parseFloat(row.snapped_z) : null,
     snappedToNodeId: row.snapped_to_node_id,
+    worldPosition:
+      row.world_x_mm == null || row.world_y_mm == null || row.world_z_mm == null
+        ? null
+        : { x: parseFloat(row.world_x_mm), y: parseFloat(row.world_y_mm), z: parseFloat(row.world_z_mm) },
+    worldTransform: row.world_transform ?? null,
+    raycastTarget: row.raycast_target ?? null,
+    trackingState: row.tracking_state ?? null,
+    featureDensity: row.feature_density == null ? null : parseFloat(row.feature_density),
+    depthAvailable: row.depth_available ?? null,
+    estimatedAccuracyMM:
+      row.estimated_accuracy_mm == null ? null : parseFloat(row.estimated_accuracy_mm),
+    revisitCount: Number(row.revisit_count ?? 0),
   };
 }
 
@@ -252,8 +286,11 @@ export const measurementPathRepository = {
     const result = await pool.query<any>(
       `INSERT INTO measurement_points (
         path_id, ordinal, latitude, longitude, altitude, floor_level,
-        accuracy_m, label, recorded_at, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        accuracy_m, label, recorded_at, metadata,
+        world_x_mm, world_y_mm, world_z_mm, world_transform, raycast_target,
+        tracking_state, feature_density, depth_available, estimated_accuracy_mm, revisit_count
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *`,
       [
         input.pathId,
@@ -266,6 +303,16 @@ export const measurementPathRepository = {
         input.label ?? null,
         input.recordedAt ?? new Date(),
         JSON.stringify(input.metadata ?? {}),
+        input.worldPosition?.x ?? null,
+        input.worldPosition?.y ?? null,
+        input.worldPosition?.z ?? null,
+        input.worldTransform ? JSON.stringify(input.worldTransform) : null,
+        input.raycastTarget ? JSON.stringify(input.raycastTarget) : null,
+        input.trackingState ?? null,
+        input.featureDensity ?? null,
+        input.depthAvailable ?? null,
+        input.estimatedAccuracyMM ?? null,
+        input.revisitCount ?? 0,
       ]
     );
     return rowToPoint(result.rows[0]);
@@ -303,6 +350,10 @@ export const measurementPathRepository = {
     if (updates.label !== undefined) {
       fields.push(`label = $${paramCount++}`);
       values.push(updates.label);
+    }
+    if (updates.worldPosition !== undefined) {
+      fields.push(`world_x_mm = $${paramCount++}`, `world_y_mm = $${paramCount++}`, `world_z_mm = $${paramCount++}`);
+      values.push(updates.worldPosition?.x ?? null, updates.worldPosition?.y ?? null, updates.worldPosition?.z ?? null);
     }
 
     if (fields.length === 0) {

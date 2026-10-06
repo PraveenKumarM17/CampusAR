@@ -8,3 +8,11 @@ docker-compose build
 docker-compose up -d
 docker-compose logs -f
 ```
+
+To restart the containers after stopping them, run the following command:
+
+``` bash
+docker-compose down
+docker-compose build --no-cache web
+docker-compose up -d
+```

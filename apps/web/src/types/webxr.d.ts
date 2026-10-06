@@ -9,6 +9,15 @@ interface XRHitTestSource {
   cancel(): void;
 }
 
+interface XRTransientInputHitTestResult {
+  inputSource: XRInputSource;
+  results: readonly XRHitTestResult[];
+}
+
+interface XRTransientInputHitTestSource {
+  cancel(): void;
+}
+
 interface XRPose {
   readonly transform: XRRigidTransform;
 }
@@ -66,18 +75,26 @@ interface XRFrame {
   getViewerPose(referenceSpace: XRReferenceSpace): XRViewerPose | undefined;
   getPose?(space: XRSpace, baseSpace: XRReferenceSpace): XRPose | undefined;
   getHitTestResults?(hitTestSource: XRHitTestSource): readonly XRHitTestResult[];
+  getHitTestResultsForTransientInput?(
+    hitTestSource: XRTransientInputHitTestSource,
+  ): readonly XRTransientInputHitTestResult[];
 }
 
 interface XRSession {
   readonly renderState: XRRenderState;
   requestHitTestSource?(init: { space: XRReferenceSpace }): Promise<XRHitTestSource | undefined>;
+  requestHitTestSourceForTransientInput?(init: {
+    profile: string;
+  }): Promise<XRTransientInputHitTestSource | undefined>;
   requestReferenceSpace(type: string): Promise<XRReferenceSpace>;
   updateRenderState(state: {
-    baseLayer?: XRWebGLLayer;
+    baseLayer?: XRWebGLLayer | null;
   }): void;
   requestAnimationFrame(callback: (time: number, frame: XRFrame) => void): number;
+  cancelAnimationFrame?(handle: number): void;
   end(): Promise<void>;
   addEventListener(type: 'select' | 'end', listener: (event: XRInputSourceEvent) => void): void;
+  removeEventListener(type: 'select' | 'end', listener: (event: XRInputSourceEvent) => void): void;
 }
 
 interface XRSessionInit {
@@ -95,8 +112,13 @@ interface Navigator {
   xr?: XRSystem;
 }
 
+interface WEBGL_lose_context {
+  loseContext(): void;
+}
+
 interface WebGLRenderingContext {
   makeXRCompatible(): Promise<void>;
+  getExtension(name: 'WEBGL_lose_context'): WEBGL_lose_context | null;
 }
 
 interface WebGL2RenderingContext {
