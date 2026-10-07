@@ -6,7 +6,6 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { relativeBearingDeg as relativeBearingDegFromLib } from '../../lib/navigationHeading';
 
 export type AvatarGender = 'male' | 'female';
-
 export type AvatarPose =
   | 'idle'
   | 'walk'
@@ -21,58 +20,33 @@ const MARI = {
   celebrate: '/models/avatars/mari/sillyDance.glb',
 } as const;
 
-/** Head-to-toe height in world units. */
 const TARGET_HEIGHT = 0.6;
-
-/** Ground line the feet are pinned to. */
 const FOOT_Y = -0.34;
 
 /**
- * Idle / wave / celebrate:
- * yaw 0 faces the camera (+Z).
- */
-const YAW_FACE_CAMERA = 0;
-
-/**
- * Your walk GLB has its forward axis reversed compared with
- * the idle model.
+ * The avatar should NOT face the camera.
  *
- * Keeping this correction separate from navigation yaw allows
- * the avatar to make complete 360° route turns.
+ * The model's natural forward direction is corrected by PI radians,
+ * so the user sees the back of the avatar.
  */
 export const WALK_VISUAL_YAW_OFFSET_RAD = Math.PI;
 
-/** How far she previously drifted across the lane. */
+/**
+ * Keep avatar centered.
+ */
 const LANE_SHIFT = 0;
-
-/* -------------------------------------------------------------------------- */
-/*                                TYPES                                       */
-/* -------------------------------------------------------------------------- */
 
 type ClipKey = 'idle' | 'walk' | 'wave' | 'celebrate';
 
-/* -------------------------------------------------------------------------- */
-/*                           ANIMATION HELPERS                                */
-/* -------------------------------------------------------------------------- */
-
 function poseToClip(pose: AvatarPose): ClipKey {
   if (pose === 'celebrate') return 'celebrate';
-
-  if (pose === 'waveLeft' || pose === 'waveRight') {
-    return 'wave';
-  }
-
-  if (pose === 'walk') {
-    return 'walk';
-  }
-
+  if (pose === 'waveLeft' || pose === 'waveRight') return 'wave';
+  if (pose === 'walk') return 'walk';
   return 'idle';
 }
 
 /**
- * Mixamo bakes root motion into Hips.position.
- * Remove that track so the avatar stays in place while
- * the navigation system controls direction.
+ * Remove root-motion translation from the walk animation.
  */
 function toInPlaceClip(
   animations: unknown,
@@ -97,10 +71,6 @@ function toInPlaceClip(
   return clip;
 }
 
-/* -------------------------------------------------------------------------- */
-/*                         MODEL HELPERS                                      */
-/* -------------------------------------------------------------------------- */
-
 function findSkinnedMesh(
   root: THREE.Object3D,
 ): THREE.SkinnedMesh | null {
@@ -116,13 +86,12 @@ function findSkinnedMesh(
 }
 
 /* -------------------------------------------------------------------------- */
-/*                              ROAD                                          */
+/*                                ROAD STRIP                                  */
 /* -------------------------------------------------------------------------- */
 
 function RoadStrip() {
   return (
     <group position={[0, FOOT_Y - 0.005, 0]}>
-      {/* Road */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
@@ -136,7 +105,6 @@ function RoadStrip() {
         />
       </mesh>
 
-      {/* Centre line */}
       <mesh
         position={[0, 0.002, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
@@ -149,7 +117,6 @@ function RoadStrip() {
         />
       </mesh>
 
-      {/* Left road marking */}
       <mesh
         position={[-0.39, 0.001, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
@@ -162,7 +129,6 @@ function RoadStrip() {
         />
       </mesh>
 
-      {/* Right road marking */}
       <mesh
         position={[0.39, 0.001, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
@@ -179,150 +145,105 @@ function RoadStrip() {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                         HUGE NAVIGATION ARROWS                             */
+/*                              CAMERA                                         */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Large 3D navigation arrows.
- *
- * IMPORTANT:
- * These do NOT use THREE.Shape / ShapeGeometry.
- * This avoids the duplicate-three type error you encountered.
- *
- * The arrows are made from:
- *   - boxGeometry = shaft
- *   - coneGeometry = arrow head
- *
- * They inherit the avatar's navigation rotation.
- */
-function NavigationArrows({
-  pose,
-}: {
-  pose: AvatarPose;
-}) {
+function CameraRig() {
+  const camera = useThree((s) => s.camera);
+
+  useEffect(() => {
+    camera.position.set(0, 0.42, 3.1);
+    camera.lookAt(0, -0.05, 0);
+    camera.updateProjectionMatrix();
+  }, [camera]);
+
+  return null;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                            NAVIGATION ARROWS                                */
+/* -------------------------------------------------------------------------- */
+
+function NavigationArrows() {
   const arrows = useRef<THREE.Group>(null);
 
   useFrame(() => {
     if (!arrows.current) return;
 
-    /*
-     * Keep the arrow aligned with the avatar's
-     * navigation direction.
-     */
-    arrows.current.rotation.y =
-      pose === 'walk'
-        ? WALK_VISUAL_YAW_OFFSET_RAD
-        : 0;
-
-    /*
-     * Small floating animation.
-     */
-    const time = performance.now() * 0.003;
-
     arrows.current.position.y =
-      Math.sin(time) * 0.025;
+      FOOT_Y +
+      0.035 +
+      Math.sin(performance.now() * 0.004) * 0.008;
   });
-
-  /*
-   * Keep arrows visible whenever the guide is active.
-   */
-  if (
-    pose !== 'walk' &&
-    pose !== 'idle'
-  ) {
-    return null;
-  }
 
   return (
     <group
       ref={arrows as never}
-      position={[0, 0.05, 0.9]}
-      renderOrder={1000}
+      position={[0, FOOT_Y + 0.035, 0.15]}
+      scale={[0.7, 0.7, 0.7]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      renderOrder={20}
     >
-      {/* ============================================================ */}
-      {/* MAIN HUGE ARROW                                              */}
-      {/* ============================================================ */}
-
-      <group
-        position={[0, 0, 0]}
-        scale={[1.05, 1.05, 1.05]}
+      {/* Main arrow shaft */}
+      <mesh
+        position={[0, 0.05, 0]}
+        renderOrder={20}
       >
-        {/* Shaft */}
-        <mesh
-          position={[0, 0, 0]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          renderOrder={1001}
-        >
-          <boxGeometry args={[0.18, 0.7, 0.06]} />
+        <boxGeometry args={[0.14, 0.55, 0.05]} />
 
-          <meshBasicMaterial
-            color="#00ff66"
-            transparent={false}
-            depthTest={false}
-            depthWrite={false}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
+        <meshBasicMaterial
+          transparent
+          opacity={0.95}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
 
-        {/* Arrow head */}
-        <mesh
-          position={[0, 0, 0.58]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          renderOrder={1002}
-        >
-          <coneGeometry args={[0.32, 0.5, 3]} />
+      {/* Main arrow head */}
+      <mesh
+        position={[0, 0.39, 0]}
+        renderOrder={21}
+      >
+        <coneGeometry args={[0.22, 0.35, 3]} />
 
-          <meshBasicMaterial
-            color="#00ff66"
-            transparent={false}
-            depthTest={false}
-            depthWrite={false}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      </group>
+        <meshBasicMaterial
+          transparent
+          opacity={0.98}
+          depthTest={false}
+          depthWrite={false}
+        />
+      </mesh>
 
-      {/* ============================================================ */}
-      {/* SECOND ARROW                                                  */}
-      {/* ============================================================ */}
-
+      {/* Smaller second arrow */}
       <group
-        position={[0, 0, -0.75]}
-        scale={[0.65, 0.65, 0.65]}
+        position={[0, -0.43, 0]}
+        scale={[0.45, 0.45, 0.45]}
       >
         <mesh
-          position={[0, 0, 0.15]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          renderOrder={1001}
+          position={[0, 0.05, 0]}
+          renderOrder={20}
         >
-          <boxGeometry
-            args={[0.2, 0.75, 0.06]}
-          />
+          <boxGeometry args={[0.14, 0.55, 0.05]} />
 
           <meshBasicMaterial
-            color="#00ff66"
-            transparent={false}
+            transparent
+            opacity={0.85}
             depthTest={false}
             depthWrite={false}
-            side={THREE.DoubleSide}
           />
         </mesh>
 
         <mesh
-          position={[0, 0, 0.52]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          renderOrder={1002}
+          position={[0, 0.39, 0]}
+          renderOrder={21}
         >
-          <coneGeometry
-            args={[0.38, 0.58, 3]}
-          />
+          <coneGeometry args={[0.22, 0.35, 3]} />
 
           <meshBasicMaterial
-            color="#00ff66"
-            transparent={false}
+            transparent
+            opacity={0.9}
             depthTest={false}
             depthWrite={false}
-            side={THREE.DoubleSide}
           />
         </mesh>
       </group>
@@ -331,33 +252,7 @@ function NavigationArrows({
 }
 
 /* -------------------------------------------------------------------------- */
-/*                             CAMERA                                         */
-/* -------------------------------------------------------------------------- */
-
-function CameraRig() {
-  const camera = useThree((s) => s.camera);
-
-  useEffect(() => {
-    camera.position.set(
-      0,
-      0.42,
-      3.1,
-    );
-
-    camera.lookAt(
-      0,
-      -0.05,
-      0,
-    );
-
-    camera.updateProjectionMatrix();
-  }, [camera]);
-
-  return null;
-}
-
-/* -------------------------------------------------------------------------- */
-/*                              MARI GUIDE                                    */
+/*                              MARI GUIDE                                     */
 /* -------------------------------------------------------------------------- */
 
 function MariGuide({
@@ -372,20 +267,8 @@ function MariGuide({
   const stage = useRef<THREE.Group>(null);
 
   const fitted = useRef(false);
-
-  /*
-   * Current smoothed navigation yaw.
-   *
-   * This is deliberately NOT clamped to ±85°.
-   * It can represent a complete 360° rotation.
-   */
   const yaw = useRef(0);
-
   const lateral = useRef(0);
-
-  /* ---------------------------------------------------------------------- */
-  /*                           LOAD MODELS                                  */
-  /* ---------------------------------------------------------------------- */
 
   const idleGltf = useGLTF(MARI.idle);
   const walkGltf = useGLTF(MARI.walk);
@@ -393,7 +276,7 @@ function MariGuide({
   const danceGltf = useGLTF(MARI.celebrate);
 
   /* ---------------------------------------------------------------------- */
-  /*                           CLONE MODEL                                  */
+  /*                              MODEL                                      */
   /* ---------------------------------------------------------------------- */
 
   const model = useMemo(() => {
@@ -419,7 +302,7 @@ function MariGuide({
   }, [model]);
 
   /* ---------------------------------------------------------------------- */
-  /*                           ANIMATIONS                                   */
+  /*                            ANIMATIONS                                    */
   /* ---------------------------------------------------------------------- */
 
   const clips = useMemo(() => {
@@ -446,9 +329,7 @@ function MariGuide({
     ];
 
     return list.filter(
-      (
-        clip,
-      ): clip is THREE.AnimationClip =>
+      (clip): clip is THREE.AnimationClip =>
         clip !== null,
     );
   }, [
@@ -472,10 +353,6 @@ function MariGuide({
 
     if (!next) return;
 
-    /*
-     * Stop all other animations so they don't fight
-     * with the selected animation.
-     */
     Object.entries(actions).forEach(
       ([name, action]) => {
         if (
@@ -489,49 +366,36 @@ function MariGuide({
 
     next
       .reset()
-      .setLoop(
-        THREE.LoopRepeat,
-        Infinity,
-      )
+      .setLoop(THREE.LoopRepeat, Infinity)
       .setEffectiveWeight(1)
       .fadeIn(0.25)
       .play();
-  }, [
-    actions,
-    clipKey,
-  ]);
+  }, [actions, clipKey]);
 
   /* ---------------------------------------------------------------------- */
-  /*                     ROTATION + FITTING                                 */
+  /*                         ROTATION + FITTING                               */
   /* ---------------------------------------------------------------------- */
 
   useFrame((_, delta) => {
-    /*
-     * ================================================================
-     * FULL 360° NAVIGATION ROTATION
-     * ================================================================
+    /**
+     * FULL 360 DEGREE ROTATION
      *
-     * We intentionally DO NOT do:
+     * No -85 / +85 clamp.
      *
-     * THREE.MathUtils.clamp(pathYawDeg, -85, 85)
+     * pathYawDeg:
      *
-     * because that prevents U-turns.
+     *   0   = forward
+     *   90  = right
+     *   180 = U-turn / completely around
+     *   270 = left
      */
-
     const targetYaw =
       -THREE.MathUtils.degToRad(
         pathYawDeg,
       );
 
-    /*
+    /**
      * Calculate shortest angular difference.
-     *
-     * Example:
-     *
-     * current = 179°
-     * target  = -179°
-     *
-     * Difference becomes +2°, rather than -358°.
      */
     const yawDelta =
       THREE.MathUtils.euclideanModulo(
@@ -544,45 +408,42 @@ function MariGuide({
     const desiredYaw =
       yaw.current + yawDelta;
 
-    /*
-     * Smooth turning.
-     *
-     * Increase 12 → faster turning.
-     * Decrease 12 → slower turning.
-     */
     yaw.current =
       THREE.MathUtils.damp(
         yaw.current,
         desiredYaw,
-        12,
+        10,
         delta,
       );
 
-    /*
-     * Rotate the entire inner guide.
+    /**
+     * Rotate the complete navigation group.
      *
-     * The navigation arrows are inside this group,
-     * so they automatically receive exactly the same
-     * route rotation.
+     * The arrows are inside this group,
+     * so they rotate together with the avatar.
      */
     if (inner.current) {
-      inner.current.rotation.set(
-        0,
-        yaw.current,
-        0,
-      );
+      inner.current.rotation.y =
+        yaw.current;
     }
 
-    /*
-     * No sideways lane movement.
-     *
-     * The avatar stays centred while turning.
+    /**
+     * Keep avatar centered.
      */
+    const targetLateral =
+      pose === 'walk'
+        ? Math.sin(
+            THREE.MathUtils.degToRad(
+              pathYawDeg,
+            ),
+          ) * LANE_SHIFT
+        : 0;
+
     lateral.current =
       THREE.MathUtils.damp(
         lateral.current,
-        LANE_SHIFT,
-        8,
+        targetLateral,
+        7,
         delta,
       );
 
@@ -591,9 +452,9 @@ function MariGuide({
         lateral.current;
     }
 
-    /* ------------------------------------------------------------------ */
-    /*                           MODEL FIT                                 */
-    /* ------------------------------------------------------------------ */
+    /* -------------------------------------------------------------------- */
+    /*                         MODEL FITTING                                  */
+    /* -------------------------------------------------------------------- */
 
     if (fitted.current) return;
 
@@ -609,16 +470,9 @@ function MariGuide({
     if (!group || !skinned) return;
 
     group.scale.setScalar(1);
+    group.position.set(0, 0, 0);
 
-    group.position.set(
-      0,
-      0,
-      0,
-    );
-
-    group.updateMatrixWorld(
-      true,
-    );
+    group.updateMatrixWorld(true);
 
     skinned.computeBoundingBox();
 
@@ -627,15 +481,9 @@ function MariGuide({
 
     if (!bounds) return;
 
-    /*
-     * Measure in the fit group's own space
-     * so ancestor transforms don't distort it.
-     */
     const toFitSpace =
       new THREE.Matrix4()
-        .copy(
-          group.matrixWorld,
-        )
+        .copy(group.matrixWorld)
         .invert()
         .multiply(
           skinned.matrixWorld,
@@ -644,9 +492,7 @@ function MariGuide({
     const box =
       bounds
         .clone()
-        .applyMatrix4(
-          toFitSpace,
-        );
+        .applyMatrix4(toFitSpace);
 
     const height =
       box.max.y -
@@ -660,8 +506,7 @@ function MariGuide({
     }
 
     const scale =
-      TARGET_HEIGHT /
-      height;
+      TARGET_HEIGHT / height;
 
     if (
       !Number.isFinite(scale) ||
@@ -670,9 +515,7 @@ function MariGuide({
       return;
     }
 
-    group.scale.setScalar(
-      scale,
-    );
+    group.scale.setScalar(scale);
 
     group.position.set(
       -(
@@ -692,60 +535,49 @@ function MariGuide({
       ) * scale,
     );
 
-    group.updateMatrixWorld(
-      true,
-    );
+    group.updateMatrixWorld(true);
 
     fitted.current = true;
   });
 
-  /* ---------------------------------------------------------------------- */
-  /*                              MODEL TREE                                */
-  /* ---------------------------------------------------------------------- */
-
   return (
-    <group
-      ref={stage as never}
-    >
+    <group ref={stage as never}>
       <RoadStrip />
 
       {/*
+       * IMPORTANT:
+       *
        * `inner` controls navigation rotation.
        *
-       * Therefore:
-       *
-       * pathYawDeg
-       *      ↓
-       *   yaw.current
-       *      ↓
-       * inner.rotation.y
-       *      ↓
-       * avatar + arrows
+       * Arrows are placed here so they rotate
+       * with the navigation direction.
        */}
       <group ref={inner as never}>
-        <NavigationArrows
-          pose={pose}
-        />
 
+        <NavigationArrows />
+
+        {/*
+         * Character is inside the same navigation group.
+         */}
         <group ref={fit as never}>
+
           {/*
-           * The walk GLB needs its fixed π visual correction.
+           * This PI rotation makes the avatar's
+           * BACK face the camera.
            *
-           * This is separate from route navigation.
+           * Navigation rotation is handled separately
+           * by `inner`.
            */}
           <group
             rotation={[
               0,
-              pose === 'walk'
-                ? WALK_VISUAL_YAW_OFFSET_RAD
-                : 0,
+              WALK_VISUAL_YAW_OFFSET_RAD,
               0,
             ]}
           >
-            <primitive
-              object={model}
-            />
+            <primitive object={model} />
           </group>
+
         </group>
       </group>
     </group>
@@ -753,27 +585,16 @@ function MariGuide({
 }
 
 /* -------------------------------------------------------------------------- */
-/*                              PRELOAD                                       */
+/*                                PRELOAD                                      */
 /* -------------------------------------------------------------------------- */
 
-useGLTF.preload(
-  MARI.idle,
-);
-
-useGLTF.preload(
-  MARI.walk,
-);
-
-useGLTF.preload(
-  MARI.wave,
-);
-
-useGLTF.preload(
-  MARI.celebrate,
-);
+useGLTF.preload(MARI.idle);
+useGLTF.preload(MARI.walk);
+useGLTF.preload(MARI.wave);
+useGLTF.preload(MARI.celebrate);
 
 /* -------------------------------------------------------------------------- */
-/*                            FALLBACK                                        */
+/*                                FALLBACK                                     */
 /* -------------------------------------------------------------------------- */
 
 function GuideFallback() {
@@ -803,7 +624,7 @@ function GuideFallback() {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                         GUIDE VIEWPORT                                     */
+/*                         GUIDE DOLL VIEWPORT                                 */
 /* -------------------------------------------------------------------------- */
 
 export function GuideDollViewport({
@@ -814,29 +635,13 @@ export function GuideDollViewport({
 }: {
   gender: AvatarGender;
   pose: AvatarPose;
-
-  /**
-   * Relative path bearing in degrees.
-   *
-   * 0    = straight
-   * +90  = right
-   * -90  = left
-   * ±180 = complete U-turn
-   */
   pathYawDeg?: number;
-
   className?: string;
 }) {
-  /*
-   * Gender is currently retained for the existing
-   * component API. Your current model setup uses Mari.
-   */
   void _gender;
 
   return (
-    <div
-      className={className}
-    >
+    <div className={className}>
       <Canvas
         camera={{
           position: [
@@ -856,10 +661,7 @@ export function GuideDollViewport({
           background:
             'transparent',
         }}
-        dpr={[
-          1,
-          1.75,
-        ]}
+        dpr={[1, 1.75]}
       >
         <CameraRig />
 
@@ -911,21 +713,15 @@ export function GuideDollViewport({
 }
 
 /* -------------------------------------------------------------------------- */
-/*                        NAVIGATION HELPERS                                  */
+/*                           NAVIGATION HELPERS                                */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Returns the avatar steering yaw in radians.
- *
- * Unlike the old implementation, this does NOT clamp
- * the bearing to ±85°, allowing full U-turns.
- */
 export function dollSteeringYawRad(
   pose: AvatarPose,
   pathYawDeg: number,
 ): number {
   if (pose !== 'walk') {
-    return YAW_FACE_CAMERA;
+    return WALK_VISUAL_YAW_OFFSET_RAD;
   }
 
   return -THREE.MathUtils.degToRad(
@@ -933,9 +729,6 @@ export function dollSteeringYawRad(
   );
 }
 
-/**
- * Combined steering + walk visual correction.
- */
 export function dollEffectiveYawRad(
   pose: AvatarPose,
   pathYawDeg: number,
@@ -946,39 +739,25 @@ export function dollEffectiveYawRad(
       pathYawDeg,
     );
 
-  return pose === 'walk'
-    ? steering +
-        WALK_VISUAL_YAW_OFFSET_RAD
-    : steering;
+  return (
+    steering +
+    WALK_VISUAL_YAW_OFFSET_RAD
+  );
 }
 
 /* -------------------------------------------------------------------------- */
-/*                        ROUTE POSE LOGIC                                    */
+/*                         ROUTE POSE HELPER                                   */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Guide animation state:
- *
- * 1. Wave once at route start
- * 2. Walk for the journey
- * 3. Celebrate on arrival
- */
-export function poseFromRouteContext(
-  input: {
-    instruction?: string;
-    nextInstruction?: string;
-    distanceToNextM?: number;
-    arrived: boolean;
-    waveWithinM?: number;
-    atRouteStart?: boolean;
-
-    /**
-     * When false, doll idles instead
-     * of walking.
-     */
-    isMoving?: boolean;
-  },
-): AvatarPose {
+export function poseFromRouteContext(input: {
+  instruction?: string;
+  nextInstruction?: string;
+  distanceToNextM?: number;
+  arrived: boolean;
+  waveWithinM?: number;
+  atRouteStart?: boolean;
+  isMoving?: boolean;
+}): AvatarPose {
   const {
     instruction,
     arrived,
@@ -1021,12 +800,9 @@ export function poseFromInstruction(
 }
 
 /* -------------------------------------------------------------------------- */
-/*                        BEARING HELPERS                                     */
+/*                         BEARING HELPERS                                     */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Normalize compass delta into -180…180.
- */
 export function relativeBearingDeg(
   targetBearing: number,
   heading: number | null,
@@ -1044,9 +820,7 @@ export function relativeBearingDeg(
 function isTurnInstruction(
   instruction: string | undefined,
 ): boolean {
-  if (!instruction) {
-    return false;
-  }
+  if (!instruction) return false;
 
   const lower =
     instruction.toLowerCase();
@@ -1058,25 +832,17 @@ function isTurnInstruction(
   );
 }
 
-/**
- * Bearing the guide should face.
- *
- * This is retained for other navigation UI.
- *
- * NOTE:
- * The avatar itself should use targetBearing /
- * dollYawDeg directly if you want the avatar to
- * follow the actual route direction exactly.
- */
-export function guideFacingBearing(
-  input: {
-    currentBearing?: number;
-    nextBearing?: number;
-    nextInstruction?: string;
-    distanceToNextM?: number;
-    turnWithinM?: number;
-  },
-): number {
+/* -------------------------------------------------------------------------- */
+/*                         GUIDE FACING BEARING                                */
+/* -------------------------------------------------------------------------- */
+
+export function guideFacingBearing(input: {
+  currentBearing?: number;
+  nextBearing?: number;
+  nextInstruction?: string;
+  distanceToNextM?: number;
+  turnWithinM?: number;
+}): number {
   const {
     currentBearing = 0,
     nextBearing,
