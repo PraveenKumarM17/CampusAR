@@ -1,10 +1,20 @@
-/** Minimal WebXR hit-test + DOM overlay typings for AR measure panel. */
+/** Minimal WebXR hit-test, anchors + DOM overlay typings for AR measure panel. */
 interface XRHitTestResult {
   getPose(baseSpace: XRReferenceSpace): XRPose | undefined;
+  createAnchor?(): Promise<XRAnchor | undefined>;
 }
 
 interface XRHitTestSource {
   getHitTestResults(frame: XRFrame): readonly XRHitTestResult[];
+  cancel(): void;
+}
+
+interface XRTransientInputHitTestResult {
+  inputSource: XRInputSource;
+  results: readonly XRHitTestResult[];
+}
+
+interface XRTransientInputHitTestSource {
   cancel(): void;
 }
 
@@ -16,6 +26,16 @@ interface XRRigidTransform {
   readonly inverse: XRRigidTransform;
   readonly matrix: Float32Array;
   readonly position: DOMPointReadOnly;
+  readonly orientation: DOMPointReadOnly;
+}
+
+interface XRSpace {}
+
+interface XRReferenceSpace extends XRSpace {}
+
+interface XRAnchor {
+  readonly anchorSpace: XRSpace;
+  delete(): void;
 }
 
 interface XRView {
@@ -53,19 +73,28 @@ interface XRRenderState {
 
 interface XRFrame {
   getViewerPose(referenceSpace: XRReferenceSpace): XRViewerPose | undefined;
+  getPose?(space: XRSpace, baseSpace: XRReferenceSpace): XRPose | undefined;
   getHitTestResults?(hitTestSource: XRHitTestSource): readonly XRHitTestResult[];
+  getHitTestResultsForTransientInput?(
+    hitTestSource: XRTransientInputHitTestSource,
+  ): readonly XRTransientInputHitTestResult[];
 }
 
 interface XRSession {
   readonly renderState: XRRenderState;
   requestHitTestSource?(init: { space: XRReferenceSpace }): Promise<XRHitTestSource | undefined>;
+  requestHitTestSourceForTransientInput?(init: {
+    profile: string;
+  }): Promise<XRTransientInputHitTestSource | undefined>;
   requestReferenceSpace(type: string): Promise<XRReferenceSpace>;
   updateRenderState(state: {
-    baseLayer?: XRWebGLLayer;
+    baseLayer?: XRWebGLLayer | null;
   }): void;
   requestAnimationFrame(callback: (time: number, frame: XRFrame) => void): number;
+  cancelAnimationFrame?(handle: number): void;
   end(): Promise<void>;
   addEventListener(type: 'select' | 'end', listener: (event: XRInputSourceEvent) => void): void;
+  removeEventListener(type: 'select' | 'end', listener: (event: XRInputSourceEvent) => void): void;
 }
 
 interface XRSessionInit {
@@ -83,8 +112,13 @@ interface Navigator {
   xr?: XRSystem;
 }
 
+interface WEBGL_lose_context {
+  loseContext(): void;
+}
+
 interface WebGLRenderingContext {
   makeXRCompatible(): Promise<void>;
+  getExtension(name: 'WEBGL_lose_context'): WEBGL_lose_context | null;
 }
 
 interface WebGL2RenderingContext {

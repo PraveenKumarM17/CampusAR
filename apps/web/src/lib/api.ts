@@ -40,6 +40,7 @@ import type {
   CreateMeasurementPathDto,
   MeasurementPath,
   MeasurementPoint,
+  SpatialMeasurementPoint,
   GpsPoint,
 } from '@campusar/shared';
 
@@ -897,7 +898,7 @@ export const api = {
       ),
     addPoint: (
       pathId: string,
-      body: { point: GpsPoint; label?: string },
+      body: { point: GpsPoint | SpatialMeasurementPoint; label?: string },
       token?: string | null,
     ) =>
       request<MeasurementPoint>(

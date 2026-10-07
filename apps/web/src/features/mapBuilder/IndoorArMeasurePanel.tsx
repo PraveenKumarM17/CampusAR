@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, Circle, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
 import type { LocalVec2, LocalVec3 } from '@campusar/shared';
@@ -13,15 +13,49 @@ import {
   measureLabelRotationDeg,
   openCameraStream,
   polylineLength3D,
-  projectWorldToScreen,
-  requestDeviceMotionAccess,
-  requestDeviceOrientationAccess,
+  requestSensorPermissions,
   stopMediaStream,
+  createWebXrMeasureHitState,
+  hasPlaceableHit,
+  releaseVideoElement,
+  tryReadGpsFix,
+  waitForMediaStreamReleased,
+  syncWebXrMeasureHitState,
+  updateWebXrHitTest,
+  posePositionToVec3,
   type AnchoredWorldPoint,
+  type CameraOwner,
   type MeasureMode,
+  type GpsFix,
   verticalSpan3D,
 } from './indoorArMeasure';
+import {
+  addMeasurePointFromHit,
+  addMeasurePointFromPose,
+  clearAnchorPoints,
+  deleteAnchorPoint,
+  recomputeSessionLocals,
+  renderPoints,
+  resetPlaneLock,
+  saveFloorPlane,
+  updateDistances,
+  updatePoints,
+  type AnchorMeasurePoint,
+} from './arMeasureAnchors';
 import { MeasureDistancePill } from './MeasureDistancePill';
+import {
+  ARCORE_PLAY_STORE_URL,
+  ARCORE_UPDATE_MESSAGE,
+  WebXrSessionManager,
+} from './webXrSessionManager';
+import {
+  isArDebugEnabled,
+  logArDiagnostic,
+  logArLifecycle,
+  type ArDiagnosticSnapshot,
+} from './arMeasureDiagnostics';
+import { arDebugger } from '../../lib/ar/debugging/arDebugger';
+import { detectArDevice } from '../../lib/ar/platform/platformDetector';
 
 type ScreenPt = { x: number; y: number };
 
@@ -30,18 +64,13 @@ const BTN_PRIMARY =
 const BTN_SECONDARY =
   'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-lg border border-white/30 bg-white/10 px-4 text-sm font-semibold text-white disabled:opacity-40';
 
-type GpsFix = {
-  latitude: number;
-  longitude: number;
-  altitude?: number;
-  accuracy?: number;
-};
-
 type PlacedPoint = {
   /** Session-local coords (first point = origin) for floor-plan export. */
   world: LocalVec3;
   /** Locked absolute world position (camera mode only). */
   anchor?: AnchoredWorldPoint;
+  /** WebXR persistent anchor (Android WebXR mode). */
+  xrPoint?: AnchorMeasurePoint;
   gps: GpsFix | null;
 };
 
@@ -68,29 +97,55 @@ type Props = {
   onSuggestFloorHeight?: (heightM: number) => void;
 };
 
-type XRSessionWithHitTest = XRSession & {
-  requestHitTestSource?: (init: { space: XRReferenceSpace }) => Promise<XRHitTestSource | undefined>;
-};
-
-
-function readGpsFix(): Promise<GpsFix> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not available on this device'));
+function attachGpsMetadata(
+  entryIndex: number,
+  placedRef: MutableRefObject<PlacedPoint[]>,
+  setPlaced: (points: PlacedPoint[]) => void,
+  persistPoint: (point: PlacedPoint, ordinal: number) => void,
+): void {
+  void tryReadGpsFix().then((gps) => {
+    if (gps) {
+      logArLifecycle('GPS_AVAILABLE');
+      const current = placedRef.current[entryIndex];
+      if (!current) return;
+      current.gps = gps;
+      setPlaced([...placedRef.current]);
+      void persistPoint(current, entryIndex + 1);
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        resolve({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          altitude: pos.coords.altitude ?? undefined,
-          accuracy: pos.coords.accuracy,
-        }),
-      (err) => reject(err),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
-    );
+    logArDiagnostic('GPS_UNAVAILABLE', 'attachGpsMetadata', 'GPS optional metadata unavailable');
+    logArLifecycle('GPS_UNAVAILABLE');
   });
+}
+
+function spatialPointPayload(point: PlacedPoint, floorId?: string | null, buildingId?: string | null) {
+  const world = point.world;
+  const xr = point.xrPoint;
+  const tracking = xr?.sourceData;
+  return {
+    worldPosition: {
+      x: world.x * 1000,
+      y: world.y * 1000,
+      z: world.z * 1000,
+    },
+    worldTransform: xr?.smoothedPose?.matrix,
+    raycastTarget: {
+      type: xr ? ('plane' as const) : ('manual' as const),
+      confidence: tracking?.confidence ?? (point.anchor ? 0.7 : 0.5),
+    },
+    trackingQuality: {
+      state: tracking ? ('normal' as const) : ('limited' as const),
+      featureDensity: tracking?.confidence ?? 0.5,
+      depthAvailable: false,
+      cameraMotionSmoothed: true,
+    },
+    estimatedAccuracy: tracking ? Math.max(10, (1 - tracking.confidence) * 100) : 100,
+    revisitCount: 0,
+    floorId: floorId ?? null,
+    buildingId: buildingId ?? null,
+    gps: point.gps ?? undefined,
+    timestamp: Date.now(),
+  };
 }
 
 function captureOverlayPng(
@@ -192,6 +247,8 @@ function paintArOverlay(
   pillsEl: HTMLDivElement,
   screenPts: (ScreenPt | null)[],
   segments: OverlaySeg[],
+  ringColors?: string[],
+  segmentOpacity?: number[],
 ) {
   while (markersEl.children.length < screenPts.length) {
     const span = document.createElement('span');
@@ -209,10 +266,13 @@ function paintArOverlay(
     el.style.display = '';
     el.style.left = `${pt.x}px`;
     el.style.top = `${pt.y}px`;
+    if (ringColors?.[i]) {
+      el.style.boxShadow = `0 0 0 3px ${ringColors[i]}`;
+    }
   }
 
   while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-  for (const seg of segments) {
+  segments.forEach((seg, i) => {
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     line.setAttribute('x1', String(seg.from.x));
     line.setAttribute('y1', String(seg.from.y));
@@ -221,8 +281,11 @@ function paintArOverlay(
     line.setAttribute('stroke', '#10b981');
     line.setAttribute('stroke-width', '3');
     line.setAttribute('stroke-linecap', 'round');
+    if (segmentOpacity?.[i] != null) {
+      line.setAttribute('opacity', String(segmentOpacity[i]));
+    }
     svgEl.appendChild(line);
-  }
+  });
 
   pillsEl.innerHTML = '';
   for (const seg of segments) {
@@ -250,54 +313,6 @@ function clearArOverlay(
   if (pillsEl) pillsEl.innerHTML = '';
 }
 
-function poseToVec3(pose: XRPose): LocalVec3 {
-  const p = pose.transform.position;
-  return { x: p.x, y: p.y, z: p.z };
-}
-
-function resizeCanvasToViewport(canvas: HTMLCanvasElement) {
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
-  canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
-}
-
-async function requestArSession(overlayRoot: HTMLElement): Promise<XRSessionWithHitTest> {
-  if (!navigator.xr) throw new Error('WebXR is not available');
-  const attempts: XRSessionInit[] = [
-    {
-      requiredFeatures: ['hit-test', 'dom-overlay'],
-      optionalFeatures: ['local-floor'],
-      domOverlay: { root: overlayRoot },
-    },
-    {
-      requiredFeatures: ['hit-test'],
-      optionalFeatures: ['local-floor', 'dom-overlay'],
-      domOverlay: { root: overlayRoot },
-    },
-    {
-      requiredFeatures: ['hit-test', 'local-floor'],
-      optionalFeatures: ['dom-overlay'],
-      domOverlay: { root: overlayRoot },
-    },
-    {
-      requiredFeatures: ['local-floor'],
-      optionalFeatures: ['hit-test', 'dom-overlay'],
-      domOverlay: { root: overlayRoot },
-    },
-  ];
-  let lastError: unknown;
-  for (const init of attempts) {
-    try {
-      return (await navigator.xr.requestSession('immersive-ar', init)) as XRSessionWithHitTest;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error('Could not start WebXR AR session');
-}
-
 /**
  * Mobile AR measure — WebXR hit-test for plane placement with DOM overlay UI.
  */
@@ -319,10 +334,16 @@ export function IndoorArMeasurePanel({
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const sessionRef = useRef<XRSessionWithHitTest | null>(null);
+  const xrManagerRef = useRef(new WebXrSessionManager());
   const refSpaceRef = useRef<XRReferenceSpace | null>(null);
   const hitTestSourceRef = useRef<XRHitTestSource | null>(null);
   const latestHitRef = useRef<LocalVec3 | null>(null);
+  const latestHitResultRef = useRef<XRHitTestResult | null>(null);
+  const latestHitPoseRef = useRef<XRPose | null>(null);
+  const latestFrameRef = useRef<XRFrame | null>(null);
+  const placingRef = useRef(false);
+  const explicitTeardownRef = useRef(false);
+  const webXrHitStateRef = useRef(createWebXrMeasureHitState());
   const surfaceDetectedRef = useRef(false);
   const placedRef = useRef<PlacedPoint[]>([]);
   const pathIdRef = useRef<string | null>(null);
@@ -336,32 +357,105 @@ export function IndoorArMeasurePanel({
   const overlayMarkersRef = useRef<HTMLDivElement>(null);
   const overlaySvgRef = useRef<SVGSVGElement>(null);
   const overlayPillsRef = useRef<HTMLDivElement>(null);
-  const glRef = useRef<WebGLRenderingContext | null>(null);
+  const canPlaceRef = useRef(false);
+  const cameraOwnerRef = useRef<CameraOwner>('idle');
+  const previewAcquirePromiseRef = useRef<Promise<boolean> | null>(null);
+  const arDebugEnabled = isArDebugEnabled();
+  const deviceInfoRef = useRef(detectArDevice());
 
   const [measureMode, setMeasureMode] = useState<MeasureMode | null>(null);
+  const [arcoreWarning, setArcoreWarning] = useState<string | null>(null);
   const [arActive, setArActive] = useState(false);
   const [arStarting, setArStarting] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [videoTrackLive, setVideoTrackLive] = useState(false);
   const [placed, setPlaced] = useState<PlacedPoint[]>([]);
   const [projected, setProjected] = useState<(ScreenPt | null)[]>([]);
-  const [status, setStatus] = useState('Starting camera…');
+  const [status, setStatus] = useState('Detecting AR capabilities…');
   const [error, setError] = useState<string | null>(openError);
   const [surfaceDetected, setSurfaceDetected] = useState(false);
   const [persistBusy, setPersistBusy] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
+  const [arDiagnostics, setArDiagnostics] = useState<ArDiagnosticSnapshot | null>(null);
 
   placedRef.current = placed;
   const worldPoints = placed.map((p) => p.world);
 
-  const syncArOverlay = useCallback((screenPts: (ScreenPt | null)[]) => {
-    const markers = overlayMarkersRef.current;
-    const svg = overlaySvgRef.current;
-    const pills = overlayPillsRef.current;
-    if (!markers || !svg || !pills) return;
-    projectedLiveRef.current = screenPts;
-    const worlds = placedRef.current.map((p) => p.world);
-    paintArOverlay(markers, svg, pills, screenPts, buildOverlaySegments(screenPts, worlds));
+  const getXrAnchorPoints = useCallback((): AnchorMeasurePoint[] => {
+    return placedRef.current
+      .map((p) => p.xrPoint)
+      .filter((p): p is AnchorMeasurePoint => p != null);
   }, []);
+
+  const syncArOverlay = useCallback(
+    (
+      screenPts: (ScreenPt | null)[],
+      segments?: OverlaySeg[],
+      ringColors?: string[],
+      segmentOpacity?: number[],
+    ) => {
+      const markers = overlayMarkersRef.current;
+      const svg = overlaySvgRef.current;
+      const pills = overlayPillsRef.current;
+      if (!markers || !svg || !pills) return;
+      projectedLiveRef.current = screenPts;
+      const worlds = placedRef.current.map((p) => p.world);
+      const segs = segments ?? buildOverlaySegments(screenPts, worlds);
+      paintArOverlay(markers, svg, pills, screenPts, segs, ringColors, segmentOpacity);
+    },
+    [],
+  );
+
+  const syncWebXrOverlayNow = useCallback(
+    (frame?: XRFrame | null) => {
+      const ref = refSpaceRef.current;
+      const stage = stageRef.current;
+      const xrPoints = getXrAnchorPoints();
+      const activeFrame = frame ?? latestFrameRef.current;
+      if (!ref || !stage || !activeFrame || xrPoints.length === 0) return;
+
+      recomputeSessionLocals(xrPoints);
+      updatePoints(xrPoints, activeFrame, ref);
+      const { width, height } = stage.getBoundingClientRect();
+      const rendered = renderPoints(xrPoints, activeFrame, ref, width, height);
+      const distSegments = updateDistances(xrPoints, rendered);
+      const screenPts = rendered.map((r) => r.screen);
+      const ringColors = rendered.map((r) => r.ringColor);
+      const segments: OverlaySeg[] = distSegments.map((s) => ({
+        from: s.from,
+        to: s.to,
+        label: s.label,
+      }));
+      const opacities = distSegments.map((s) => s.opacity);
+      for (let i = 0; i < xrPoints.length; i++) {
+        const local = xrPoints[i].sessionLocal;
+        if (local) {
+          const idx = placedRef.current.findIndex((p) => p.xrPoint?.id === xrPoints[i].id);
+          if (idx >= 0) placedRef.current[idx].world = local;
+        }
+      }
+      syncArOverlay(screenPts, segments, ringColors, opacities);
+    },
+    [getXrAnchorPoints, syncArOverlay],
+  );
+
+  const refreshArDiagnostics = useCallback(() => {
+    if (!arDebugEnabled) return;
+    const stream = cameraStreamRef.current;
+    setArDiagnostics({
+      browser: navigator.userAgent.slice(0, 80),
+      secureContext: window.isSecureContext,
+      measureMode,
+      xrSessionActive: xrManagerRef.current.isActive(),
+      hitTestReady: hitTestSourceRef.current != null,
+      hasValidHitPose: canPlaceRef.current,
+      anchorPointCount: getXrAnchorPoints().length,
+      cameraTrackCount: stream?.getVideoTracks().length ?? 0,
+      lifecycleState: xrManagerRef.current.getLifecycleState(),
+      lastError: error,
+      cameraOwner: cameraOwnerRef.current,
+    });
+  }, [arDebugEnabled, measureMode, error, getXrAnchorPoints]);
 
   const projectPlacedPoints = useCallback((): (ScreenPt | null)[] => {
     const stage = stageRef.current;
@@ -378,32 +472,15 @@ export function IndoorArMeasurePanel({
     }
 
     const ref = refSpaceRef.current;
-    const sess = sessionRef.current;
+    const sess = xrManagerRef.current.getSession();
     if (!ref || !sess) return [];
     // Fallback when WebXR frame is not available (should not happen during active AR).
     return placedRef.current.map(() => null);
   }, [measureMode]);
 
-  const projectPlacedPointsFromXrFrame = useCallback(
-    (frame: XRFrame, ref: XRReferenceSpace): (ScreenPt | null)[] => {
-      const stage = stageRef.current;
-      if (!stage) return [];
-      const viewer = frame.getViewerPose(ref);
-      const view = viewer?.views[0];
-      if (!view) return placedRef.current.map(() => null);
-      const { width, height } = stage.getBoundingClientRect();
-      return placedRef.current.map(({ world }) =>
-        projectWorldToScreen(
-          world,
-          view.transform.inverse.matrix,
-          view.projectionMatrix,
-          width,
-          height,
-        ),
-      );
-    },
-    [],
-  );
+  useEffect(() => {
+    logArLifecycle('AR_OPEN');
+  }, []);
 
   useLayoutEffect(() => {
     let cancelled = false;
@@ -416,33 +493,32 @@ export function IndoorArMeasurePanel({
     }
 
     if (!initialCameraStream || !video) {
-      if (!initialCameraStream && !openError) {
-        setStatus('Waiting for camera…');
-      }
       return;
     }
 
     void (async () => {
       try {
         cameraStreamRef.current = initialCameraStream;
+        cameraOwnerRef.current = 'preview';
+        logArLifecycle('CAMERA_OWNER', 'preview (legacy parent stream)');
         await attachCameraToVideo(initialCameraStream, video);
         if (cancelled) return;
 
         initialCameraStream.getVideoTracks()[0]?.addEventListener('ended', () => {
           setCameraReady(false);
           setVideoTrackLive(false);
+          cameraOwnerRef.current = 'idle';
         });
 
         setCameraReady(true);
         setVideoTrackLive(true);
         setError(null);
-        setStatus('Camera ready. Tap Start AR to measure on detected surfaces.');
       } catch (err) {
         if (!cancelled) {
+          cameraOwnerRef.current = 'idle';
           setCameraReady(false);
           setVideoTrackLive(false);
           setError(err instanceof Error ? err.message : 'Camera preview failed to start');
-          setStatus('Camera unavailable.');
         }
       }
     })();
@@ -460,43 +536,70 @@ export function IndoorArMeasurePanel({
     [onCameraStreamChange],
   );
 
-  const restorePreviewCamera = useCallback(async () => {
-    const video = videoRef.current;
-    if (!video) return false;
-    try {
-      const stream = await openCameraStream();
-      syncCameraStream(stream);
-      await attachCameraToVideo(stream, video);
-      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+  const acquirePreviewCamera = useCallback(async (): Promise<boolean> => {
+    if (cameraOwnerRef.current === 'preview') return true;
+    if (cameraOwnerRef.current === 'webxr' || xrManagerRef.current.isActive()) return false;
+    if (previewAcquirePromiseRef.current) return previewAcquirePromiseRef.current;
+
+    const task = (async () => {
+      const video = videoRef.current;
+      if (!video) return false;
+      try {
+        logArLifecycle('CAMERA_OWNER', 'preview acquire');
+        const stream = await openCameraStream();
+        syncCameraStream(stream);
+        await attachCameraToVideo(stream, video);
+        stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+          setCameraReady(false);
+          setVideoTrackLive(false);
+          cameraOwnerRef.current = 'idle';
+        });
+        cameraOwnerRef.current = 'preview';
+        setCameraReady(true);
+        setVideoTrackLive(true);
+        setError(null);
+        return true;
+      } catch (err) {
+        cameraOwnerRef.current = 'idle';
+        setError(err instanceof Error ? err.message : 'Could not open the camera');
         setCameraReady(false);
         setVideoTrackLive(false);
-      });
-      setCameraReady(true);
-      setVideoTrackLive(true);
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not restore camera preview');
-      setCameraReady(false);
-      setVideoTrackLive(false);
-      return false;
+        return false;
+      }
+    })();
+
+    previewAcquirePromiseRef.current = task;
+    try {
+      return await task;
+    } finally {
+      previewAcquirePromiseRef.current = null;
     }
   }, [syncCameraStream]);
 
   const releasePreviewForWebXr = useCallback(async () => {
-    stopMediaStream(cameraStreamRef.current);
-    syncCameraStream(null);
+    if (cameraOwnerRef.current !== 'preview') return;
+
+    logArLifecycle('PREVIEW_RELEASE_BEGIN');
+    const previewStream = cameraStreamRef.current;
     const video = videoRef.current;
+    xrManagerRef.current.registerMediaStream(previewStream);
     if (video) {
-      video.srcObject = null;
+      xrManagerRef.current.registerVideoElement(video);
+      releaseVideoElement(video);
+    } else {
+      stopMediaStream(previewStream);
     }
+    syncCameraStream(null);
     setVideoTrackLive(false);
-    // Let Android release the camera before WebXR claims it exclusively.
-    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    setCameraReady(false);
+    await waitForMediaStreamReleased(previewStream);
+    cameraOwnerRef.current = 'idle';
+    logArLifecycle('PREVIEW_RELEASE_COMPLETE');
   }, [syncCameraStream]);
 
   const persistPoint = useCallback(
     async (point: PlacedPoint, ordinal: number) => {
-      if (!accessToken || !siteId || !mapVersionId || !point.gps) return;
+      if (!accessToken || !siteId || !mapVersionId) return;
       setPersistBusy(true);
       try {
         if (!pathIdRef.current) {
@@ -518,13 +621,7 @@ export function IndoorArMeasurePanel({
         await api.measurements.addPoint(
           pathIdRef.current,
           {
-            point: {
-              latitude: point.gps.latitude,
-              longitude: point.gps.longitude,
-              altitude: point.gps.altitude,
-              accuracy: point.gps.accuracy,
-              timestamp: Date.now(),
-            },
+            point: spatialPointPayload(point, floorId, buildingId),
             label: `Point ${ordinal}`,
           },
           accessToken,
@@ -538,6 +635,75 @@ export function IndoorArMeasurePanel({
     [accessToken, siteId, buildingId, floorId, mapVersionId, floorLevel],
   );
 
+  const placeWebXrPoint = useCallback(async (tap?: {
+    hitResult: XRHitTestResult | null;
+    frame: XRFrame | null;
+  }) => {
+    if (placingRef.current || persistBusy) return;
+
+    const hitResult = tap ? tap.hitResult : latestHitResultRef.current;
+    const frame = tap?.frame ?? latestFrameRef.current;
+    const ref = refSpaceRef.current;
+    const hitPose = tap
+      ? hitResult && ref
+        ? hitResult.getPose(ref) ?? null
+        : null
+      : latestHitPoseRef.current;
+    if (!hasPlaceableHit(hitPose, hitResult) || !frame || !ref) {
+      logArDiagnostic('NO_HIT_RESULT', 'placeWebXrPoint', 'No valid hit pose in refs');
+      arDebugger.warn('Placement', 'Placement rejected: no hit pose', {
+        platform: deviceInfoRef.current.platform,
+        hitTestSource: Boolean(hitTestSourceRef.current),
+        frame: Boolean(frame),
+      });
+      setError(
+        'No flat surface detected. Move the phone slowly over a well-lit floor or wall until the center dot turns green.',
+      );
+      return;
+    }
+
+    placingRef.current = true;
+    setError(null);
+    logArLifecycle('PLACE_BUTTON');
+
+    try {
+      const xrPoint = hitResult
+        ? await addMeasurePointFromHit(hitResult, frame, ref, null)
+        : hitPose
+          ? await addMeasurePointFromPose(hitPose, frame, ref, null, null)
+          : null;
+
+      if (!xrPoint) {
+        logArDiagnostic('PLACE_POINT_FAILED', 'placeWebXrPoint', 'addMeasurePoint returned null');
+        setError('Place points on the same surface as the first point.');
+        return;
+      }
+
+      arDebugger.info('Placement', 'World-space point created', {
+        mode: 'webxr',
+        position: xrPoint.fallbackWorld,
+        anchor: Boolean(xrPoint.xrAnchor),
+      });
+
+      const xrPoints = [...getXrAnchorPoints(), xrPoint];
+      recomputeSessionLocals(xrPoints);
+
+      const sessionLocal = xrPoint.sessionLocal ?? { x: 0, y: 0, z: 0 };
+      const entry: PlacedPoint = { world: sessionLocal, xrPoint, gps: null };
+      const next = [...placedRef.current, entry];
+      placedRef.current = next;
+      setPlaced(next);
+      syncWebXrOverlayNow(frame);
+      logArLifecycle('POINT_CREATED', `count=${next.length}`);
+      attachGpsMetadata(next.length - 1, placedRef, setPlaced, persistPoint);
+    } catch (err) {
+      logArDiagnostic('PLACE_POINT_FAILED', 'placeWebXrPoint', 'Unexpected error', err);
+      setError(err instanceof Error ? err.message : 'Could not place measurement point.');
+    } finally {
+      placingRef.current = false;
+    }
+  }, [persistBusy, persistPoint, getXrAnchorPoints, syncWebXrOverlayNow]);
+
   const placeArPoint = useCallback(async () => {
     if (measureMode === 'camera') {
       const anchor = poseTrackerRef.current.lockFloorAnchor();
@@ -546,13 +712,7 @@ export function IndoorArMeasurePanel({
         return;
       }
       setError(null);
-      let gps: GpsFix | null = null;
-      try {
-        gps = await readGpsFix();
-      } catch {
-        setError('Could not read GPS for this point. Enable location and try again.');
-        return;
-      }
+      logArLifecycle('PLACE_BUTTON');
 
       let world: LocalVec3;
       if (!sessionOriginRef.current) {
@@ -567,42 +727,20 @@ export function IndoorArMeasurePanel({
         };
       }
 
-      const entry: PlacedPoint = { world, anchor, gps };
+      const entry: PlacedPoint = { world, anchor, gps: null };
       const next = [...placedRef.current, entry];
       placedRef.current = next;
       setPlaced(next);
-      void persistPoint(entry, next.length);
+      logArLifecycle('POINT_CREATED', `count=${next.length}`);
+      attachGpsMetadata(next.length - 1, placedRef, setPlaced, persistPoint);
       requestAnimationFrame(() => {
         if (arActive) syncArOverlay(projectPlacedPoints());
       });
       return;
     }
 
-    const hit = latestHitRef.current;
-    if (!hit) {
-      setError(
-        'No flat surface detected. Move the phone slowly over a well-lit floor or wall until the center dot turns green.',
-      );
-      return;
-    }
-    setError(null);
-    let gps: GpsFix | null = null;
-    try {
-      gps = await readGpsFix();
-    } catch {
-      setError('Could not read GPS for this point. Enable location and try again.');
-      return;
-    }
-
-    const entry: PlacedPoint = { world: { ...hit }, gps };
-    const next = [...placedRef.current, entry];
-    placedRef.current = next;
-    setPlaced(next);
-    void persistPoint(entry, next.length);
-    requestAnimationFrame(() => {
-      if (arActive) syncArOverlay(projectPlacedPoints());
-    });
-  }, [arActive, measureMode, persistPoint, projectPlacedPoints, syncArOverlay]);
+    await placeWebXrPoint();
+  }, [measureMode, persistPoint, arActive, projectPlacedPoints, syncArOverlay, placeWebXrPoint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -621,11 +759,13 @@ export function IndoorArMeasurePanel({
       const mode = await detectMeasureMode();
       if (!cancelled) {
         setMeasureMode(mode);
-        setStatus(
-          mode === 'webxr'
-            ? 'Camera ready. Tap Start AR to measure on detected surfaces.'
-            : 'Camera ready. Tap Start AR to measure using the camera view (iPhone / no WebXR).',
-        );
+        logArLifecycle('AR_MODE', mode);
+        if (mode === 'webxr') {
+          setCameraReady(true);
+          setStatus('Tap Start AR to measure on detected surfaces.');
+        } else {
+          setStatus('Tap Start AR to open the camera and measure.');
+        }
       }
     })();
     return () => {
@@ -695,14 +835,8 @@ export function IndoorArMeasurePanel({
     cameraLoopRef.current = requestAnimationFrame(tick);
   }, [onDeviceMotion, onDeviceOrientation, updateCameraModeHit]);
 
-  const startCameraSession = useCallback(async () => {
-    const orientationOk = await requestDeviceOrientationAccess();
-    if (!orientationOk) {
-      throw new Error(
-        'Motion sensor permission denied. Allow motion/orientation access to place measure points.',
-      );
-    }
-    await requestDeviceMotionAccess();
+  const startCameraSession = useCallback(async (sensors?: Awaited<ReturnType<typeof requestSensorPermissions>>) => {
+    const resolvedSensors = sensors ?? (await requestSensorPermissions());
 
     sessionOriginRef.current = null;
     trackingWarningRef.current = false;
@@ -729,170 +863,278 @@ export function IndoorArMeasurePanel({
     startCameraMeasureLoop();
     updateCameraModeHit();
     setArActive(true);
-    setStatus('Aim the center dot at the floor, then tap Place.');
+    setStatus(
+      resolvedSensors.orientation
+        ? resolvedSensors.motion
+          ? 'Aim the center dot at the floor, then tap Place.'
+          : 'Motion access is limited. Keep the phone steady and tap Place on the detected surface.'
+        : 'Orientation access is limited. Keep the phone pointed at the floor and tap Place.',
+    );
   }, [startCameraMeasureLoop, updateCameraModeHit]);
+
+  const handleWebXrSessionEnded = useCallback(async () => {
+    hitTestSourceRef.current = null;
+    refSpaceRef.current = null;
+    latestHitRef.current = null;
+    latestHitResultRef.current = null;
+    latestHitPoseRef.current = null;
+    latestFrameRef.current = null;
+    webXrHitStateRef.current = createWebXrMeasureHitState();
+    placingRef.current = false;
+    cameraOwnerRef.current = 'idle';
+    setArActive(false);
+    setSurfaceDetected(false);
+    surfaceDetectedRef.current = false;
+    setProjected([]);
+    setVideoTrackLive(false);
+
+    if (explicitTeardownRef.current || isExiting) return;
+
+    await acquirePreviewCamera();
+  }, [acquirePreviewCamera, isExiting]);
 
   const startWebXrSession = useCallback(async () => {
     const canvas = canvasRef.current;
     const overlayRoot = overlayRef.current;
-    if (!canvas || !navigator.xr || !overlayRoot) {
+    if (!canvas || !overlayRoot) {
       throw new Error('WebXR is not available on this device');
     }
 
-    resizeCanvasToViewport(canvas);
-
-    const gl = canvas.getContext('webgl', {
-      xrCompatible: true,
-      alpha: true,
-      premultipliedAlpha: true,
-      antialias: false,
-      depth: true,
-      stencil: false,
-    });
-    if (!gl) throw new Error('WebGL not available');
-    glRef.current = gl;
-    await gl.makeXRCompatible();
+    if (xrManagerRef.current.isActive()) {
+      throw new Error('AR session is already active');
+    }
 
     await releasePreviewForWebXr();
 
-    const session = await requestArSession(overlayRoot);
-    sessionRef.current = session;
-    session.updateRenderState({
-      baseLayer: new XRWebGLLayer(session, gl, {
-        alpha: true,
-        antialias: false,
-        depth: true,
-        ignoreDepthValues: true,
-      }),
+    await xrManagerRef.current.start({
+      canvas,
+      overlayRoot,
+      mediaStream: null,
+      videoElement: videoRef.current,
+      onSelect: (_event, transientHit, selectFrame) => {
+        if (transientHit) {
+          latestHitResultRef.current = transientHit;
+          latestHitPoseRef.current = refSpaceRef.current
+            ? transientHit.getPose(refSpaceRef.current) ?? null
+            : null;
+          latestFrameRef.current = selectFrame ?? latestFrameRef.current;
+          latestHitRef.current = latestHitPoseRef.current
+            ? posePositionToVec3(latestHitPoseRef.current)
+            : null;
+          canPlaceRef.current = hasPlaceableHit(latestHitPoseRef.current, transientHit);
+          arDebugger.info('Placement', 'Tap-time transient hit received', {
+            hasPose: Boolean(latestHitPoseRef.current),
+          });
+        } else {
+          arDebugger.warn('Placement', 'Native select received without transient hit');
+        }
+        const { currentHitPose, currentHitResult } = webXrHitStateRef.current;
+        if (!currentHitPose && !currentHitResult && !transientHit) return;
+        void placeWebXrPoint({
+          hitResult: transientHit ?? null,
+          frame: selectFrame ?? null,
+        });
+      },
+      onHitTestUnavailable: (message) => {
+        setArcoreWarning(ARCORE_UPDATE_MESSAGE);
+        setError(message);
+      },
+      onEnded: () => {
+        void handleWebXrSessionEnded();
+      },
+      onFrame: (_time, frame, ctx) => {
+        refSpaceRef.current = ctx.refSpace;
+        hitTestSourceRef.current = ctx.hitTestSource;
+
+        const snapshot = updateWebXrHitTest(frame, ctx.hitTestSource, ctx.refSpace);
+        syncWebXrMeasureHitState(webXrHitStateRef.current, snapshot, frame);
+        latestHitRef.current = snapshot.hit;
+        latestHitResultRef.current = snapshot.hitResult;
+        latestHitPoseRef.current = snapshot.hitPose;
+        latestFrameRef.current = frame;
+        canPlaceRef.current = hasPlaceableHit(snapshot.hitPose, snapshot.hitResult);
+        if (snapshot.surfaceDetected) {
+          arDebugger.debug('WebXR', 'Persistent hit-test produced a surface', {
+            x: snapshot.hit?.x,
+            y: snapshot.hit?.y,
+            z: snapshot.hit?.z,
+          });
+        }
+
+        if (snapshot.surfaceDetected !== surfaceDetectedRef.current) {
+          surfaceDetectedRef.current = snapshot.surfaceDetected;
+          setSurfaceDetected(snapshot.surfaceDetected);
+        }
+
+        if (getXrAnchorPoints().length > 0) {
+          syncWebXrOverlayNow(frame);
+        }
+
+        if (arDebugEnabled) refreshArDiagnostics();
+      },
     });
 
-    let refSpace: XRReferenceSpace;
-    try {
-      refSpace = await session.requestReferenceSpace('local-floor');
-    } catch {
-      refSpace = await session.requestReferenceSpace('local');
-    }
-    refSpaceRef.current = refSpace;
-
-    const viewerSpace = await session.requestReferenceSpace('viewer');
-    let hitTestSource: XRHitTestSource | null = null;
-    try {
-      if (session.requestHitTestSource) {
-        hitTestSource = (await session.requestHitTestSource({ space: viewerSpace })) ?? null;
-      }
-    } catch {
-      hitTestSource = null;
-    }
-    hitTestSourceRef.current = hitTestSource;
-    if (!hitTestSource) {
-      setError('Plane detection unavailable on this device. Try moving to a better-lit area.');
-    }
-
-    session.addEventListener('end', () => {
-      hitTestSourceRef.current?.cancel();
-      hitTestSourceRef.current = null;
-      sessionRef.current = null;
-      refSpaceRef.current = null;
-      glRef.current = null;
-      latestHitRef.current = null;
-      setArActive(false);
-      setSurfaceDetected(false);
-      surfaceDetectedRef.current = false;
-      setProjected([]);
-      setVideoTrackLive(false);
-      void restorePreviewCamera();
+    cameraOwnerRef.current = 'webxr';
+    logArLifecycle('CAMERA_OWNER', 'webxr');
+    arDebugger.info('WebXR', 'AR session running', {
+      platform: deviceInfoRef.current.platform,
+      browser: deviceInfoRef.current.browser,
+      webGl: deviceInfoRef.current.webGl,
+      touch: deviceInfoRef.current.touch,
     });
-
-    const onFrame = (_time: number, frame: XRFrame) => {
-      const sess = sessionRef.current;
-      const glCtx = glRef.current;
-      if (!sess || !glCtx) return;
-      const baseLayer = sess.renderState.baseLayer;
-      if (baseLayer) {
-        glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, baseLayer.framebuffer);
-        glCtx.viewport(0, 0, baseLayer.framebufferWidth, baseLayer.framebufferHeight);
-        glCtx.clearColor(0, 0, 0, 0);
-        glCtx.clear(glCtx.COLOR_BUFFER_BIT | glCtx.DEPTH_BUFFER_BIT);
-      }
-
-      const ref = refSpaceRef.current;
-      const source = hitTestSourceRef.current;
-      let hit: LocalVec3 | null = null;
-      if (ref && source) {
-        const results = source.getHitTestResults(frame);
-        const pose = results[0]?.getPose(ref);
-        if (pose) hit = poseToVec3(pose);
-      }
-      latestHitRef.current = hit;
-      const detected = hit != null;
-      if (detected !== surfaceDetectedRef.current) {
-        surfaceDetectedRef.current = detected;
-        setSurfaceDetected(detected);
-      }
-
-      const stage = stageRef.current;
-      if (ref && stage && placedRef.current.length > 0) {
-        const screenPts = projectPlacedPointsFromXrFrame(frame, ref);
-        syncArOverlay(screenPts);
-      }
-      sess.requestAnimationFrame(onFrame);
-    };
-    session.requestAnimationFrame(onFrame);
 
     setVideoTrackLive(false);
     setArActive(true);
-    setStatus('Aim the center dot at a flat surface, then tap Place.');
-  }, [releasePreviewForWebXr, restorePreviewCamera, projectPlacedPointsFromXrFrame, syncArOverlay]);
+    setStatus('Aim at a flat surface, then tap Place or tap the screen.');
+  }, [
+    releasePreviewForWebXr,
+    handleWebXrSessionEnded,
+    syncWebXrOverlayNow,
+    placeWebXrPoint,
+    getXrAnchorPoints,
+    arDebugEnabled,
+    refreshArDiagnostics,
+  ]);
 
-  useEffect(
-    () => () => {
-      stopCameraMeasureLoop();
-      hitTestSourceRef.current?.cancel();
-      sessionRef.current?.end().catch(() => undefined);
-    },
-    [stopCameraMeasureLoop],
-  );
-
-  const stopAr = useCallback(() => {
-    stopCameraMeasureLoop();
-    hitTestSourceRef.current?.cancel();
+  const finalizeArUiAfterSessionEnd = useCallback(() => {
     hitTestSourceRef.current = null;
     latestHitRef.current = null;
-    sessionRef.current?.end().catch(() => undefined);
-    sessionRef.current = null;
     refSpaceRef.current = null;
-    glRef.current = null;
+    latestHitResultRef.current = null;
+    latestHitPoseRef.current = null;
+    latestFrameRef.current = null;
+    webXrHitStateRef.current = createWebXrMeasureHitState();
+    resetPlaneLock();
     setArActive(false);
     setSurfaceDetected(false);
     surfaceDetectedRef.current = false;
     clearArOverlay(overlayMarkersRef.current, overlaySvgRef.current, overlayPillsRef.current);
     setProjected(projectedLiveRef.current.filter((p): p is ScreenPt => p != null));
     setStatus('AR ended. Tap Start AR to measure again.');
-    if (measureMode === 'webxr') {
-      void restorePreviewCamera();
+  }, []);
+
+  useEffect(
+    () => () => {
+      logArLifecycle('CLEANUP_BEGIN', 'unmount');
+      stopCameraMeasureLoop();
+      explicitTeardownRef.current = true;
+      xrManagerRef.current.setSuppressEndedCallback(true);
+      releaseVideoElement(videoRef.current);
+      stopMediaStream(cameraStreamRef.current);
+      cameraStreamRef.current = null;
+      cameraOwnerRef.current = 'idle';
+      void xrManagerRef.current.endSession().finally(() => {
+        logArLifecycle('CLEANUP_COMPLETE', 'unmount');
+      });
+    },
+    [stopCameraMeasureLoop],
+  );
+
+  useEffect(() => {
+    if (!arDebugEnabled) return;
+    refreshArDiagnostics();
+    const id = window.setInterval(refreshArDiagnostics, 1000);
+    return () => window.clearInterval(id);
+  }, [arDebugEnabled, refreshArDiagnostics]);
+
+  const stopAr = useCallback(async () => {
+    if (isExiting) return;
+    logArLifecycle('CLEANUP_BEGIN', 'stopAr');
+    stopCameraMeasureLoop();
+    explicitTeardownRef.current = true;
+    xrManagerRef.current.setSuppressEndedCallback(true);
+    try {
+      if (measureMode === 'webxr' || xrManagerRef.current.isActive()) {
+        await xrManagerRef.current.endSession();
+        cameraOwnerRef.current = 'idle';
+        if (measureMode === 'webxr') {
+          await acquirePreviewCamera();
+        }
+      }
+    } finally {
+      explicitTeardownRef.current = false;
+      xrManagerRef.current.setSuppressEndedCallback(false);
+      finalizeArUiAfterSessionEnd();
+      logArLifecycle('CLEANUP_COMPLETE', 'stopAr');
     }
-  }, [measureMode, restorePreviewCamera, stopCameraMeasureLoop]);
+  }, [
+    isExiting,
+    measureMode,
+    acquirePreviewCamera,
+    stopCameraMeasureLoop,
+    finalizeArUiAfterSessionEnd,
+  ]);
+
+  const handleExitAR = useCallback(async () => {
+    if (isExiting) return;
+    setIsExiting(true);
+    logArLifecycle('CLEANUP_BEGIN', 'exit');
+    try {
+      stopCameraMeasureLoop();
+      explicitTeardownRef.current = true;
+      xrManagerRef.current.setSuppressEndedCallback(true);
+      if (measureMode === 'webxr' || xrManagerRef.current.isActive()) {
+        await xrManagerRef.current.endSession();
+      }
+      releaseVideoElement(videoRef.current);
+      stopMediaStream(cameraStreamRef.current);
+      syncCameraStream(null);
+      cameraOwnerRef.current = 'idle';
+      finalizeArUiAfterSessionEnd();
+    } finally {
+      explicitTeardownRef.current = false;
+      xrManagerRef.current.setSuppressEndedCallback(false);
+      setIsExiting(false);
+      logArLifecycle('CLEANUP_COMPLETE', 'exit');
+      onClose();
+    }
+  }, [
+    isExiting,
+    measureMode,
+    onClose,
+    syncCameraStream,
+    stopCameraMeasureLoop,
+    finalizeArUiAfterSessionEnd,
+  ]);
 
   const startAr = useCallback(async () => {
-    if (!cameraReady || arStarting || arActive || !measureMode) {
-      if (!cameraReady) setError('Wait for the camera preview, then tap Start AR.');
+    if (arStarting || arActive || !measureMode || isExiting) {
+      if (!measureMode) setError('Detecting AR capabilities…');
       return;
     }
 
     setArStarting(true);
     setError(null);
+    setArcoreWarning(null);
+    logArLifecycle('AR_START_BEGIN', measureMode);
 
     try {
       if (measureMode === 'webxr') {
         await startWebXrSession();
       } else {
-        await startCameraSession();
+        const sensors = await requestSensorPermissions();
+        const previewOk = await acquirePreviewCamera();
+        if (!previewOk) {
+          throw new Error('Could not open the camera. Allow camera access and try again.');
+        }
+        await startCameraSession(sensors);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start AR session');
+      const message = err instanceof Error ? err.message : 'Could not start AR session';
+      console.error('[AR Measure] Start AR failed', err);
+      logArDiagnostic('SESSION_REQUEST_FAILED', 'startAr', message, err);
+      setError(message);
+      if (message.includes('Google Play Services for AR')) {
+        setArcoreWarning(ARCORE_UPDATE_MESSAGE);
+      }
       setArActive(false);
-      if (measureMode === 'webxr') {
-        void restorePreviewCamera();
+      cameraOwnerRef.current = 'idle';
+      if (xrManagerRef.current.isActive()) {
+        explicitTeardownRef.current = true;
+        xrManagerRef.current.setSuppressEndedCallback(true);
+        await xrManagerRef.current.endSession();
+        explicitTeardownRef.current = false;
+        xrManagerRef.current.setSuppressEndedCallback(false);
       }
     } finally {
       setArStarting(false);
@@ -900,20 +1142,23 @@ export function IndoorArMeasurePanel({
   }, [
     arActive,
     arStarting,
-    cameraReady,
+    isExiting,
     measureMode,
-    restorePreviewCamera,
+    acquirePreviewCamera,
     startCameraSession,
     startWebXrSession,
   ]);
 
   const undoPoint = () => {
     if (placed.length === 0) return;
+    const removed = placed[placed.length - 1];
+    if (removed.xrPoint) deleteAnchorPoint(removed.xrPoint);
     const next = placed.slice(0, -1);
     placedRef.current = next;
     setPlaced(next);
     if (next.length === 0) {
       sessionOriginRef.current = null;
+      resetPlaneLock();
       poseTrackerRef.current.reset();
       poseTrackerRef.current.calibrate(orientationRef.current);
     }
@@ -925,6 +1170,7 @@ export function IndoorArMeasurePanel({
   };
 
   const clearPoints = () => {
+    clearAnchorPoints(getXrAnchorPoints());
     placedRef.current = [];
     setPlaced([]);
     setProjected([]);
@@ -937,13 +1183,23 @@ export function IndoorArMeasurePanel({
 
   const applyToPlan = () => {
     if (!onApplyPlanPoints || worldPoints.length < 2) return;
-    stopAr();
-    const origin = worldPoints[0];
-    onApplyPlanPoints(arSessionToFloorPlan(worldPoints, origin), {
-      source: 'camera_ar',
-      heightM: verticalSpan >= 0.5 ? Number(verticalSpan.toFixed(3)) : undefined,
-    });
-    onClose();
+    void (async () => {
+      if (measureMode === 'webxr') {
+        const saved = saveFloorPlane(getXrAnchorPoints());
+        if (!saved) return;
+        onApplyPlanPoints(saved.planPoints, {
+          source: saved.metadata.source,
+          heightM: saved.metadata.heightM,
+        });
+      } else {
+        const origin = worldPoints[0];
+        onApplyPlanPoints(arSessionToFloorPlan(worldPoints, origin), {
+          source: 'camera_ar',
+          heightM: verticalSpan >= 0.5 ? Number(verticalSpan.toFixed(3)) : undefined,
+        });
+      }
+      await handleExitAR();
+    })();
   };
 
   const overlayHandles: ScreenPt[] = projected.filter((p): p is ScreenPt => p != null);
@@ -973,21 +1229,27 @@ export function IndoorArMeasurePanel({
 
   const verticalSpan = verticalSpan3D(worldPoints);
   const canUndo = placed.length > 0;
-  const canStartAr = cameraReady && !arActive && !arStarting && measureMode != null;
+  const canStartAr = measureMode != null && !arActive && !arStarting && !isExiting;
 
   const panel = (
     <div
       className="fixed inset-0 z-[9999] text-white"
-      style={{ background: arActive && !videoTrackLive ? 'transparent' : '#000' }}
+      style={{ background: (arActive || isExiting) && !videoTrackLive ? 'transparent' : '#000' }}
     >
-      {/* WebGL context for WebXR hit-test — not used for visible DOM rendering. */}
-      <canvas ref={canvasRef} aria-hidden="true" className="fixed h-px w-px opacity-0" />
+      {/* Keep WebGL canvas mounted until endSession() completes (isExiting). */}
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        className="fixed h-px w-px opacity-0"
+        style={{ visibility: isExiting ? 'visible' : undefined }}
+      />
 
       {/*
         DOM-overlay root: during immersive-ar ONLY this subtree is visible as HTML.
         The camera video MUST live inside this element or it disappears in AR mode.
       */}
       <div
+        id="ar-overlay-root"
         ref={overlayRef}
         className="absolute inset-0 flex flex-col"
         style={{ background: 'transparent', pointerEvents: 'none' }}
@@ -1008,7 +1270,7 @@ export function IndoorArMeasurePanel({
 
         <div
           className="relative flex flex-1 flex-col"
-          style={{ zIndex: 10, background: 'transparent' }}
+          style={{ zIndex: 10, background: 'transparent', pointerEvents: 'none' }}
         >
         <div
           className="flex items-center justify-between gap-2 border-b border-white/20 px-4 py-3"
@@ -1017,16 +1279,27 @@ export function IndoorArMeasurePanel({
           <p className="text-base font-semibold sm:text-lg">AR Measure</p>
           <button
             type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20"
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 disabled:opacity-40"
+            disabled={isExiting}
             onClick={() => {
-              stopAr();
-              onClose();
+              void handleExitAR();
             }}
             aria-label="Close"
           >
             <X className="h-6 w-6" />
           </button>
         </div>
+
+        {isExiting && (
+          <div
+            className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/70"
+            aria-live="polite"
+          >
+            <p className="rounded-lg bg-black/80 px-4 py-3 text-sm font-medium text-white">
+              Releasing camera…
+            </p>
+          </div>
+        )}
 
         <div
           ref={stageRef}
@@ -1096,7 +1369,7 @@ export function IndoorArMeasurePanel({
                 </div>
               </div>
 
-              {/* Round place button */}
+              {/* Place button — dom-overlay buttons use pointer-events: auto; screen taps use WebXR select */}
               <div
                 className="absolute inset-x-0 bottom-6 flex flex-col items-center gap-2"
                 style={{ pointerEvents: 'none' }}
@@ -1107,12 +1380,14 @@ export function IndoorArMeasurePanel({
                   }`}
                 >
                   {surfaceDetected
-                    ? 'Surface found — tap Place'
-                    : 'Move slowly to detect a flat surface'}
+                    ? measureMode === 'webxr'
+                      ? 'Surface found — tap Place or tap the screen'
+                      : 'Surface found — tap Place'
+                    : 'Scan or move the phone, then tap Place'}
                 </p>
                 <button
                   type="button"
-                  disabled={!surfaceDetected || persistBusy}
+                  disabled={persistBusy || isExiting}
                   className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-black shadow-xl ring-4 ring-white/25 active:scale-95 disabled:opacity-40"
                   style={{ pointerEvents: 'auto' }}
                   onClick={() => void placeArPoint()}
@@ -1165,10 +1440,36 @@ export function IndoorArMeasurePanel({
           className="space-y-3 border-t border-white/20 p-4"
           style={{ background: 'rgba(0,0,0,0.55)', pointerEvents: 'auto' }}
         >
+          {arcoreWarning && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-950/60 p-3 text-sm text-amber-50">
+              <p className="font-semibold">ARCore update required</p>
+              <p className="mt-1">{arcoreWarning}</p>
+              <a
+                href={ARCORE_PLAY_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block font-semibold text-amber-200 underline"
+              >
+                Open Google Play Services for AR in Play Store
+              </a>
+            </div>
+          )}
+
           {error && (
             <div className="rounded-lg bg-red-900/50 p-3 text-sm text-red-100">
               <p className="font-semibold">Error</p>
               <p className="mt-1">{error}</p>
+            </div>
+          )}
+
+          {arDebugEnabled && arDiagnostics && (
+            <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/40 p-3 font-mono text-[10px] leading-relaxed text-cyan-100">
+              <p className="mb-1 font-sans text-xs font-semibold text-cyan-200">AR Diagnostics (?ar_debug=1)</p>
+              <p>Mode: {arDiagnostics.measureMode ?? '—'} · Lifecycle: {arDiagnostics.lifecycleState} · Owner: {arDiagnostics.cameraOwner}</p>
+              <p>Secure: {arDiagnostics.secureContext ? 'yes' : 'no'} · XR active: {arDiagnostics.xrSessionActive ? 'yes' : 'no'}</p>
+              <p>Hit-test: {arDiagnostics.hitTestReady ? 'ready' : 'missing'} · Valid hit: {arDiagnostics.hasValidHitPose ? 'yes' : 'no'}</p>
+              <p>Points: {arDiagnostics.anchorPointCount} · Camera tracks: {arDiagnostics.cameraTrackCount}</p>
+              {arDiagnostics.lastError && <p className="text-amber-200">Last error: {arDiagnostics.lastError}</p>}
             </div>
           )}
 
@@ -1202,7 +1503,12 @@ export function IndoorArMeasurePanel({
                 <Camera className="h-5 w-5" /> {arStarting ? 'Starting…' : 'Start AR'}
               </button>
             ) : (
-              <button type="button" className={BTN_SECONDARY} onClick={stopAr}>
+              <button
+                type="button"
+                className={BTN_SECONDARY}
+                disabled={isExiting}
+                onClick={() => void stopAr()}
+              >
                 Stop AR
               </button>
             )}
