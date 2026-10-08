@@ -645,6 +645,17 @@ export interface LocalVec3 {
   z: number;
 }
 
+export type {
+  CameraFrame,
+  DistanceMeasurement,
+  Matrix4x4,
+  Quaternion,
+  RaycastTargetType,
+  SpatialPoint,
+  TrackingState,
+  Vector3D,
+} from './types/spatialTypes';
+
 export interface IndoorMap {
   id: string;
   buildingId: string;

@@ -353,23 +353,43 @@ export function ArPage() {
     [targetBearing, route?.path, stepIndex, nextStep, distToNextMeters],
   );
 
-  const rawArrowRel =
-    compassHeading != null ? relativeBearingDeg(targetBearing, compassHeading) : null;
-  const rawDollYaw =
-    compassHeading != null ? relativeBearingDeg(guideBearing, compassHeading) : 0;
+ const rawArrowRel =
+  compassHeading != null
+    ? relativeBearingDeg(
+        targetBearing,
+        compassHeading,
+      )
+    : null;
 
-  useEffect(() => {
-    if (rawArrowRel == null) return;
-    setArrowRotation((prev) => dampRelativeBearing(prev, rawArrowRel, ARROW_DAMP_DEG));
-  }, [rawArrowRel]);
+const rawDollYaw =
+  compassHeading != null
+    ? relativeBearingDeg(
+        targetBearing,
+        compassHeading,
+      )
+    : targetBearing;
 
-  useEffect(() => {
-    if (compassHeading == null) {
-      setDollYawDeg(0);
-      return;
-    }
-    setDollYawDeg((prev) => dampRelativeBearing(prev, rawDollYaw, DOLL_YAW_DAMP_DEG));
-  }, [rawDollYaw, compassHeading]);
+useEffect(() => {
+  if (rawArrowRel == null) return;
+
+  setArrowRotation((prev) =>
+    dampRelativeBearing(
+      prev,
+      rawArrowRel,
+      ARROW_DAMP_DEG,
+    ),
+  );
+}, [rawArrowRel]);
+
+useEffect(() => {
+  setDollYawDeg((prev) =>
+    dampRelativeBearing(
+      prev,
+      rawDollYaw,
+      DOLL_YAW_DAMP_DEG,
+    ),
+  );
+}, [rawDollYaw]);
 
   const turnClass =
     rawArrowRel != null ? classifyTurn(rawArrowRel) : null;
@@ -688,7 +708,7 @@ export function ArPage() {
                 ? 'idle'
                 : poseAnim
           }
-          pathYawDeg={compassHeading != null ? dollYawDeg : 0}
+          pathYawDeg={dollYawDeg}
           className="pointer-events-none absolute bottom-36 left-1/2 z-10 h-72 w-52 -translate-x-1/2 sm:bottom-40 sm:h-[22rem] sm:w-64"
         />
 
