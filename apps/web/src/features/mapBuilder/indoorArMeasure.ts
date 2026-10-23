@@ -319,6 +319,91 @@ export function floorElevationM(level: number, floorHeightM: number): number {
 
 export type MeasureMode = 'webxr' | 'camera';
 
+/** Latest hit-test raycast state updated each WebXR frame. */
+export type WebXrHitSnapshot = {
+  hit: LocalVec3 | null;
+  hitResult: XRHitTestResult | null;
+  hitPose: XRPose | null;
+  surfaceDetected: boolean;
+};
+
+/** Extract Y-up world position (meters) from an XR hit pose. */
+export function posePositionToVec3(pose: XRPose): LocalVec3 {
+  const p = pose.transform.position;
+  return { x: p.x, y: p.y, z: p.z };
+}
+
+/**
+ * Run hit-test each WebXR frame against detected planes.
+ * Uses viewer-space hit source and resolves poses in the session reference space.
+ */
+export function updateWebXrHitTest(
+  frame: XRFrame,
+  hitTestSource: XRHitTestSource | null,
+  referenceSpace: XRReferenceSpace,
+): WebXrHitSnapshot {
+  if (!hitTestSource || !frame.getHitTestResults) {
+    return { hit: null, hitResult: null, hitPose: null, surfaceDetected: false };
+  }
+
+  const results = frame.getHitTestResults(hitTestSource);
+  const hitResult = results[0] ?? null;
+  const hitPose = hitResult?.getPose(referenceSpace) ?? null;
+  const hit = hitPose ? posePositionToVec3(hitPose) : null;
+
+  return {
+    hit,
+    hitResult,
+    hitPose,
+    surfaceDetected: hit != null,
+  };
+}
+
+/** Mutable hit state updated each XR frame — read by the select placement handler. */
+export type WebXrMeasureHitState = {
+  currentHitPose: XRPose | null;
+  currentHitResult: XRHitTestResult | null;
+  currentFrame: XRFrame | null;
+};
+
+export function createWebXrMeasureHitState(): WebXrMeasureHitState {
+  return {
+    currentHitPose: null,
+    currentHitResult: null,
+    currentFrame: null,
+  };
+}
+
+/** Sync frame hit-test snapshot into shared measure state. */
+export function syncWebXrMeasureHitState(
+  state: WebXrMeasureHitState,
+  snapshot: WebXrHitSnapshot,
+  frame: XRFrame,
+): void {
+  state.currentHitPose = snapshot.hitPose;
+  state.currentHitResult = snapshot.hitResult;
+  state.currentFrame = frame;
+}
+
+/**
+ * Bind native WebXR `select` (screen tap) for point placement on Android.
+ * DOM onClick does not fire for passthrough taps — this is required.
+ * Returns a detach function.
+ */
+export function attachWebXrSelectPlacement(
+  session: XRSession,
+  getHitState: () => WebXrMeasureHitState,
+  onSelect: (event: XRInputSourceEvent) => void,
+): () => void {
+  const handler = (event: XRInputSourceEvent) => {
+    const { currentHitPose, currentHitResult } = getHitState();
+    if (!currentHitPose && !currentHitResult) return;
+    onSelect(event);
+  };
+  session.addEventListener('select', handler);
+  return () => session.removeEventListener('select', handler);
+}
+
 /** WebXR immersive-ar when available; otherwise camera + device-orientation fallback (iOS). */
 export async function detectMeasureMode(): Promise<MeasureMode> {
   if (!window.isSecureContext || !navigator.xr?.isSessionSupported) return 'camera';
@@ -326,8 +411,95 @@ export async function detectMeasureMode(): Promise<MeasureMode> {
   return ok ? 'webxr' : 'camera';
 }
 
+export type SensorPermissionResult = {
+  orientation: boolean;
+  motion: boolean;
+};
+
+/** Who owns the device camera at a given moment. */
+export type CameraOwner = 'idle' | 'preview' | 'webxr';
+
+/** Optional GPS metadata — never blocks placement (short timeout, soft failure). */
+export type GpsFix = {
+  latitude: number;
+  longitude: number;
+  altitude?: number;
+  accuracy?: number;
+};
+
+export function tryReadGpsFix(timeoutMs = 3000): Promise<GpsFix | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        resolve({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          altitude: pos.coords.altitude ?? undefined,
+          accuracy: pos.coords.accuracy,
+        }),
+      () => resolve(null),
+      { enableHighAccuracy: false, timeout: timeoutMs, maximumAge: 60_000 },
+    );
+  });
+}
+
+/** Poll until MediaStream video tracks report ended (deterministic HAL release). */
+export async function waitForMediaStreamReleased(
+  stream: MediaStream | null | undefined,
+  maxMs = 2000,
+): Promise<void> {
+  if (!stream) return;
+  const tracks = stream.getVideoTracks();
+  if (tracks.length === 0) return;
+
+  const deadline = performance.now() + maxMs;
+  while (performance.now() < deadline) {
+    if (tracks.every((t) => t.readyState === 'ended')) return;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+}
+
 export function stopMediaStream(stream: MediaStream | null | undefined): void {
-  stream?.getTracks().forEach((t) => t.stop());
+  stream?.getTracks().forEach((t) => {
+    try {
+      t.stop();
+      t.enabled = false;
+    } catch {
+      // ignore per-track failures
+    }
+  });
+}
+
+/** Fully release a video element and its MediaStream (required on Android HAL). */
+export function releaseVideoElement(video: HTMLVideoElement | null | undefined): void {
+  if (!video) return;
+  try {
+    video.pause();
+  } catch {
+    // ignore
+  }
+  const stream = video.srcObject;
+  if (stream instanceof MediaStream) {
+    stopMediaStream(stream);
+  }
+  video.srcObject = null;
+  try {
+    video.load();
+  } catch {
+    // ignore
+  }
+}
+
+/** Whether a valid hit-test pose exists for placement (read from refs, not React state). */
+export function hasPlaceableHit(
+  hitPose: XRPose | null | undefined,
+  hitResult: XRHitTestResult | null | undefined,
+): boolean {
+  return hitPose != null || hitResult != null;
 }
 
 export const CAMERA_EYE_Y = 1.45;
@@ -700,4 +872,13 @@ export async function requestDeviceMotionAccess(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Request iOS sensor permissions from the same user gesture as camera startup. */
+export async function requestSensorPermissions(): Promise<SensorPermissionResult> {
+  const [orientation, motion] = await Promise.all([
+    requestDeviceOrientationAccess(),
+    requestDeviceMotionAccess(),
+  ]);
+  return { orientation, motion };
 }

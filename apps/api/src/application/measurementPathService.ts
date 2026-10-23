@@ -9,6 +9,12 @@ import type {
 } from '../infrastructure/repositories/measurementPathRepository';
 import { siteRepository } from '../infrastructure/repositories/siteRepository';
 import { mapVersionRepository } from '../infrastructure/repositories/mapVersionRepository';
+import type {
+  Matrix4x4,
+  RaycastTargetType,
+  TrackingState,
+  Vector3D,
+} from '@campusar/shared';
 
 export interface MeasurementPathWithDetails extends MeasurementPath {
   points: MeasurementPoint[];
@@ -20,6 +26,22 @@ export interface GpsPoint {
   longitude: number;
   altitude?: number;
   accuracy?: number;
+  timestamp?: number;
+}
+
+export interface SpatialMeasurementPointInput {
+  worldPosition: Vector3D;
+  worldTransform?: Matrix4x4;
+  raycastTarget?: { type: RaycastTargetType; confidence: number };
+  trackingQuality?: {
+    state: TrackingState;
+    featureDensity: number;
+    depthAvailable: boolean;
+    cameraMotionSmoothed: boolean;
+  };
+  estimatedAccuracy?: number;
+  revisitCount?: number;
+  gps?: GpsPoint;
   timestamp?: number;
 }
 
@@ -141,7 +163,11 @@ export const measurementPathService = {
   /**
    * Add a single GPS point to a path
    */
-  async addPoint(pathId: string, point: GpsPoint, label?: string): Promise<MeasurementPoint> {
+  async addPoint(
+    pathId: string,
+    point: GpsPoint | SpatialMeasurementPointInput,
+    label?: string,
+  ): Promise<MeasurementPoint> {
     const path = await measurementPathRepository.getPathById(pathId);
     if (!path) {
       throw new AppError('PATH_NOT_FOUND', 'Measurement path not found', 404);
@@ -159,17 +185,28 @@ export const measurementPathService = {
     const existingPoints = await measurementPathRepository.getPointsByPathId(pathId);
     const ordinal = existingPoints.length + 1;
 
+    const spatial = 'worldPosition' in point ? point : null;
+    const gps: GpsPoint | undefined = spatial ? spatial.gps : 'latitude' in point ? point : undefined;
+    const timestamp = spatial?.timestamp ?? gps?.timestamp;
     const pointInput: CreatePointInput = {
       pathId,
       ordinal,
-      latitude: point.latitude,
-      longitude: point.longitude,
-      altitude: point.altitude,
-      accuracyM: point.accuracy,
+      latitude: gps?.latitude ?? null,
+      longitude: gps?.longitude ?? null,
+      altitude: gps?.altitude ?? null,
+      accuracyM: gps?.accuracy ?? null,
       label,
       floorLevel: path.floorId ? 0 : null, // Default floor level if on a floor
-      recordedAt: point.timestamp ? new Date(point.timestamp) : new Date(),
-      metadata: {},
+      recordedAt: timestamp ? new Date(timestamp) : new Date(),
+      metadata: spatial ? { source: 'world_space_mm' } : {},
+      worldPosition: spatial?.worldPosition ?? null,
+      worldTransform: spatial?.worldTransform ?? null,
+      raycastTarget: spatial?.raycastTarget ?? null,
+      trackingState: spatial?.trackingQuality?.state ?? null,
+      featureDensity: spatial?.trackingQuality?.featureDensity ?? null,
+      depthAvailable: spatial?.trackingQuality?.depthAvailable ?? null,
+      estimatedAccuracyMM: spatial?.estimatedAccuracy ?? null,
+      revisitCount: spatial?.revisitCount ?? 0,
     };
 
     return measurementPathRepository.createPoint(pointInput);
@@ -319,6 +356,8 @@ export const measurementPathService = {
 
     const points = pathDetails.points;
     const edges = pathDetails.edges;
+    const firstGpsPoint = points.find((point) => point.latitude != null && point.longitude != null);
+    const lastGpsPoint = [...points].reverse().find((point) => point.latitude != null && point.longitude != null);
 
     const totalLengthM = edges.reduce((sum, edge) => sum + edge.lengthM, 0);
     const accuracies = points.filter((p) => p.accuracyM !== null).map((p) => p.accuracyM!);
@@ -329,11 +368,12 @@ export const measurementPathService = {
       pointCount: points.length,
       totalLengthM,
       averageAccuracyM,
-      startPoint: points.length > 0 ? { latitude: points[0].latitude, longitude: points[0].longitude } : null,
-      endPoint:
-        points.length > 0
-          ? { latitude: points[points.length - 1].latitude, longitude: points[points.length - 1].longitude }
-          : null,
+      startPoint: firstGpsPoint
+        ? { latitude: firstGpsPoint.latitude!, longitude: firstGpsPoint.longitude! }
+        : null,
+      endPoint: lastGpsPoint
+        ? { latitude: lastGpsPoint.latitude!, longitude: lastGpsPoint.longitude! }
+        : null,
     };
   },
 };

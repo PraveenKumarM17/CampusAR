@@ -1,6 +1,5 @@
-/**
- * Measurement Path & Point types for GPS-based admin measurements
- */
+/** Measurement path and point types for indoor/outdoor admin measurements. */
+import type { Matrix4x4, SpatialPoint, TrackingState, Vector3D } from './spatialTypes';
 
 export type MeasurementPathType = 'indoor' | 'outdoor' | 'mixed';
 export type MeasurementPathStatus = 'draft' | 'active' | 'archived';
@@ -27,8 +26,8 @@ export interface MeasurementPoint {
   id: string;
   pathId: string;
   ordinal: number;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   altitude: number | null;
   floorLevel: number | null;
   accuracyM: number | null;
@@ -39,6 +38,15 @@ export interface MeasurementPoint {
   snappedY: number | null;
   snappedZ: number | null;
   snappedToNodeId: string | null;
+  /** Canonical AR position in millimeters relative to the session origin. */
+  worldPosition: Vector3D | null;
+  worldTransform: Matrix4x4 | null;
+  raycastTarget: SpatialPoint['raycastTarget'] | null;
+  trackingState: TrackingState | null;
+  featureDensity: number | null;
+  depthAvailable: boolean | null;
+  estimatedAccuracyMM: number | null;
+  revisitCount: number;
 }
 
 export interface MeasurementEdge {
@@ -63,6 +71,11 @@ export interface GpsPoint {
   longitude: number;
   altitude?: number;
   accuracy?: number;
+  timestamp?: number;
+}
+
+export interface SpatialMeasurementPoint extends SpatialPoint {
+  gps?: GpsPoint;
   timestamp?: number;
 }
 

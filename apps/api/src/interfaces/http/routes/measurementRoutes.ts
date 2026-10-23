@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { measurementPathService } from '../../../application/measurementPathService';
-import type { GpsPoint } from '../../../application/measurementPathService';
+import type { GpsPoint, SpatialMeasurementPointInput } from '../../../application/measurementPathService';
 import { requireAuth, type AuthedRequest } from '../middleware/auth';
 import { requireMapEditor } from '../middleware/mapEditorAuth';
 import { AppError } from '../../../domain/errors';
@@ -40,8 +40,35 @@ const gpsPointSchema = z.object({
   timestamp: z.number().positive().optional(),
 });
 
+const spatialPointSchema = z.object({
+  worldPosition: z.object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    z: z.number().finite(),
+  }),
+  worldTransform: z.array(z.number().finite()).length(16).optional(),
+  raycastTarget: z
+    .object({
+      type: z.enum(['plane', 'feature', 'depth', 'manual']),
+      confidence: z.number().min(0).max(1),
+    })
+    .optional(),
+  trackingQuality: z
+    .object({
+      state: z.enum(['notAvailable', 'limited', 'normal']),
+      featureDensity: z.number().min(0).max(1),
+      depthAvailable: z.boolean(),
+      cameraMotionSmoothed: z.boolean(),
+    })
+    .optional(),
+  estimatedAccuracy: z.number().nonnegative().optional(),
+  revisitCount: z.number().int().nonnegative().optional(),
+  gps: gpsPointSchema.optional(),
+  timestamp: z.number().positive().optional(),
+});
+
 const addPointSchema = z.object({
-  point: gpsPointSchema,
+  point: z.union([gpsPointSchema, spatialPointSchema]),
   label: z.string().max(120).optional(),
 });
 
@@ -164,7 +191,11 @@ router.post(
     try {
       const pathId = String(req.params.pathId);
       const body = addPointSchema.parse(req.body);
-      const newPoint = await measurementPathService.addPoint(pathId, body.point as GpsPoint, body.label);
+      const newPoint = await measurementPathService.addPoint(
+        pathId,
+        body.point as GpsPoint | SpatialMeasurementPointInput,
+        body.label,
+      );
       res.status(201).json(newPoint);
     } catch (error) {
       next(error);
