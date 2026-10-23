@@ -541,7 +541,7 @@ function lerp(a: number, b: number, t: number): number {
 
 /** Shortest-path interpolation for compass degrees. */
 export function lerpAngleDeg(a: number, b: number, t: number): number {
-  let delta = ((b - a + 540) % 360) - 180;
+  const delta = ((b - a + 540) % 360) - 180;
   return a + delta * t;
 }
 
@@ -612,9 +612,9 @@ function cameraBasisFromOrientation(alpha: number, beta: number, gamma: number) 
   rx /= rlen;
   ry /= rlen;
   rz /= rlen;
-  let ux = ry * forward.z - rz * forward.y;
-  let uy = rz * forward.x - rx * forward.z;
-  let uz = rx * forward.y - ry * forward.x;
+  const ux = ry * forward.z - rz * forward.y;
+  const uy = rz * forward.x - rx * forward.z;
+  const uz = rx * forward.y - ry * forward.x;
   const ulen = Math.hypot(ux, uy, uz) || 1;
   return {
     forward: {

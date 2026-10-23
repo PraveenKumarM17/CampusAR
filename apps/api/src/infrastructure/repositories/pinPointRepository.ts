@@ -1,4 +1,4 @@
-import { MongoClient, type Collection, type Filter } from 'mongodb';
+import { MongoClient, type Collection } from 'mongodb';
 import { AppError } from '../../domain/errors';
 import { env } from '../config/env';
 import { query } from '../db/pool';
@@ -59,8 +59,7 @@ async function collection(): Promise<Collection<PinPointDoc>> {
 }
 
 async function upsert(record: PinPointRecord, col: Collection<PinPointDoc>) {
-  const filter = { _id: record.id } as Filter<PinPointDoc>;
-  await col.updateOne(filter, { $set: toPinPointDoc(record) }, { upsert: true });
+  await col.updateOne({ _id: record.id }, { $set: toPinPointDoc(record) }, { upsert: true });
 }
 
 export const pinPointRepository = {

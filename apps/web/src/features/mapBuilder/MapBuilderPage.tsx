@@ -1037,6 +1037,8 @@ function MapLibreCanvas({
       map.remove();
       mapRef.current = null;
     };
+    // The map instance is rebuilt only when the center changes; data sources are synced by later effects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center]);
 
   useEffect(() => {
@@ -2876,6 +2878,11 @@ export function MapBuilderPage() {
     }
   };
 
+  const deleteSelectedRef = useRef(deleteSelected);
+  deleteSelectedRef.current = deleteSelected;
+  const handleBulkDeleteRef = useRef(handleBulkDelete);
+  handleBulkDeleteRef.current = handleBulkDelete;
+
   // Leaflet path: unchanged Delete/Backspace-to-delete-selection shortcut.
   useEffect(() => {
     if (MAP_ENGINE === 'maplibre') return;
@@ -2885,11 +2892,11 @@ export function MapBuilderPage() {
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
       if (!selection) return;
       event.preventDefault();
-      void deleteSelected();
+      void deleteSelectedRef.current();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selection, deleteSelected]);
+  }, [selection]);
 
   // MapLibre outdoor editor: full Phase 4 shortcut set (tool switching, undo/redo,
   // command palette, shortcuts help, delete, escape-to-cancel).
@@ -2938,10 +2945,10 @@ export function MapBuilderPage() {
       if (event.key === 'Delete' || event.key === 'Backspace') {
         if (multiSelection.length >= 2) {
           event.preventDefault();
-          void handleBulkDelete();
+          void handleBulkDeleteRef.current();
         } else if (selection && 'id' in selection) {
           event.preventDefault();
-          void deleteSelected();
+          void deleteSelectedRef.current();
         }
         return;
       }
@@ -2962,7 +2969,7 @@ export function MapBuilderPage() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selection, multiSelection, deleteSelected, handleBulkDelete]);
+  }, [selection, multiSelection]);
 
   const paletteActions = useMemo<PaletteAction[]>(
     () => [

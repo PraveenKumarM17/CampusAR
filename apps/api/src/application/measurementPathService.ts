@@ -1,3 +1,4 @@
+import type { Feature, FeatureCollection } from 'geojson';
 import { AppError } from '../domain/errors';
 import { measurementPathRepository } from '../infrastructure/repositories/measurementPathRepository';
 import type {
@@ -288,7 +289,7 @@ export const measurementPathService = {
   /**
    * Snap points to nearest indoor nodes
    */
-  async snapPointsToIndoorGraph(pathId: string, snapRadiusM: number = 2.0): Promise<void> {
+  async snapPointsToIndoorGraph(pathId: string, _snapRadiusM: number = 2.0): Promise<void> {
     // TODO: Implement snapping logic to indoor nodes
     // This will be implemented when integrating with the indoor graph
     throw new AppError('NOT_IMPLEMENTED', 'Snapping not yet implemented', 501);
@@ -297,13 +298,13 @@ export const measurementPathService = {
   /**
    * Export path as GeoJSON
    */
-  async exportPathAsGeoJson(pathId: string): Promise<any> {
+  async exportPathAsGeoJson(pathId: string): Promise<FeatureCollection> {
     const pathDetails = await this.getPathWithDetails(pathId);
     if (!pathDetails) {
       throw new AppError('PATH_NOT_FOUND', 'Measurement path not found', 404);
     }
 
-    const features: any[] = pathDetails.points.map((point) => ({
+    const features: Feature[] = pathDetails.points.map((point): Feature => ({
       type: 'Feature',
       geometry: {
         type: 'Point',

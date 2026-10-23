@@ -1,5 +1,5 @@
+import type { QueryResultRow } from 'pg';
 import { pool } from '../db/pool';
-import type { QueryResult } from 'pg';
 import type {
   Matrix4x4,
   RaycastTargetType,
@@ -97,7 +97,7 @@ export interface CreatePointInput {
   revisitCount?: number;
 }
 
-function rowToPath(row: any): MeasurementPath {
+function rowToPath(row: QueryResultRow): MeasurementPath {
   return {
     id: row.id,
     siteId: row.site_id,
@@ -117,7 +117,7 @@ function rowToPath(row: any): MeasurementPath {
   };
 }
 
-function rowToPoint(row: any): MeasurementPoint {
+function rowToPoint(row: QueryResultRow): MeasurementPoint {
   return {
     id: row.id,
     pathId: row.path_id,
@@ -149,7 +149,7 @@ function rowToPoint(row: any): MeasurementPoint {
   };
 }
 
-function rowToEdge(row: any): MeasurementEdge {
+function rowToEdge(row: QueryResultRow): MeasurementEdge {
   return {
     id: row.id,
     pathId: row.path_id,
@@ -166,7 +166,7 @@ function rowToEdge(row: any): MeasurementEdge {
 export const measurementPathRepository = {
   // Paths
   async createPath(input: CreatePathInput): Promise<MeasurementPath> {
-    const result = await pool.query<any>(
+    const result = await pool.query(
       `INSERT INTO measurement_paths (
         site_id, building_id, floor_id, map_version_id, name, description,
         path_type, status, created_by, metadata
@@ -189,10 +189,9 @@ export const measurementPathRepository = {
   },
 
   async getPathById(id: string): Promise<MeasurementPath | null> {
-    const result = await pool.query<any>(
-      `SELECT * FROM measurement_paths_with_geometry WHERE id = $1`,
-      [id]
-    );
+    const result = await pool.query(`SELECT * FROM measurement_paths_with_geometry WHERE id = $1`, [
+      id,
+    ]);
     return result.rows[0] ? rowToPath(result.rows[0]) : null;
   },
 
@@ -204,7 +203,7 @@ export const measurementPathRepository = {
     mapVersionId?: string;
   }): Promise<MeasurementPath[]> {
     const conditions: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 1;
 
     if (filters.siteId) {
@@ -229,7 +228,7 @@ export const measurementPathRepository = {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const result = await pool.query<any>(
+    const result = await pool.query(
       `SELECT * FROM measurement_paths_with_geometry ${whereClause} ORDER BY created_at DESC`,
       values
     );
@@ -238,7 +237,7 @@ export const measurementPathRepository = {
 
   async updatePath(id: string, updates: Partial<CreatePathInput>): Promise<MeasurementPath | null> {
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 1;
 
     if (updates.name !== undefined) {
@@ -269,7 +268,7 @@ export const measurementPathRepository = {
     fields.push(`updated_at = NOW()`);
     values.push(id);
 
-    const result = await pool.query<any>(
+    const result = await pool.query(
       `UPDATE measurement_paths SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
       values
     );
@@ -283,7 +282,7 @@ export const measurementPathRepository = {
 
   // Points
   async createPoint(input: CreatePointInput): Promise<MeasurementPoint> {
-    const result = await pool.query<any>(
+    const result = await pool.query(
       `INSERT INTO measurement_points (
         path_id, ordinal, latitude, longitude, altitude, floor_level,
         accuracy_m, label, recorded_at, metadata,
@@ -319,7 +318,7 @@ export const measurementPathRepository = {
   },
 
   async getPointsByPathId(pathId: string): Promise<MeasurementPoint[]> {
-    const result = await pool.query<any>(
+    const result = await pool.query(
       `SELECT * FROM measurement_points WHERE path_id = $1 ORDER BY ordinal`,
       [pathId]
     );
@@ -328,7 +327,7 @@ export const measurementPathRepository = {
 
   async updatePoint(id: string, updates: Partial<CreatePointInput>): Promise<MeasurementPoint | null> {
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 1;
 
     if (updates.ordinal !== undefined) {
@@ -357,12 +356,12 @@ export const measurementPathRepository = {
     }
 
     if (fields.length === 0) {
-      const result = await pool.query<any>(`SELECT * FROM measurement_points WHERE id = $1`, [id]);
+      const result = await pool.query(`SELECT * FROM measurement_points WHERE id = $1`, [id]);
       return result.rows[0] ? rowToPoint(result.rows[0]) : null;
     }
 
     values.push(id);
-    const result = await pool.query<any>(
+    const result = await pool.query(
       `UPDATE measurement_points SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
       values
     );
@@ -377,7 +376,7 @@ export const measurementPathRepository = {
   async bulkCreatePoints(points: CreatePointInput[]): Promise<MeasurementPoint[]> {
     if (points.length === 0) return [];
 
-    const values: any[] = [];
+    const values: unknown[] = [];
     const placeholders: string[] = [];
     let paramCount = 1;
 
@@ -402,7 +401,7 @@ export const measurementPathRepository = {
 
     paramCount += points.length * 10;
 
-    const result = await pool.query<any>(
+    const result = await pool.query(
       `INSERT INTO measurement_points (
         path_id, ordinal, latitude, longitude, altitude, floor_level,
         accuracy_m, label, recorded_at, metadata
@@ -415,7 +414,7 @@ export const measurementPathRepository = {
 
   // Edges
   async getEdgesByPathId(pathId: string): Promise<MeasurementEdge[]> {
-    const result = await pool.query<any>(
+    const result = await pool.query(
       `SELECT * FROM measurement_edges WHERE path_id = $1 ORDER BY ordinal`,
       [pathId]
     );
