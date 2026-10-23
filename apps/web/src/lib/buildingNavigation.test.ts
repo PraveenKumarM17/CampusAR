@@ -25,7 +25,9 @@ const itBlock: IndoorBuildingContext = {
     indoorNodeId: '44444444-4444-4444-8444-444444444444',
     name: 'IT Block Main Entrance',
   },
-  floors: [{ id: 'f3', buildingId: '11111111-1111-4111-8111-111111111111', level: 3, name: 'Floor 3' }],
+  floors: [
+    { id: 'f3', buildingId: '11111111-1111-4111-8111-111111111111', level: 3, name: 'Floor 3' },
+  ],
   placeCount: 2,
   quickPlaces: [],
   anchors: [],
@@ -154,8 +156,12 @@ describe('indoor place search scope', () => {
 
 describe('QR and indoor session', () => {
   it('accepts a marker from the selected building and rejects another building', () => {
-    expect(placeBelongsToBuilding({ buildingId: itBlock.building.id }, itBlock.building.id)).toBe(true);
-    expect(placeBelongsToBuilding({ buildingId: ecePlace.buildingId }, itBlock.building.id)).toBe(false);
+    expect(placeBelongsToBuilding({ buildingId: itBlock.building.id }, itBlock.building.id)).toBe(
+      true,
+    );
+    expect(placeBelongsToBuilding({ buildingId: ecePlace.buildingId }, itBlock.building.id)).toBe(
+      false,
+    );
   });
 
   it('restores valid building/destination ids from the indoor URL', () => {

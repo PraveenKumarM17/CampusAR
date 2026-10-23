@@ -15,7 +15,15 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import type { LeafletEvent } from 'leaflet';
-import { GitCommitHorizontal, LocateFixed, MapPin, Route, Scissors, Trash2, Waypoints } from 'lucide-react';
+import {
+  GitCommitHorizontal,
+  LocateFixed,
+  MapPin,
+  Route,
+  Scissors,
+  Trash2,
+  Waypoints,
+} from 'lucide-react';
 import type { GraphEdge, GraphNode } from '@campusar/shared';
 import { ApiError } from '../../lib/api';
 import { adminApi as api } from '../../lib/adminApi';
@@ -147,15 +155,7 @@ function pinIcon(selected: boolean, pathEndpoint: boolean) {
   });
 }
 
-function FollowLiveLocation({
-  lat,
-  lon,
-  enabled,
-}: {
-  lat: number;
-  lon: number;
-  enabled: boolean;
-}) {
+function FollowLiveLocation({ lat, lon, enabled }: { lat: number; lon: number; enabled: boolean }) {
   const map = useMap();
   useEffect(() => {
     if (!enabled) return;
@@ -246,14 +246,9 @@ function DraggablePin({
         },
       }}
     >
-    <Tooltip
-  direction="top"
-  offset={[0, -18]}
-  opacity={0.95}
-  className="admin-map-tooltip"
->
-  {node.name ?? 'pin'}
-</Tooltip>
+      <Tooltip direction="top" offset={[0, -18]} opacity={0.95} className="admin-map-tooltip">
+        {node.name ?? 'pin'}
+      </Tooltip>
     </Marker>
   );
 }
@@ -366,9 +361,7 @@ export function AdminMapEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, activeSiteId]);
 
-  const mapCenter: [number, number] = pose
-    ? [pose.latitude, pose.longitude]
-    : siteCenter;
+  const mapCenter: [number, number] = pose ? [pose.latitude, pose.longitude] : siteCenter;
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
@@ -427,7 +420,12 @@ export function AdminMapEditor() {
     setDrawFromId(null);
     setSketch(null);
     setRemoveRouteFromId(null);
-    if (next === 'draw' || next === 'add-bend' || next === 'break-segment' || next === 'break-route') {
+    if (
+      next === 'draw' ||
+      next === 'add-bend' ||
+      next === 'break-segment' ||
+      next === 'break-route'
+    ) {
       setDraftPos(null);
       setEditingId(null);
       setSelectedBendId(null);
@@ -439,9 +437,7 @@ export function AdminMapEditor() {
     if (!token) return;
     setBusy(true);
     try {
-      const autoName =
-        preferredName?.trim() ||
-        `Pin ${placePins.length + 1}`;
+      const autoName = preferredName?.trim() || `Pin ${placePins.length + 1}`;
       const created = await api.adminNodes.create(
         {
           name: autoName,
@@ -523,11 +519,7 @@ export function AdminMapEditor() {
           const displayName = details.notes.trim()
             ? `${details.name.trim()} — ${details.notes.trim()}`
             : details.name.trim();
-          await api.adminNodes.update(
-            editingId,
-            { name: displayName, kind: details.kind },
-            token,
-          );
+          await api.adminNodes.update(editingId, { name: displayName, kind: details.kind }, token);
           if (pinSaveGenRef.current !== gen) return;
           setPinAutosave('saved');
         } catch (err) {
@@ -669,8 +661,7 @@ export function AdminMapEditor() {
     const distanceM = Math.max(
       1,
       Math.round(
-        haversineMeters(fromPos.latitude, fromPos.longitude, toPos.latitude, toPos.longitude) *
-          10,
+        haversineMeters(fromPos.latitude, fromPos.longitude, toPos.latitude, toPos.longitude) * 10,
       ) / 10,
     );
     return api.adminEdges.create(
@@ -783,7 +774,12 @@ export function AdminMapEditor() {
     }
   }
 
-  async function relinkDistancesForNode(nodeId: string, lat: number, lon: number, all: GraphNode[]) {
+  async function relinkDistancesForNode(
+    nodeId: string,
+    lat: number,
+    lon: number,
+    all: GraphNode[],
+  ) {
     if (!token) return;
     const related = edges.filter((e) => e.fromNodeId === nodeId || e.toNodeId === nodeId);
     await Promise.all(
@@ -933,7 +929,11 @@ export function AdminMapEditor() {
       prev.map((n) => (n.id === node.id ? { ...n, latitude: lat, longitude: lon } : n)),
     );
     try {
-      const updated = await api.adminNodes.update(node.id, { latitude: lat, longitude: lon }, token);
+      const updated = await api.adminNodes.update(
+        node.id,
+        { latitude: lat, longitude: lon },
+        token,
+      );
       const nextNodes = nodes.map((n) => (n.id === node.id ? updated : n));
       await relinkDistancesForNode(node.id, lat, lon, [
         ...nextNodes.filter((n) => n.id !== node.id),
@@ -953,9 +953,7 @@ export function AdminMapEditor() {
     setConfirm(null);
     try {
       const connected = edges.filter((e) => e.fromNodeId === bendId || e.toNodeId === bendId);
-      const neighbors = connected.map((e) =>
-        e.fromNodeId === bendId ? e.toNodeId : e.fromNodeId,
-      );
+      const neighbors = connected.map((e) => (e.fromNodeId === bendId ? e.toNodeId : e.fromNodeId));
       const uniqueNeighbors = [...new Set(neighbors)];
 
       // Stitch path if this bend sat between exactly two nodes
@@ -966,8 +964,7 @@ export function AdminMapEditor() {
         if (aNode && bNode) {
           const already = edges.some(
             (e) =>
-              (e.fromNodeId === a && e.toNodeId === b) ||
-              (e.fromNodeId === b && e.toNodeId === a),
+              (e.fromNodeId === a && e.toNodeId === b) || (e.fromNodeId === b && e.toNodeId === a),
           );
           if (!already) {
             const stitched = await createEdgeBetween(
@@ -981,7 +978,7 @@ export function AdminMapEditor() {
         }
       }
 
-      await api.mapBuilder.deleteNode(bendId,true, token);
+      await api.mapBuilder.deleteNode(bendId, true, token);
       setSelectedBendId(null);
       await refresh();
       flash(
@@ -1085,9 +1082,7 @@ export function AdminMapEditor() {
       setCleanEdgeIds(new Set());
       setNodes((prev) => prev.filter((n) => !toRemove.some((b) => b.id === n.id)));
       setEdges((prev) =>
-        prev.filter(
-          (e) => !toRemove.some((b) => b.id === e.fromNodeId || b.id === e.toNodeId),
-        ),
+        prev.filter((e) => !toRemove.some((b) => b.id === e.fromNodeId || b.id === e.toNodeId)),
       );
       await refresh();
       flash(`Removed ${toRemove.length} bend${toRemove.length === 1 ? '' : 's'}. Place pins kept.`);
@@ -1175,8 +1170,8 @@ export function AdminMapEditor() {
           <h2 className="font-display text-xl font-semibold">Map pins</h2>
           <p className="mt-1 max-w-2xl text-sm text-ink-mute">
             Pins autosave on place and rename. Draw routes between pins/bends, or use{' '}
-            <strong>Add bend</strong> to insert a turn on an existing path. Deleting a bend
-            stitches the path back together when it has two neighbors.
+            <strong>Add bend</strong> to insert a turn on an existing path. Deleting a bend stitches
+            the path back together when it has two neighbors.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1260,7 +1255,12 @@ export function AdminMapEditor() {
             >
               Confirm
             </button>
-            <button type="button" className="btn-ghost" disabled={busy} onClick={() => setConfirm(null)}>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={busy}
+              onClick={() => setConfirm(null)}
+            >
               Cancel
             </button>
           </div>
@@ -1309,8 +1309,8 @@ export function AdminMapEditor() {
       )}
       {tool === 'add-bend' && (
         <p className="rounded-md border border-accent/25 bg-accent/5 px-3 py-2 text-sm text-ink">
-          Click anywhere on a path line (or near it) to insert a bend. The path splits around the new
-          turn — drag to reshape; delete the bend to reconnect the two sides.
+          Click anywhere on a path line (or near it) to insert a bend. The path splits around the
+          new turn — drag to reshape; delete the bend to reconnect the two sides.
         </p>
       )}
       {tool === 'break-segment' && (
@@ -1373,23 +1373,12 @@ export function AdminMapEditor() {
                 enabled={followLive && tool === 'pin-live' && !showDetails}
               />
             )}
-            <MapClickCapture
-              enabled={tool === 'pin-click'}
-              onClick={openDraftAtClick}
-            />
-            <MapClickCapture
-              enabled={tool === 'draw'}
-              onClick={onDrawMapClick}
-            />
-            <MapClickCapture
-              enabled={tool === 'add-bend' && !busy}
-              onClick={onAddBendMapClick}
-            />
+            <MapClickCapture enabled={tool === 'pin-click'} onClick={openDraftAtClick} />
+            <MapClickCapture enabled={tool === 'draw'} onClick={onDrawMapClick} />
+            <MapClickCapture enabled={tool === 'add-bend' && !busy} onClick={onAddBendMapClick} />
             <MapCursorTracker
               enabled={tool === 'draw' && Boolean(sketch)}
-              onMove={(lat, lon) =>
-                setSketch((s) => (s ? { ...s, cursor: { lat, lon } } : s))
-              }
+              onMove={(lat, lon) => setSketch((s) => (s ? { ...s, cursor: { lat, lon } } : s))}
             />
 
             {sketchPreview && sketchPreview.length > 1 && (
@@ -1442,12 +1431,7 @@ export function AdminMapEditor() {
                 }
                 pathOptions={{
                   color: line.clean ? '#1d4ed8' : line.bothPlaces ? '#0F6B63' : '#8a97a1',
-                  weight:
-                    line.clean
-                      ? 6
-                      : tool === 'break-segment' || tool === 'add-bend'
-                        ? 8
-                        : 4,
+                  weight: line.clean ? 6 : tool === 'break-segment' || tool === 'add-bend' ? 8 : 4,
                   opacity: tool === 'break-segment' || tool === 'add-bend' ? 0.95 : 0.8,
                   dashArray: line.bothPlaces ? undefined : '6 8',
                   interactive: tool === 'break-segment' || tool === 'add-bend',
@@ -1456,9 +1440,7 @@ export function AdminMapEditor() {
                 {tool === 'break-segment' && (
                   <Tooltip sticky>Click to remove this segment only</Tooltip>
                 )}
-                {tool === 'add-bend' && (
-                  <Tooltip sticky>Click to add a bend on this path</Tooltip>
-                )}
+                {tool === 'add-bend' && <Tooltip sticky>Click to add a bend on this path</Tooltip>}
               </Polyline>
             ))}
 
@@ -1692,9 +1674,7 @@ export function AdminMapEditor() {
           <div className="border-t border-line pt-4">
             <p className="mb-2 text-sm font-semibold text-ink">Bends ({waypointNodes.length})</p>
             <ul className="mb-4 max-h-36 space-y-1 overflow-auto text-sm">
-              {waypointNodes.length === 0 && (
-                <li className="text-ink-faint">No bends yet.</li>
-              )}
+              {waypointNodes.length === 0 && <li className="text-ink-faint">No bends yet.</li>}
               {waypointNodes.map((n, i) => (
                 <li
                   key={n.id}
@@ -1737,9 +1717,7 @@ export function AdminMapEditor() {
                 <li
                   key={n.id}
                   className={`flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 ${
-                    editingId === n.id ||
-                    drawFromId === n.id ||
-                    removeRouteFromId === n.id
+                    editingId === n.id || drawFromId === n.id || removeRouteFromId === n.id
                       ? 'border-accent bg-accent/5'
                       : 'border-line'
                   }`}

@@ -20,15 +20,17 @@ import { query } from '../db/pool';
 import type { RoutingEdge, RoutingNode } from '../../domain/routing/astar';
 import { broadcast } from '../realtime/wsHub';
 import { AppError } from '../../domain/errors';
-import {
-  footprintFromGeoJson,
-} from '../../application/geometry';
+import { footprintFromGeoJson } from '../../application/geometry';
 import {
   centroidFromFootprintWkt,
   prepareFootprintWkt,
 } from '../../application/footprintValidation';
 import { haversineMeters } from '../../domain/routing/astar';
-import { edgeGeometryHash, pointGeometryHash, ringGeometryHash } from '../../application/geometryHash';
+import {
+  edgeGeometryHash,
+  pointGeometryHash,
+  ringGeometryHash,
+} from '../../application/geometryHash';
 
 function toIsoTimestamp(value: unknown): string | undefined {
   if (value instanceof Date) return value.toISOString();
@@ -114,7 +116,9 @@ export const campusRepository = {
         input.siteId,
         footprintWkt,
         input.mapVersionId,
-        input.footprint?.length ? ringGeometryHash(input.footprint) : pointGeometryHash(latitude, longitude),
+        input.footprint?.length
+          ? ringGeometryHash(input.footprint)
+          : pointGeometryHash(latitude, longitude),
       ],
     );
     return mapBuildingRow(rows[0] as Record<string, unknown>);
@@ -129,7 +133,11 @@ export const campusRepository = {
 
     const hasFootprintNow = Boolean(existing.footprint?.length);
     const updatingFootprint = input.footprint !== undefined;
-    if (hasFootprintNow && !updatingFootprint && (input.latitude !== undefined || input.longitude !== undefined)) {
+    if (
+      hasFootprintNow &&
+      !updatingFootprint &&
+      (input.latitude !== undefined || input.longitude !== undefined)
+    ) {
       throw new AppError(
         'FOOTPRINT_IS_AUTHORITATIVE',
         'Building coordinates are derived from the footprint and cannot be edited independently',
@@ -157,9 +165,7 @@ export const campusRepository = {
       longitude = null;
     }
 
-    const expectedUpdatedAt = input.expectedUpdatedAt
-      ? new Date(input.expectedUpdatedAt)
-      : null;
+    const expectedUpdatedAt = input.expectedUpdatedAt ? new Date(input.expectedUpdatedAt) : null;
     const nextFootprint = input.footprint === undefined ? existing.footprint : input.footprint;
     const nextGeometryHash =
       nextFootprint && nextFootprint.length > 0
@@ -226,7 +232,12 @@ export const campusRepository = {
     rooms: number;
     nodes: number;
   }> {
-    const { rows } = await query<{ entrances: string; floors: string; rooms: string; nodes: string }>(
+    const { rows } = await query<{
+      entrances: string;
+      floors: string;
+      rooms: string;
+      nodes: string;
+    }>(
       `SELECT
          (SELECT COUNT(*)::text FROM nodes WHERE building_id = $1 AND active = TRUE) AS entrances,
          (SELECT COUNT(*)::text FROM floors WHERE building_id = $1) AS floors,
@@ -247,7 +258,11 @@ export const campusRepository = {
     const building = await this.getBuildingById(id);
     if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
     if (building.siteId !== siteId) {
-      throw new AppError('CROSS_SITE_REFERENCE', 'Building does not belong to the active site', 422);
+      throw new AppError(
+        'CROSS_SITE_REFERENCE',
+        'Building does not belong to the active site',
+        422,
+      );
     }
     const deps = await this.countBuildingDependencies(id);
     if (deps.floors > 0 || deps.rooms > 0) {
@@ -267,7 +282,11 @@ export const campusRepository = {
     await this.deleteBuilding(id);
   },
 
-  async listFloors(buildingId?: string, siteId?: string | null, mapVersionId?: string | null): Promise<Floor[]> {
+  async listFloors(
+    buildingId?: string,
+    siteId?: string | null,
+    mapVersionId?: string | null,
+  ): Promise<Floor[]> {
     const { rows } = buildingId
       ? await query(
           `SELECT f.id, f.building_id, f.level, f.name, f.updated_at FROM floors f
@@ -349,7 +368,11 @@ export const campusRepository = {
     }));
   },
 
-  async search(q: string, siteId?: string | null, mapVersionId?: string | null): Promise<SearchResult[]> {
+  async search(
+    q: string,
+    siteId?: string | null,
+    mapVersionId?: string | null,
+  ): Promise<SearchResult[]> {
     if (!siteId || !mapVersionId) return [];
     const pattern = `%${q}%`;
     const { rows: buildings } = await query(
@@ -426,7 +449,10 @@ export const campusRepository = {
     return (rows as Array<Record<string, unknown>>).map((r) => this.mapNodeRow(r));
   },
 
-  async listActiveNodes(siteId?: string | null, mapVersionId?: string | null): Promise<GraphNode[]> {
+  async listActiveNodes(
+    siteId?: string | null,
+    mapVersionId?: string | null,
+  ): Promise<GraphNode[]> {
     if (!siteId || !mapVersionId) return [];
     const { rows } = await query(
       `SELECT * FROM nodes WHERE active = TRUE AND site_id = $1 AND map_version_id = $2 ORDER BY name NULLS LAST, id`,
@@ -435,7 +461,10 @@ export const campusRepository = {
     return (rows as Array<Record<string, unknown>>).map((r) => this.mapNodeRow(r));
   },
 
-  async listNamedPlaces(siteId?: string | null, mapVersionId?: string | null): Promise<CampusPlace[]> {
+  async listNamedPlaces(
+    siteId?: string | null,
+    mapVersionId?: string | null,
+  ): Promise<CampusPlace[]> {
     if (!siteId || !mapVersionId) return [];
     const { rows } = await query(
       `SELECT DISTINCT ON (lower(trim(name)))
@@ -469,7 +498,10 @@ export const campusRepository = {
     return this.mapNodeRow(rows[0] as Record<string, unknown>);
   },
 
-  async findOutdoorEntrance(buildingId: string, mapVersionId?: string | null): Promise<GraphNode | null> {
+  async findOutdoorEntrance(
+    buildingId: string,
+    mapVersionId?: string | null,
+  ): Promise<GraphNode | null> {
     const list = await this.listBuildingEntrances(buildingId, mapVersionId);
     return list[0] ?? null;
   },
@@ -482,7 +514,10 @@ export const campusRepository = {
     return rows[0]?.map_version_id ?? null;
   },
 
-  async listBuildingEntrances(buildingId: string, mapVersionId?: string | null): Promise<GraphNode[]> {
+  async listBuildingEntrances(
+    buildingId: string,
+    mapVersionId?: string | null,
+  ): Promise<GraphNode[]> {
     const { rows } = await query(
       `SELECT * FROM nodes
        WHERE building_id = $1
@@ -846,7 +881,9 @@ export const campusRepository = {
 
   async listDangerZones(siteId?: string | null): Promise<DangerZone[]> {
     if (!siteId) return [];
-    const { rows } = await query(`SELECT * FROM danger_zones WHERE site_id = $1 ORDER BY name`, [siteId]);
+    const { rows } = await query(`SELECT * FROM danger_zones WHERE site_id = $1 ORDER BY name`, [
+      siteId,
+    ]);
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       name: r.name as string,
@@ -1079,9 +1116,10 @@ export const campusRepository = {
 
   async listEvents(siteId?: string | null): Promise<CampusEvent[]> {
     if (!siteId) return [];
-    const { rows } = await query(`SELECT * FROM events WHERE site_id = $1 ORDER BY starts_at DESC`, [
-      siteId,
-    ]);
+    const { rows } = await query(
+      `SELECT * FROM events WHERE site_id = $1 ORDER BY starts_at DESC`,
+      [siteId],
+    );
     return (rows as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       title: r.title as string,

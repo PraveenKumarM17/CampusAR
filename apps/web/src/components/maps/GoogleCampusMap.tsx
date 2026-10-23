@@ -231,15 +231,7 @@ export function GoogleCampusMap({
       });
       overlaysRef.current.push(circle);
     }
-  }, [
-    ready,
-    placeNodes,
-    sourceNodeId,
-    destinationNodeId,
-    routePoints,
-    pathLines,
-    zones,
-  ]);
+  }, [ready, placeNodes, sourceNodeId, destinationNodeId, routePoints, pathLines, zones]);
 
   // Live pose + heading (updated without rebuilding campus overlays)
   useEffect(() => {

@@ -32,7 +32,10 @@ export class MeasurementEngine {
       pointAId: pointA.id ?? id,
       pointBId: pointB.id ?? id,
       distanceMM,
-      confidence: Math.max(0, Math.min(1, placementConfidence * trackingScore(trackingQualityAtMeasure))),
+      confidence: Math.max(
+        0,
+        Math.min(1, placementConfidence * trackingScore(trackingQualityAtMeasure)),
+      ),
       uncertaintyRange: [Math.max(0, distanceMM - errorMM), distanceMM + errorMM],
       trackingQualityAtMeasure,
       timestamp: Date.now(),
@@ -42,7 +45,8 @@ export class MeasurementEngine {
   private estimateError(pointA: SpatialPoint, pointB: SpatialPoint, distanceMM: number): number {
     const base = Math.max(pointA.estimatedAccuracy ?? 50, pointB.estimatedAccuracy ?? 50);
     const drift = (distanceMM / 1000) * 50;
-    const depthBonus = pointA.trackingQuality?.depthAvailable && pointB.trackingQuality?.depthAvailable ? 0.7 : 1;
+    const depthBonus =
+      pointA.trackingQuality?.depthAvailable && pointB.trackingQuality?.depthAvailable ? 0.7 : 1;
     return Math.max(base, drift) * depthBonus;
   }
 }

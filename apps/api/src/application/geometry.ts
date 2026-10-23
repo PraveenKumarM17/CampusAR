@@ -61,11 +61,12 @@ export function footprintFromGeoJson(geojson: unknown): LatLng[] | undefined {
 }
 
 export function ringCentroid(ring: LatLng[]): LatLng {
-  const open = ring.length > 0 &&
+  const open =
+    ring.length > 0 &&
     ring[0].latitude === ring[ring.length - 1].latitude &&
     ring[0].longitude === ring[ring.length - 1].longitude
-    ? ring.slice(0, -1)
-    : ring;
+      ? ring.slice(0, -1)
+      : ring;
   if (open.length === 0) {
     throw new AppError('INVALID_GEOMETRY', 'Cannot compute centroid of empty ring', 422);
   }

@@ -26,16 +26,16 @@ The map builder converts between these when placing or moving navigation nodes.
 
 ## Canonical data
 
-| Feature | Storage | Notes |
-|---------|---------|-------|
-| Floors | `floors` | `level`, `name`, `updated_at` |
-| Floor height factor | `buildings.floor_height_m` | Per-building meters per level (default 3.5); elevation = `level × floor_height_m` |
-| Room polygons | `rooms.local_geometry` | Floor-plan polygon |
-| Corridors | `floor_corridors.local_geometry` | Polygon |
-| Indoor POIs | `floor_pois` | Point features |
-| Navigation graph | `indoor_maps`, `indoor_nodes`, `indoor_edges` | Single canonical graph |
-| Destinations / search | `indoor_places` | Linked to rooms via `metadata.roomId` |
-| Outdoor → indoor | `indoor_handoffs` | Outdoor `nodes` → `indoor_nodes` |
+| Feature               | Storage                                       | Notes                                                                             |
+| --------------------- | --------------------------------------------- | --------------------------------------------------------------------------------- |
+| Floors                | `floors`                                      | `level`, `name`, `updated_at`                                                     |
+| Floor height factor   | `buildings.floor_height_m`                    | Per-building meters per level (default 3.5); elevation = `level × floor_height_m` |
+| Room polygons         | `rooms.local_geometry`                        | Floor-plan polygon                                                                |
+| Corridors             | `floor_corridors.local_geometry`              | Polygon                                                                           |
+| Indoor POIs           | `floor_pois`                                  | Point features                                                                    |
+| Navigation graph      | `indoor_maps`, `indoor_nodes`, `indoor_edges` | Single canonical graph                                                            |
+| Destinations / search | `indoor_places`                               | Linked to rooms via `metadata.roomId`                                             |
+| Outdoor → indoor      | `indoor_handoffs`                             | Outdoor `nodes` → `indoor_nodes`                                                  |
 
 ## API (map editor)
 

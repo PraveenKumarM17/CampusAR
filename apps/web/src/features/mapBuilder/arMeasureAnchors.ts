@@ -105,7 +105,7 @@ function quatDot(a: Quat, b: Quat): number {
 
 /** Spherical linear interpolation between two unit quaternions. */
 export function slerpQuat(a: Quat, b: Quat, t: number): Quat {
-  let q1 = quatNormalize(a);
+  const q1 = quatNormalize(a);
   let q2 = quatNormalize(b);
   let dot = quatDot(q1, q2);
   if (dot < 0) {
@@ -219,7 +219,10 @@ export function validateHitTestForPlane(
   const pose = hitResult.getPose(referenceSpace);
   if (!pose) return false;
   const normal = planeNormalFromHitPose(pose);
-  const dot = normal.x * activePlaneLock.normal.x + normal.y * activePlaneLock.normal.y + normal.z * activePlaneLock.normal.z;
+  const dot =
+    normal.x * activePlaneLock.normal.x +
+    normal.y * activePlaneLock.normal.y +
+    normal.z * activePlaneLock.normal.z;
   if (dot < 0.92) {
     console.warn('[AR Measure] Hit rejected — different plane normal');
     return false;
@@ -228,7 +231,9 @@ export function validateHitTestForPlane(
   const dx = p.x - activePlaneLock.pointOnPlane.x;
   const dy = p.y - activePlaneLock.pointOnPlane.y;
   const dz = p.z - activePlaneLock.pointOnPlane.z;
-  const dist = Math.abs(dx * activePlaneLock.normal.x + dy * activePlaneLock.normal.y + dz * activePlaneLock.normal.z);
+  const dist = Math.abs(
+    dx * activePlaneLock.normal.x + dy * activePlaneLock.normal.y + dz * activePlaneLock.normal.z,
+  );
   if (dist > 0.08) {
     console.warn('[AR Measure] Hit rejected — too far from locked plane');
     return false;
@@ -240,7 +245,11 @@ function distanceVec3(a: LocalVec3, b: LocalVec3): number {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
-function updatePointConfidence(point: AnchorMeasurePoint, poseStable: boolean, trackingLost: boolean): void {
+function updatePointConfidence(
+  point: AnchorMeasurePoint,
+  poseStable: boolean,
+  trackingLost: boolean,
+): void {
   if (trackingLost) {
     point.sourceData.confidence = Math.max(0, point.sourceData.confidence - 0.1);
   } else if (poseStable) {
@@ -381,8 +390,7 @@ export function primeAnchorPointPose(point: AnchorMeasurePoint): void {
 /** Recompute session-local coords (first point = origin). Call after adding a point. */
 export function recomputeSessionLocals(points: AnchorMeasurePoint[]): void {
   if (points.length === 0) return;
-  const originPos =
-    points[0].smoothedPose?.position ?? points[0].fallbackWorld ?? null;
+  const originPos = points[0].smoothedPose?.position ?? points[0].fallbackWorld ?? null;
   if (!originPos) return;
 
   for (const point of points) {
@@ -397,7 +405,11 @@ export function recomputeSessionLocals(points: AnchorMeasurePoint[]): void {
 }
 
 /** Query anchor poses each frame and apply smoothing + confidence. */
-export function updatePoints(points: AnchorMeasurePoint[], frame: XRFrame, referenceSpace: XRReferenceSpace): void {
+export function updatePoints(
+  points: AnchorMeasurePoint[],
+  frame: XRFrame,
+  referenceSpace: XRReferenceSpace,
+): void {
   for (const point of points) {
     let pose: XRPose | undefined;
     if (point.xrAnchor && frame.getPose) {
@@ -408,9 +420,7 @@ export function updatePoints(points: AnchorMeasurePoint[], frame: XRFrame, refer
       const prev = point.smoothedPose?.position ?? null;
       point.worldPose = poseToSmoothed(pose);
       point.smoothedPose = point.smoothing.update(pose);
-      const stable = prev
-        ? distanceVec3(prev, point.smoothedPose.position) < 0.001
-        : true;
+      const stable = prev ? distanceVec3(prev, point.smoothedPose.position) < 0.001 : true;
       updatePointConfidence(point, stable, false);
       continue;
     }

@@ -20,10 +20,7 @@ export function InvalidateMapSize() {
     const t2 = window.setTimeout(refresh, 100);
     const t3 = window.setTimeout(refresh, 400);
 
-    const ro =
-      typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => refresh())
-        : null;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => refresh()) : null;
     ro?.observe(container);
     window.addEventListener('resize', refresh);
 

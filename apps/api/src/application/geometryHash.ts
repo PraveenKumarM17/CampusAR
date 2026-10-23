@@ -27,7 +27,6 @@ export function edgeGeometryHash(
   // Order endpoints so hash is orientation-invariant for the segment geometry.
   const a: [number, number] = [roundCoord(from.latitude), roundCoord(from.longitude)];
   const b: [number, number] = [roundCoord(to.latitude), roundCoord(to.longitude)];
-  const [first, second] =
-    a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? [a, b] : [b, a];
+  const [first, second] = a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? [a, b] : [b, a];
   return hashPayload([first, second]);
 }

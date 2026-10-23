@@ -32,13 +32,11 @@ type PublishLogRow = {
   previous_version_id: string | null;
   published_by: string | null;
   published_at: Date;
-  diff_summary:
-    | {
-        added?: { count?: number; examples?: string[] };
-        removed?: { count?: number; examples?: string[] };
-        modified?: { count?: number; examples?: string[] };
-      }
-    | null;
+  diff_summary: {
+    added?: { count?: number; examples?: string[] };
+    removed?: { count?: number; examples?: string[] };
+    modified?: { count?: number; examples?: string[] };
+  } | null;
 };
 
 function mapVersionRow(r: VersionRow): SiteMapVersion {
@@ -207,7 +205,10 @@ export const mapVersionRepository = {
       label: 'Initial published map',
     });
     await query(`UPDATE site_map_versions SET published_at = NOW() WHERE id = $1`, [created.id]);
-    await query(`UPDATE sites SET published_map_version_id = $2 WHERE id = $1`, [siteId, created.id]);
+    await query(`UPDATE sites SET published_map_version_id = $2 WHERE id = $1`, [
+      siteId,
+      created.id,
+    ]);
     return { ...created, publishedAt: new Date().toISOString() };
   },
 
@@ -311,12 +312,10 @@ export const mapVersionRepository = {
       }
       if (draftRow.status !== 'draft') {
         await client.query('ROLLBACK');
-        throw new AppError(
-          'PUBLISH_DRAFT_ONLY',
-          'Only draft map versions can be published',
-          422,
-          { versionId: draftVersionId, status: draftRow.status },
-        );
+        throw new AppError('PUBLISH_DRAFT_ONLY', 'Only draft map versions can be published', 422, {
+          versionId: draftVersionId,
+          status: draftRow.status,
+        });
       }
 
       const draft = mapVersionRow(draftRow);
@@ -382,10 +381,10 @@ export const mapVersionRepository = {
 
       onStep?.('before-pointer-update');
 
-      await client.query(
-        `UPDATE sites SET published_map_version_id = $2 WHERE id = $1`,
-        [siteId, draftVersionId],
-      );
+      await client.query(`UPDATE sites SET published_map_version_id = $2 WHERE id = $1`, [
+        siteId,
+        draftVersionId,
+      ]);
 
       await client.query(
         `UPDATE indoor_maps

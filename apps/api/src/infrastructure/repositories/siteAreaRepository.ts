@@ -78,7 +78,14 @@ export const siteAreaRepository = {
        VALUES ($1, $2, $3, ST_GeogFromText($4)::geography, $5, $6)
        RETURNING id, stable_id, site_id, name, type, updated_at,
          ST_AsGeoJSON(footprint_geom)::json AS footprint_geojson`,
-      [input.siteId, input.name, input.type, wkt, input.mapVersionId, ringGeometryHash(input.footprint)],
+      [
+        input.siteId,
+        input.name,
+        input.type,
+        wkt,
+        input.mapVersionId,
+        ringGeometryHash(input.footprint),
+      ],
     );
     return mapAreaRow(rows[0] as Record<string, unknown>);
   },

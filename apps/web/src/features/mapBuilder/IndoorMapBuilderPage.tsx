@@ -66,7 +66,12 @@ const LAYOUT_TOOLS: { id: IndoorTool; label: string; icon: typeof MousePointer2 
   { id: 'poi', label: 'POI', icon: MapPin },
 ];
 
-const GRAPH_TOOLS: { id: IndoorTool; label: string; icon: typeof MousePointer2; nodeKind?: IndoorNodeKind }[] = [
+const GRAPH_TOOLS: {
+  id: IndoorTool;
+  label: string;
+  icon: typeof MousePointer2;
+  nodeKind?: IndoorNodeKind;
+}[] = [
   { id: 'node', label: 'Nav node', icon: CircleDot, nodeKind: 'corridor' },
   { id: 'connect', label: 'Connect', icon: GitBranch },
   { id: 'entrance', label: 'Entrance', icon: DoorOpen, nodeKind: 'entrance' },
@@ -112,7 +117,9 @@ export function IndoorMapBuilderPage() {
   const [snapshot, setSnapshot] = useState<IndoorGraphEditorSnapshot | null>(null);
   const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null);
   const [tool, setTool] = useState<IndoorTool>('select');
-  const [selectedKind, setSelectedKind] = useState<'room' | 'corridor' | 'poi' | 'node' | 'edge' | null>(null);
+  const [selectedKind, setSelectedKind] = useState<
+    'room' | 'corridor' | 'poi' | 'node' | 'edge' | null
+  >(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [anchorCode, setAnchorCode] = useState('');
   const [connectFromId, setConnectFromId] = useState<string | null>(null);
@@ -120,9 +127,9 @@ export function IndoorMapBuilderPage() {
   const [draftRect, setDraftRect] = useState<LocalVec2[] | null>(null);
   const [measurePoints, setMeasurePoints] = useState<LocalVec2[]>([]);
   const [measureSaveAs, setMeasureSaveAs] = useState<'room' | 'corridor'>('room');
-  const [measurementSource, setMeasurementSource] = useState<
-    'camera_ar' | 'floor_plan' | 'manual'
-  >('floor_plan');
+  const [measurementSource, setMeasurementSource] = useState<'camera_ar' | 'floor_plan' | 'manual'>(
+    'floor_plan',
+  );
   const [measuredHeightM, setMeasuredHeightM] = useState<number | null>(null);
   const [arPanelOpen, setArPanelOpen] = useState(false);
   const [arCameraStream, setArCameraStream] = useState<MediaStream | null>(null);
@@ -306,7 +313,10 @@ export function IndoorMapBuilderPage() {
   };
 
   async function guardNavigation(action: () => void) {
-    const choice = await requestUnsavedChoice('Unsaved indoor edits', 'Save layout changes before leaving?');
+    const choice = await requestUnsavedChoice(
+      'Unsaved indoor edits',
+      'Save layout changes before leaving?',
+    );
     if (choice === 'stay') return;
     if (choice === 'save') {
       const ok = await saveGeometryEdit();
@@ -642,7 +652,12 @@ export function IndoorMapBuilderPage() {
     if (!token || !buildingId || selectedKind !== 'room' || !selectedId) return;
     try {
       await api.mapBuilder.linkRoomToGraph(
-        { buildingId, roomId: selectedId, mapId: snapshot?.editMapId ?? undefined, createEntrance: true },
+        {
+          buildingId,
+          roomId: selectedId,
+          mapId: snapshot?.editMapId ?? undefined,
+          createEntrance: true,
+        },
         token,
       );
       await reloadSnapshot();
@@ -673,8 +688,10 @@ export function IndoorMapBuilderPage() {
       if (selectedKind === 'room') await api.mapBuilder.deleteRoom(selectedId, token);
       else if (selectedKind === 'corridor') await api.mapBuilder.deleteCorridor(selectedId, token);
       else if (selectedKind === 'poi') await api.mapBuilder.deletePoi(selectedId, token);
-      else if (selectedKind === 'node') await api.mapBuilder.deleteIndoorGraphNode(selectedId, token);
-      else if (selectedKind === 'edge') await api.mapBuilder.deleteIndoorGraphEdge(selectedId, token);
+      else if (selectedKind === 'node')
+        await api.mapBuilder.deleteIndoorGraphNode(selectedId, token);
+      else if (selectedKind === 'edge')
+        await api.mapBuilder.deleteIndoorGraphEdge(selectedId, token);
       setSelectedId(null);
       setSelectedKind(null);
       setConnectFromId(null);
@@ -699,12 +716,16 @@ export function IndoorMapBuilderPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
           <div>
             <h1 className="page-title text-xl sm:text-2xl md:text-3xl">Indoor Map Builder</h1>
-            <p className="page-sub text-xs sm:text-sm">Select a building to manage floors and floor plans. Site: {label}</p>
+            <p className="page-sub text-xs sm:text-sm">
+              Select a building to manage floors and floor plans. Site: {label}
+            </p>
           </div>
           <MapBuilderNav mode="indoor" />
         </div>
         {error && (
-          <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 sm:px-3 sm:text-sm">{error}</p>
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 sm:px-3 sm:text-sm">
+            {error}
+          </p>
         )}
         <div className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
           {buildings.map((b) => (
@@ -741,17 +762,26 @@ export function IndoorMapBuilderPage() {
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <MapBuilderNav mode="indoor" />
-          <button type="button" className="btn-secondary w-full text-xs sm:w-auto sm:text-sm" onClick={() => void runValidation()}>
+          <button
+            type="button"
+            className="btn-secondary w-full text-xs sm:w-auto sm:text-sm"
+            onClick={() => void runValidation()}
+          >
             Validate
           </button>
-          <Link to="/map-builder/indoor" className="btn-secondary w-full text-xs sm:w-auto sm:text-sm">
+          <Link
+            to="/map-builder/indoor"
+            className="btn-secondary w-full text-xs sm:w-auto sm:text-sm"
+          >
             Change building
           </Link>
         </div>
       </div>
 
       {error && (
-        <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
+        <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </p>
       )}
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 sm:gap-3 lg:flex-row">
@@ -765,7 +795,9 @@ export function IndoorMapBuilderPage() {
                 <button
                   type="button"
                   className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${
-                    selectedFloorId === f.id ? 'bg-accent/15 font-semibold text-accent' : 'hover:bg-paper'
+                    selectedFloorId === f.id
+                      ? 'bg-accent/15 font-semibold text-accent'
+                      : 'hover:bg-paper'
                   }`}
                   onClick={() =>
                     void guardNavigation(() => {
@@ -782,19 +814,37 @@ export function IndoorMapBuilderPage() {
               </li>
             ))}
           </ul>
-          <form className="space-y-2 border-t border-line pt-3" onSubmit={(e) => void createFloor(e)}>
+          <form
+            className="space-y-2 border-t border-line pt-3"
+            onSubmit={(e) => void createFloor(e)}
+          >
             <p className="text-xs font-semibold text-muted">Add floor</p>
-            <input name="level" type="number" className="input w-full text-sm" placeholder="Level" required />
-            <input name="name" className="input w-full text-sm" placeholder="Display name" required />
+            <input
+              name="level"
+              type="number"
+              className="input w-full text-sm"
+              placeholder="Level"
+              required
+            />
+            <input
+              name="name"
+              className="input w-full text-sm"
+              placeholder="Display name"
+              required
+            />
             <button type="submit" className="btn-primary w-full text-sm">
               Create floor
             </button>
           </form>
 
-          <form className="space-y-2 border-t border-line pt-3" onSubmit={(e) => void saveFloorHeight(e)}>
+          <form
+            className="space-y-2 border-t border-line pt-3"
+            onSubmit={(e) => void saveFloorHeight(e)}
+          >
             <p className="text-xs font-semibold text-muted">Floor height factor (m)</p>
             <p className="text-[11px] text-muted">
-              Elevation = level × height. Level 2 at 3.5 m → {formatMeasureDistance(floorElevationM(2, floorHeightM))}.
+              Elevation = level × height. Level 2 at 3.5 m →{' '}
+              {formatMeasureDistance(floorElevationM(2, floorHeightM))}.
             </p>
             <input
               type="number"
@@ -806,7 +856,11 @@ export function IndoorMapBuilderPage() {
               onChange={(e) => setFloorHeightM(Number(e.target.value))}
               required
             />
-            <button type="submit" className="btn-secondary w-full text-sm" disabled={floorHeightBusy}>
+            <button
+              type="submit"
+              className="btn-secondary w-full text-sm"
+              disabled={floorHeightBusy}
+            >
               {floorHeightBusy ? 'Saving…' : 'Save height factor'}
             </button>
           </form>
@@ -847,7 +901,9 @@ export function IndoorMapBuilderPage() {
                 key={t.id}
                 type="button"
                 className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors sm:text-sm ${
-                  tool === t.id ? 'bg-violet-600 text-white' : 'border border-line bg-paper-raised hover:bg-paper-soft'
+                  tool === t.id
+                    ? 'bg-violet-600 text-white'
+                    : 'border border-line bg-paper-raised hover:bg-paper-soft'
                 }`}
                 onClick={() => {
                   setTool(t.id);
@@ -855,16 +911,24 @@ export function IndoorMapBuilderPage() {
                   setPendingHandoffOutdoorId(null);
                 }}
               >
-                <t.icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> 
+                <t.icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 <span className="hidden sm:inline">{t.label}</span>
-                <span className="sm:hidden">{t.label === 'Nav node' ? 'Node' : t.label === 'Connect' ? 'Link' : t.label === 'Room link' ? 'Room' : t.label}</span>
+                <span className="sm:hidden">
+                  {t.label === 'Nav node'
+                    ? 'Node'
+                    : t.label === 'Connect'
+                      ? 'Link'
+                      : t.label === 'Room link'
+                        ? 'Room'
+                        : t.label}
+                </span>
               </button>
             ))}
           </div>
           {tool === 'measure' && (
             <p className="text-xs text-emerald-700">
-              Tap two points for a live distance, or keep tapping to chain segments. Drag an endpoint to
-              adjust. Distances are 2D floor-plan meters
+              Tap two points for a live distance, or keep tapping to chain segments. Drag an
+              endpoint to adjust. Distances are 2D floor-plan meters
               {measurePoints.length > 1
                 ? ` · total ${formatMeasureDistance(polylineLength2D(measurePoints))}`
                 : ''}
@@ -973,7 +1037,9 @@ export function IndoorMapBuilderPage() {
           {tool === 'measure' && measurePoints.length > 0 && !draftRect?.length && (
             <div className="space-y-2 border-t border-line pt-2">
               <h3 className="text-sm font-semibold">Measured shape</h3>
-              <p className="text-xs text-muted">Optional: turn these corners into a room or corridor polygon.</p>
+              <p className="text-xs text-muted">
+                Optional: turn these corners into a room or corridor polygon.
+              </p>
               <select
                 className="input w-full text-sm"
                 value={measureSaveAs}
@@ -982,7 +1048,11 @@ export function IndoorMapBuilderPage() {
                 <option value="room">Save as room</option>
                 <option value="corridor">Save as corridor</option>
               </select>
-              <button type="button" className="btn-primary w-full text-sm" onClick={applyMeasureToDraft}>
+              <button
+                type="button"
+                className="btn-primary w-full text-sm"
+                onClick={applyMeasureToDraft}
+              >
                 Build &amp; save…
               </button>
             </div>
@@ -1007,7 +1077,12 @@ export function IndoorMapBuilderPage() {
                       </div>
                     ) : null;
                   })()}
-                  <input name="name" className="input w-full text-sm" placeholder="Room name" required />
+                  <input
+                    name="name"
+                    className="input w-full text-sm"
+                    placeholder="Room name"
+                    required
+                  />
                   <input name="code" className="input w-full text-sm" placeholder="Code" required />
                   <select name="category" className="input w-full text-sm" defaultValue="office">
                     {ROOM_CATEGORIES.map((c) => (
@@ -1019,13 +1094,21 @@ export function IndoorMapBuilderPage() {
                 </>
               )}
               {shapeTool === 'corridor' && (
-                <input name="name" className="input w-full text-sm" placeholder="Corridor name (optional)" />
+                <input
+                  name="name"
+                  className="input w-full text-sm"
+                  placeholder="Corridor name (optional)"
+                />
               )}
               <div className="flex gap-2">
                 <button type="submit" className="btn-primary flex-1 text-sm">
                   <Save className="mr-1 inline h-3.5 w-3.5" /> Save
                 </button>
-                <button type="button" className="btn-secondary text-sm" onClick={() => setDraftRect(null)}>
+                <button
+                  type="button"
+                  className="btn-secondary text-sm"
+                  onClick={() => setDraftRect(null)}
+                >
                   Cancel
                 </button>
               </div>
@@ -1035,10 +1118,18 @@ export function IndoorMapBuilderPage() {
           {editSession && (
             <div className="space-y-2">
               <h3 className="text-sm font-semibold">Edit geometry</h3>
-              <button type="button" className="btn-primary w-full text-sm" onClick={() => void saveGeometryEdit()}>
+              <button
+                type="button"
+                className="btn-primary w-full text-sm"
+                onClick={() => void saveGeometryEdit()}
+              >
                 Save geometry
               </button>
-              <button type="button" className="btn-secondary w-full text-sm" onClick={cancelGeometryEdit}>
+              <button
+                type="button"
+                className="btn-secondary w-full text-sm"
+                onClick={cancelGeometryEdit}
+              >
                 Cancel
               </button>
             </div>
@@ -1071,7 +1162,11 @@ export function IndoorMapBuilderPage() {
                 Link to navigation
               </button>
               {snapshot?.roomLinks[selectedRoom.id] && (
-                <button type="button" className="btn-secondary w-full text-sm" onClick={() => void unlinkSelectedRoom()}>
+                <button
+                  type="button"
+                  className="btn-secondary w-full text-sm"
+                  onClick={() => void unlinkSelectedRoom()}
+                >
                   Unlink navigation
                 </button>
               )}
@@ -1092,7 +1187,11 @@ export function IndoorMapBuilderPage() {
               >
                 Edit geometry
               </button>
-              <button type="button" className="btn-danger w-full text-sm" onClick={() => void deleteSelected()}>
+              <button
+                type="button"
+                className="btn-danger w-full text-sm"
+                onClick={() => void deleteSelected()}
+              >
                 <Trash2 className="mr-1 inline h-3.5 w-3.5" /> Delete
               </button>
             </div>
@@ -1101,7 +1200,11 @@ export function IndoorMapBuilderPage() {
           {selectedCorridor && (
             <div className="space-y-2 border-t border-line pt-2">
               <h3 className="text-sm font-semibold">{selectedCorridor.name ?? 'Corridor'}</h3>
-              <button type="button" className="btn-danger w-full text-sm" onClick={() => void deleteSelected()}>
+              <button
+                type="button"
+                className="btn-danger w-full text-sm"
+                onClick={() => void deleteSelected()}
+              >
                 Delete corridor
               </button>
             </div>
@@ -1111,7 +1214,11 @@ export function IndoorMapBuilderPage() {
             <div className="space-y-2 border-t border-line pt-2">
               <h3 className="text-sm font-semibold">{selectedPoi.name}</h3>
               <p className="text-xs text-muted">{selectedPoi.category}</p>
-              <button type="button" className="btn-danger w-full text-sm" onClick={() => void deleteSelected()}>
+              <button
+                type="button"
+                className="btn-danger w-full text-sm"
+                onClick={() => void deleteSelected()}
+              >
                 Delete POI
               </button>
             </div>
@@ -1153,12 +1260,16 @@ export function IndoorMapBuilderPage() {
                     Create QR anchor
                   </button>
                   <p className="text-[11px] text-muted">
-                    Print this exact code as a QR value. Visitors scan it to establish their
-                    indoor position.
+                    Print this exact code as a QR value. Visitors scan it to establish their indoor
+                    position.
                   </p>
                 </div>
               )}
-              <button type="button" className="btn-danger w-full text-sm" onClick={() => void deleteSelected()}>
+              <button
+                type="button"
+                className="btn-danger w-full text-sm"
+                onClick={() => void deleteSelected()}
+              >
                 Delete node
               </button>
             </div>
@@ -1170,7 +1281,11 @@ export function IndoorMapBuilderPage() {
               <p className="text-xs text-muted">
                 {selectedEdge.kind} · {selectedEdge.distanceM.toFixed(1)} m
               </p>
-              <button type="button" className="btn-danger w-full text-sm" onClick={() => void deleteSelected()}>
+              <button
+                type="button"
+                className="btn-danger w-full text-sm"
+                onClick={() => void deleteSelected()}
+              >
                 Delete edge
               </button>
             </div>
@@ -1190,7 +1305,9 @@ export function IndoorMapBuilderPage() {
                     type="button"
                     className="text-red-600"
                     onClick={() =>
-                      void api.mapBuilder.deleteIndoorHandoff(h.id, token).then(() => reloadSnapshot())
+                      void api.mapBuilder
+                        .deleteIndoorHandoff(h.id, token)
+                        .then(() => reloadSnapshot())
                     }
                   >
                     Remove
@@ -1198,7 +1315,9 @@ export function IndoorMapBuilderPage() {
                 </div>
               );
             })}
-            <p className="text-xs text-muted">Use Handoff tool: pick outdoor entrance, then indoor node.</p>
+            <p className="text-xs text-muted">
+              Use Handoff tool: pick outdoor entrance, then indoor node.
+            </p>
             <ul className="space-y-1">
               {(snapshot?.outdoorEntrances ?? []).map((e) => (
                 <li key={e.id}>
@@ -1219,7 +1338,11 @@ export function IndoorMapBuilderPage() {
             </ul>
           </div>
 
-          <form id="poi-form" className="space-y-2 border-t border-line pt-2" onSubmit={(e) => void savePoi(e)}>
+          <form
+            id="poi-form"
+            className="space-y-2 border-t border-line pt-2"
+            onSubmit={(e) => void savePoi(e)}
+          >
             <h3 className="flex items-center gap-1 text-sm font-semibold">
               <DoorOpen className="h-4 w-4" /> Add POI
             </h3>
@@ -1231,8 +1354,22 @@ export function IndoorMapBuilderPage() {
                 </option>
               ))}
             </select>
-            <input name="localX" type="number" step="0.1" className="input w-full text-sm" placeholder="X (m)" required />
-            <input name="localY" type="number" step="0.1" className="input w-full text-sm" placeholder="Y (m)" required />
+            <input
+              name="localX"
+              type="number"
+              step="0.1"
+              className="input w-full text-sm"
+              placeholder="X (m)"
+              required
+            />
+            <input
+              name="localY"
+              type="number"
+              step="0.1"
+              className="input w-full text-sm"
+              placeholder="Y (m)"
+              required
+            />
             <button type="submit" className="btn-primary w-full text-sm">
               Save POI
             </button>
@@ -1259,7 +1396,9 @@ export function IndoorMapBuilderPage() {
         message={unsavedDialog?.message ?? ''}
         onStay={() => unsavedDialog?.onResolve('stay')}
         onDiscard={() => unsavedDialog?.onResolve('discard')}
-        onSave={() => void saveGeometryEdit().then((ok) => unsavedDialog?.onResolve(ok ? 'save' : 'stay'))}
+        onSave={() =>
+          void saveGeometryEdit().then((ok) => unsavedDialog?.onResolve(ok ? 'save' : 'stay'))
+        }
       />
 
       {arPanelOpen && (

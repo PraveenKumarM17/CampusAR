@@ -19,21 +19,21 @@ Docker Compose mounts schema + seed into `docker-entrypoint-initdb.d` for first 
 
 ## Core tables
 
-| Table                                          | Purpose                      |
-| ---------------------------------------------- | ---------------------------- |
+| Table                                          | Purpose                        |
+| ---------------------------------------------- | ------------------------------ |
 | `organizations` / `sites`                      | Customer and physical location |
-| `organization_memberships`                     | Org/site scoped access       |
-| `users`                                        | Auth + roles                 |
-| `buildings` / `floors` / `rooms`               | Site hierarchy               |
+| `organization_memberships`                     | Org/site scoped access         |
+| `users`                                        | Auth + roles                   |
+| `buildings` / `floors` / `rooms`               | Site hierarchy                 |
 | `nodes` / `edges`                              | Navigation graph (site-scoped) |
-| `danger_zones`                                 | Safety overlays (incl. fire) |
-| `crowd_levels`                                 | Live / simulated crowd       |
-| `sensor_readings`                              | Temp / humidity / AQI / occ. |
-| `events`                                       | Campus events                |
-| `route_weights`                                | Singleton A* weights         |
-| `notifications` / `notification_reads`         | Alerts                       |
-| `emergency_contacts` / `emergency_exits`       | Safety                       |
-| `analytics_searches` / `analytics_navigations` | Metrics                      |
-| `sos_events`                                   | SOS log                      |
+| `danger_zones`                                 | Safety overlays (incl. fire)   |
+| `crowd_levels`                                 | Live / simulated crowd         |
+| `sensor_readings`                              | Temp / humidity / AQI / occ.   |
+| `events`                                       | Campus events                  |
+| `route_weights`                                | Singleton A* weights           |
+| `notifications` / `notification_reads`         | Alerts                         |
+| `emergency_contacts` / `emergency_exits`       | Safety                         |
+| `analytics_searches` / `analytics_navigations` | Metrics                        |
+| `sos_events`                                   | SOS log                        |
 
 Geography columns use `GEOGRAPHY(POINT, 4326)` for spatial indexing.

@@ -5,9 +5,7 @@ import { pool } from '../../infrastructure/db/pool';
 import { mapVersionService } from '../../application/mapVersionService';
 import { campusRepository } from '../../infrastructure/repositories/campusRepository';
 import { mapVersionRepository } from '../../infrastructure/repositories/mapVersionRepository';
-import {
-  setCloneTestFailureAfter,
-} from '../../application/mapVersionCloneService';
+import { setCloneTestFailureAfter } from '../../application/mapVersionCloneService';
 
 const app = createApp();
 
@@ -68,69 +66,79 @@ describe('site map spatial versioning (Step 2)', () => {
     if (canUseDb) await cleanup();
   });
 
-  it.skipIf(!canUseDb)('backfills RNSIT building with published map_version_id unchanged UUID', async () => {
-    const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
-    const { rows } = await pool.query(
-      `SELECT id, map_version_id FROM buildings WHERE id = $1`,
-      [RNSIT_BUILDING],
-    );
-    expect(rows.length).toBe(1);
-    expect(rows[0].id).toBe(RNSIT_BUILDING);
-    expect(rows[0].map_version_id).toBe(published.id);
-  });
+  it.skipIf(!canUseDb)(
+    'backfills RNSIT building with published map_version_id unchanged UUID',
+    async () => {
+      const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
+      const { rows } = await pool.query(`SELECT id, map_version_id FROM buildings WHERE id = $1`, [
+        RNSIT_BUILDING,
+      ]);
+      expect(rows.length).toBe(1);
+      expect(rows[0].id).toBe(RNSIT_BUILDING);
+      expect(rows[0].map_version_id).toBe(published.id);
+    },
+  );
 
-  it.skipIf(!canUseDb)('draft clone keeps stable_id while assigning new building UUIDs', async () => {
-    const token = await loginAdmin();
-    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
-    const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
+  it.skipIf(!canUseDb)(
+    'draft clone keeps stable_id while assigning new building UUIDs',
+    async () => {
+      const token = await loginAdmin();
+      const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
+      const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
 
-    const draftRes = await request(app).post('/api/admin/map-builder/draft').set(headers);
-    expect([200, 201]).toContain(draftRes.status);
-    const draftId = draftRes.body.id as string;
+      const draftRes = await request(app).post('/api/admin/map-builder/draft').set(headers);
+      expect([200, 201]).toContain(draftRes.status);
+      const draftId = draftRes.body.id as string;
 
-    const { rows: pubRows } = await pool.query(
-      `SELECT id, stable_id, code, name FROM buildings WHERE site_id = $1 AND map_version_id = $2`,
-      [RNSIT_SITE, published.id],
-    );
-    const { rows: draftRows } = await pool.query(
-      `SELECT id, stable_id, code, name FROM buildings WHERE site_id = $1 AND map_version_id = $2`,
-      [RNSIT_SITE, draftId],
-    );
-    expect(pubRows.length).toBeGreaterThan(0);
-    expect(draftRows.length).toBe(pubRows.length);
-    expect(draftRows.some((d: { id: string }) => d.id === RNSIT_BUILDING)).toBe(false);
-    expect(new Set(draftRows.map((d: { code: string }) => d.code))).toEqual(
-      new Set(pubRows.map((p: { code: string }) => p.code)),
-    );
-    expect(new Set(draftRows.map((d: { stable_id: string }) => d.stable_id))).toEqual(
-      new Set(pubRows.map((p: { stable_id: string }) => p.stable_id)),
-    );
-  });
+      const { rows: pubRows } = await pool.query(
+        `SELECT id, stable_id, code, name FROM buildings WHERE site_id = $1 AND map_version_id = $2`,
+        [RNSIT_SITE, published.id],
+      );
+      const { rows: draftRows } = await pool.query(
+        `SELECT id, stable_id, code, name FROM buildings WHERE site_id = $1 AND map_version_id = $2`,
+        [RNSIT_SITE, draftId],
+      );
+      expect(pubRows.length).toBeGreaterThan(0);
+      expect(draftRows.length).toBe(pubRows.length);
+      expect(draftRows.some((d: { id: string }) => d.id === RNSIT_BUILDING)).toBe(false);
+      expect(new Set(draftRows.map((d: { code: string }) => d.code))).toEqual(
+        new Set(pubRows.map((p: { code: string }) => p.code)),
+      );
+      expect(new Set(draftRows.map((d: { stable_id: string }) => d.stable_id))).toEqual(
+        new Set(pubRows.map((p: { stable_id: string }) => p.stable_id)),
+      );
+    },
+  );
 
-  it.skipIf(!canUseDb)('published isolation: editing draft does not change public buildings', async () => {
-    const token = await loginAdmin();
-    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
-    await request(app).post('/api/admin/map-builder/draft').set(headers);
+  it.skipIf(!canUseDb)(
+    'published isolation: editing draft does not change public buildings',
+    async () => {
+      const token = await loginAdmin();
+      const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
+      await request(app).post('/api/admin/map-builder/draft').set(headers);
 
-    const snap = await request(app).get('/api/admin/map-builder/snapshot').set(headers);
-    expect(snap.status).toBe(200);
-    expect(snap.body.version?.status).toBe('draft');
-    const draftBuilding = snap.body.buildings[0];
-    expect(draftBuilding).toBeTruthy();
+      const snap = await request(app).get('/api/admin/map-builder/snapshot').set(headers);
+      expect(snap.status).toBe(200);
+      expect(snap.body.version?.status).toBe('draft');
+      const draftBuilding = snap.body.buildings[0];
+      expect(draftBuilding).toBeTruthy();
 
-    const renamed = `Draft Only ${Date.now()}`;
-    const put = await request(app)
-      .put(`/api/admin/buildings/${draftBuilding.id}`)
-      .set(headers)
-      .send({ name: renamed });
-    expect(put.status).toBe(200);
+      const renamed = `Draft Only ${Date.now()}`;
+      const put = await request(app)
+        .put(`/api/admin/buildings/${draftBuilding.id}`)
+        .set(headers)
+        .send({ name: renamed });
+      expect(put.status).toBe(200);
 
-    const publicRes = await request(app).get('/api/campus/buildings').set('X-Site-Id', RNSIT_SITE);
-    expect(publicRes.status).toBe(200);
-    const pub = publicRes.body.find((b: { id: string }) => b.id === RNSIT_BUILDING);
-    expect(pub).toBeTruthy();
-    expect(pub.name).not.toBe(renamed);
-  });
+      const publicRes = await request(app)
+        .get('/api/campus/buildings')
+        .set('X-Site-Id', RNSIT_SITE);
+      expect(publicRes.status).toBe(200);
+      const pub = publicRes.body.find((b: { id: string }) => b.id === RNSIT_BUILDING);
+      expect(pub).toBeTruthy();
+      expect(pub.name).not.toBe(renamed);
+    },
+  );
 
   it.skipIf(!canUseDb)('map builder snapshot returns draft version metadata and data', async () => {
     const token = await loginAdmin();
@@ -201,95 +209,98 @@ describe('site map spatial versioning (Step 2)', () => {
     const pubNodeId = pubNodes[0]?.id;
     if (!draftNode || !pubNodeId) return;
 
-    const res = await request(app)
-      .post('/api/admin/paths/edges')
-      .set(headers)
-      .send({
-        fromNodeId: draftNode.id,
-        toNodeId: pubNodeId,
-      });
+    const res = await request(app).post('/api/admin/paths/edges').set(headers).send({
+      fromNodeId: draftNode.id,
+      toNodeId: pubNodeId,
+    });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('CROSS_VERSION_REFERENCE');
   });
 
-  it.skipIf(!canUseDb)('live diff endpoint returns draft-vs-parent comparison for seeded site', async () => {
-    const token = await loginAdmin();
-    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
-    const draft = await request(app).post('/api/admin/map-builder/draft').set(headers);
-    expect([200, 201]).toContain(draft.status);
-    const versionId = draft.body.id as string;
-    const diff = await request(app)
-      .get(`/api/admin/map-builder/versions/${versionId}/diff`)
-      .set(headers);
-    expect(diff.status).toBe(200);
-    expect(diff.body.versionId).toBe(versionId);
-    expect(diff.body.baseVersionId).toBeTruthy();
-    expect(diff.body.summary).toEqual(
-      expect.objectContaining({
-        added: expect.any(Number),
-        removed: expect.any(Number),
-        modified: expect.any(Number),
-      }),
-    );
-  });
+  it.skipIf(!canUseDb)(
+    'live diff endpoint returns draft-vs-parent comparison for seeded site',
+    async () => {
+      const token = await loginAdmin();
+      const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
+      const draft = await request(app).post('/api/admin/map-builder/draft').set(headers);
+      expect([200, 201]).toContain(draft.status);
+      const versionId = draft.body.id as string;
+      const diff = await request(app)
+        .get(`/api/admin/map-builder/versions/${versionId}/diff`)
+        .set(headers);
+      expect(diff.status).toBe(200);
+      expect(diff.body.versionId).toBe(versionId);
+      expect(diff.body.baseVersionId).toBeTruthy();
+      expect(diff.body.summary).toEqual(
+        expect.objectContaining({
+          added: expect.any(Number),
+          removed: expect.any(Number),
+          modified: expect.any(Number),
+        }),
+      );
+    },
+  );
 
-  it.skipIf(!canUseDb)('clone rollback: forced failure leaves no partial draft and published unchanged', async () => {
-    const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
-    const { rows: pubBefore } = await pool.query(
-      `SELECT id, name FROM buildings WHERE map_version_id = $1 ORDER BY code`,
-      [published.id],
-    );
+  it.skipIf(!canUseDb)(
+    'clone rollback: forced failure leaves no partial draft and published unchanged',
+    async () => {
+      const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
+      const { rows: pubBefore } = await pool.query(
+        `SELECT id, name FROM buildings WHERE map_version_id = $1 ORDER BY code`,
+        [published.id],
+      );
 
-    await pool.query(`DELETE FROM site_map_versions WHERE site_id = $1 AND status = 'draft'`, [
-      RNSIT_SITE,
-    ]);
+      await pool.query(`DELETE FROM site_map_versions WHERE site_id = $1 AND status = 'draft'`, [
+        RNSIT_SITE,
+      ]);
 
-    setCloneTestFailureAfter('after-buildings');
+      setCloneTestFailureAfter('after-buildings');
 
-    await expect(
-      mapVersionRepository.createDraftInTransaction(
+      await expect(
+        mapVersionRepository.createDraftInTransaction(
+          RNSIT_SITE,
+          null,
+          published.id,
+          2,
+          published.id,
+        ),
+      ).rejects.toThrow();
+
+      setCloneTestFailureAfter(null);
+
+      const { rows: draftVersions } = await pool.query(
+        `SELECT id FROM site_map_versions WHERE site_id = $1 AND status = 'draft'`,
+        [RNSIT_SITE],
+      );
+      expect(draftVersions).toHaveLength(0);
+
+      const { rows: orphanBuildings } = await pool.query(
+        `SELECT id FROM buildings WHERE site_id = $1 AND map_version_id <> $2`,
+        [RNSIT_SITE, published.id],
+      );
+      expect(orphanBuildings).toHaveLength(0);
+
+      const { rows: pubAfter } = await pool.query(
+        `SELECT id, name FROM buildings WHERE map_version_id = $1 ORDER BY code`,
+        [published.id],
+      );
+      expect(pubAfter).toEqual(pubBefore);
+
+      const draft = await mapVersionRepository.createDraftInTransaction(
         RNSIT_SITE,
         null,
         published.id,
         2,
         published.id,
-      ),
-    ).rejects.toThrow();
-
-    setCloneTestFailureAfter(null);
-
-    const { rows: draftVersions } = await pool.query(
-      `SELECT id FROM site_map_versions WHERE site_id = $1 AND status = 'draft'`,
-      [RNSIT_SITE],
-    );
-    expect(draftVersions).toHaveLength(0);
-
-    const { rows: orphanBuildings } = await pool.query(
-      `SELECT id FROM buildings WHERE site_id = $1 AND map_version_id <> $2`,
-      [RNSIT_SITE, published.id],
-    );
-    expect(orphanBuildings).toHaveLength(0);
-
-    const { rows: pubAfter } = await pool.query(
-      `SELECT id, name FROM buildings WHERE map_version_id = $1 ORDER BY code`,
-      [published.id],
-    );
-    expect(pubAfter).toEqual(pubBefore);
-
-    const draft = await mapVersionRepository.createDraftInTransaction(
-      RNSIT_SITE,
-      null,
-      published.id,
-      2,
-      published.id,
-    );
-    expect(draft.status).toBe('draft');
-    const { rows: draftBuildings } = await pool.query(
-      `SELECT id FROM buildings WHERE map_version_id = $1`,
-      [draft.id],
-    );
-    expect(draftBuildings.length).toBe(pubBefore.length);
-  });
+      );
+      expect(draft.status).toBe('draft');
+      const { rows: draftBuildings } = await pool.query(
+        `SELECT id FROM buildings WHERE map_version_id = $1`,
+        [draft.id],
+      );
+      expect(draftBuildings.length).toBe(pubBefore.length);
+    },
+  );
 
   it.skipIf(!canUseDb)('public routing uses published graph only', async () => {
     const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);

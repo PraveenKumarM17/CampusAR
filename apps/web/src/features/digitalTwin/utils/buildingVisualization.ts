@@ -9,7 +9,11 @@ export {
   parseBuildingEntityId,
 } from '../adapters/buildingAdapter';
 export { isFiniteCoordinate } from '../adapters/coordinates';
-export { accessibilityToRouteKind, routeToOverlay, shouldReplaceRoute } from '../adapters/routeAdapter';
+export {
+  accessibilityToRouteKind,
+  routeToOverlay,
+  shouldReplaceRoute,
+} from '../adapters/routeAdapter';
 export { filterTwinBuildings } from '../adapters/searchAdapter';
 
 export function buildingHasValidCoordinates(building: {

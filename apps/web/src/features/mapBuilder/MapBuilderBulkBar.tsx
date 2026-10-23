@@ -19,13 +19,7 @@ const KINDS: GraphNode['kind'][] = [
   'ramp',
 ];
 
-export function MapBuilderBulkBar({
-  count,
-  canChangeKind,
-  busy,
-  onDelete,
-  onChangeKind,
-}: Props) {
+export function MapBuilderBulkBar({ count, canChangeKind, busy, onDelete, onChangeKind }: Props) {
   if (count < 2) return null;
   return (
     <div

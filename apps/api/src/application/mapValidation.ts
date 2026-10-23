@@ -4,14 +4,14 @@ import { centroidDriftMeters } from './footprintValidation';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
 import { siteAreaRepository } from '../infrastructure/repositories/siteAreaRepository';
 
-function pushIssue(
-  issues: MapValidationIssue[],
-  issue: MapValidationIssue,
-): void {
+function pushIssue(issues: MapValidationIssue[], issue: MapValidationIssue): void {
   issues.push(issue);
 }
 
-export async function validateSiteMap(siteId: string, mapVersionId: string): Promise<MapValidationResult> {
+export async function validateSiteMap(
+  siteId: string,
+  mapVersionId: string,
+): Promise<MapValidationResult> {
   const issues: MapValidationIssue[] = [];
   const [buildings, nodes, edges, areas] = await Promise.all([
     campusRepository.listBuildings(siteId, mapVersionId),

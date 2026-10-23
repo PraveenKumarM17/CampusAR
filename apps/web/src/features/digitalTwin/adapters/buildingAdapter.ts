@@ -60,7 +60,9 @@ function validDimensions(width?: number, depth?: number): { width: number; depth
  * Geometry hierarchy: real footprint → measured width/depth → fallback 28×22 m box.
  * Does not invent campus polygons.
  */
-export function resolveBuildingGeometry(input: BuildingGeometryInput): ResolvedBuildingGeometry | null {
+export function resolveBuildingGeometry(
+  input: BuildingGeometryInput,
+): ResolvedBuildingGeometry | null {
   if (!isValidWgs84(input)) return null;
   const center = { latitude: input.latitude as number, longitude: input.longitude as number };
   const heightM = buildingHeightM(input.floorsCount ?? 1);
@@ -68,9 +70,19 @@ export function resolveBuildingGeometry(input: BuildingGeometryInput): ResolvedB
   const overlayDims = BUILDING_DIMENSIONS[input.id];
   const footprint = validFootprintRing(input.footprint ?? overlayFootprint);
   if (footprint) {
-    return { kind: 'footprint', center, footprint, width: FALLBACK_BUILDING_WIDTH_M, depth: FALLBACK_BUILDING_DEPTH_M, heightM };
+    return {
+      kind: 'footprint',
+      center,
+      footprint,
+      width: FALLBACK_BUILDING_WIDTH_M,
+      depth: FALLBACK_BUILDING_DEPTH_M,
+      heightM,
+    };
   }
-  const dims = validDimensions(input.width ?? overlayDims?.width, input.depth ?? overlayDims?.depth);
+  const dims = validDimensions(
+    input.width ?? overlayDims?.width,
+    input.depth ?? overlayDims?.depth,
+  );
   if (dims) {
     return { kind: 'dimensions', center, width: dims.width, depth: dims.depth, heightM };
   }
@@ -143,7 +155,12 @@ export function isParkingBuilding(building: { code: string; name: string }): boo
 
 export function isOpenAreaBuilding(building: { code: string; name: string }): boolean {
   const code = building.code.toUpperCase();
-  return code === 'GRDA' || code === 'GRDB' || code === 'BBALL' || /ground|basketball|court|garden/i.test(building.name);
+  return (
+    code === 'GRDA' ||
+    code === 'GRDB' ||
+    code === 'BBALL' ||
+    /ground|basketball|court|garden/i.test(building.name)
+  );
 }
 
 export function buildingEntityId(buildingId: string): string {

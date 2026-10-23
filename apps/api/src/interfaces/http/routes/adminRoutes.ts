@@ -159,35 +159,41 @@ mapEditorRouter.get('/map-builder/snapshot', async (req: AuthedRequest, res, nex
   }
 });
 
-mapEditorRouter.get('/map-builder/versions/:versionId/validate', async (req: AuthedRequest, res, next) => {
-  try {
-    const siteId = await editorSiteStrict(req);
-    const versionId = String(req.params.versionId);
-    const version = await mapVersionService.getVersion(siteId, versionId);
-    if (version.status !== 'draft') {
-      throw new AppError(
-        'VALIDATION_DRAFT_ONLY',
-        'Only draft map versions can be validated through this workflow',
-        422,
-      );
+mapEditorRouter.get(
+  '/map-builder/versions/:versionId/validate',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const siteId = await editorSiteStrict(req);
+      const versionId = String(req.params.versionId);
+      const version = await mapVersionService.getVersion(siteId, versionId);
+      if (version.status !== 'draft') {
+        throw new AppError(
+          'VALIDATION_DRAFT_ONLY',
+          'Only draft map versions can be validated through this workflow',
+          422,
+        );
+      }
+      res.json(await validateMapVersion(siteId, version));
+    } catch (err) {
+      next(err);
     }
-    res.json(await validateMapVersion(siteId, version));
-  } catch (err) {
-    next(err);
-  }
-});
+  },
+);
 
-mapEditorRouter.get('/map-builder/versions/:versionId/diff', async (req: AuthedRequest, res, next) => {
-  try {
-    const siteId = await editorSiteStrict(req);
-    const versionId = String(req.params.versionId);
-    const version = await mapVersionService.getVersion(siteId, versionId);
-    const baseVersionId = version.basedOnVersionId;
-    res.json(await mapVersionDiffService.computeDiff(version.id, baseVersionId));
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.get(
+  '/map-builder/versions/:versionId/diff',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const siteId = await editorSiteStrict(req);
+      const versionId = String(req.params.versionId);
+      const version = await mapVersionService.getVersion(siteId, versionId);
+      const baseVersionId = version.basedOnVersionId;
+      res.json(await mapVersionDiffService.computeDiff(version.id, baseVersionId));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 mapEditorRouter.get('/map-builder/history', async (req: AuthedRequest, res, next) => {
   try {
@@ -275,66 +281,76 @@ mapEditorRouter.post('/buildings', idempotencyMiddleware, async (req: AuthedRequ
   }
 });
 
-mapEditorRouter.put('/buildings/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const id = String(req.params.id);
-    const existing = await campusRepository.getBuildingById(id);
-    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Building not found' });
-    await assertResourceInSite(existing.siteId, ctx.siteId, 'Building');
-    assertDraftWritable(
-      await campusRepository.getBuildingMapVersionId(id),
-      ctx.draftVersionId,
-      ctx.publishedVersionId,
-      'Building',
-    );
-    const body = z
-      .object({
-        name: z.string().min(1).optional(),
-        code: z.string().min(1).optional(),
-        description: z.string().nullable().optional(),
-        latitude: z.number().optional(),
-        longitude: z.number().optional(),
-        floorsCount: z.number().int().positive().optional(),
-        floorHeightM: z.number().positive().max(20).optional(),
-        footprint: footprintSchema.nullable().optional(),
-        expectedUpdatedAt: z.string().datetime().optional(),
-      })
-      .parse(req.body);
-    const updated = await campusRepository.updateBuilding(id, {
-      name: body.name,
-      code: body.code,
-      description: body.description,
-      floorsCount: body.floorsCount,
-      floorHeightM: body.floorHeightM,
-      footprint: body.footprint === null ? [] : body.footprint,
-      expectedUpdatedAt: body.expectedUpdatedAt,
-      latitude: body.latitude,
-      longitude: body.longitude,
-    });
-    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Building not found' });
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.put(
+  '/buildings/:id',
+  idempotencyMiddleware,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const id = String(req.params.id);
+      const existing = await campusRepository.getBuildingById(id);
+      if (!existing)
+        return res.status(404).json({ code: 'NOT_FOUND', message: 'Building not found' });
+      await assertResourceInSite(existing.siteId, ctx.siteId, 'Building');
+      assertDraftWritable(
+        await campusRepository.getBuildingMapVersionId(id),
+        ctx.draftVersionId,
+        ctx.publishedVersionId,
+        'Building',
+      );
+      const body = z
+        .object({
+          name: z.string().min(1).optional(),
+          code: z.string().min(1).optional(),
+          description: z.string().nullable().optional(),
+          latitude: z.number().optional(),
+          longitude: z.number().optional(),
+          floorsCount: z.number().int().positive().optional(),
+          floorHeightM: z.number().positive().max(20).optional(),
+          footprint: footprintSchema.nullable().optional(),
+          expectedUpdatedAt: z.string().datetime().optional(),
+        })
+        .parse(req.body);
+      const updated = await campusRepository.updateBuilding(id, {
+        name: body.name,
+        code: body.code,
+        description: body.description,
+        floorsCount: body.floorsCount,
+        floorHeightM: body.floorHeightM,
+        footprint: body.footprint === null ? [] : body.footprint,
+        expectedUpdatedAt: body.expectedUpdatedAt,
+        latitude: body.latitude,
+        longitude: body.longitude,
+      });
+      if (!updated)
+        return res.status(404).json({ code: 'NOT_FOUND', message: 'Building not found' });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-mapEditorRouter.delete('/buildings/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const id = String(req.params.id);
-    assertDraftWritable(
-      await campusRepository.getBuildingMapVersionId(id),
-      ctx.draftVersionId,
-      ctx.publishedVersionId,
-      'Building',
-    );
-    await campusRepository.deleteBuildingSafe(id, ctx.siteId);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.delete(
+  '/buildings/:id',
+  idempotencyMiddleware,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const id = String(req.params.id);
+      assertDraftWritable(
+        await campusRepository.getBuildingMapVersionId(id),
+        ctx.draftVersionId,
+        ctx.publishedVersionId,
+        'Building',
+      );
+      await campusRepository.deleteBuildingSafe(id, ctx.siteId);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 mapEditorRouter.get('/paths/nodes', async (req, res, next) => {
   try {
@@ -346,105 +362,117 @@ mapEditorRouter.get('/paths/nodes', async (req, res, next) => {
   }
 });
 
-mapEditorRouter.post('/paths/nodes', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const body = z
-      .object({
-        name: z.string().nullable().optional(),
-        latitude: z.number(),
-        longitude: z.number(),
-        floorId: z.string().uuid().nullable().optional(),
-        buildingId: z.string().uuid().nullable().optional(),
-        kind: z.enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit']),
-      })
-      .parse(req.body);
-    if (body.buildingId) {
-      const building = await campusRepository.getBuildingById(body.buildingId);
-      if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
-      await assertResourceInSite(building.siteId, ctx.siteId, 'Building');
+mapEditorRouter.post(
+  '/paths/nodes',
+  idempotencyMiddleware,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const body = z
+        .object({
+          name: z.string().nullable().optional(),
+          latitude: z.number(),
+          longitude: z.number(),
+          floorId: z.string().uuid().nullable().optional(),
+          buildingId: z.string().uuid().nullable().optional(),
+          kind: z.enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit']),
+        })
+        .parse(req.body);
+      if (body.buildingId) {
+        const building = await campusRepository.getBuildingById(body.buildingId);
+        if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
+        await assertResourceInSite(building.siteId, ctx.siteId, 'Building');
+        assertDraftWritable(
+          await campusRepository.getBuildingMapVersionId(body.buildingId),
+          ctx.draftVersionId,
+          ctx.publishedVersionId,
+          'Building',
+        );
+      }
+      const created = await campusRepository.createNode({
+        name: body.name ?? null,
+        latitude: body.latitude,
+        longitude: body.longitude,
+        floorId: body.floorId ?? null,
+        buildingId: body.buildingId ?? null,
+        kind: body.kind,
+        siteId: ctx.siteId,
+        mapVersionId: ctx.draftVersionId,
+      });
+      await pinPointRepository.saveNode(created.id);
+      res.status(201).json(created);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+mapEditorRouter.put(
+  '/paths/nodes/:id',
+  idempotencyMiddleware,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const id = String(req.params.id);
+      const existing = await campusRepository.getNodeById(id);
+      if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
+      await assertResourceInSite(existing.siteId, ctx.siteId, 'Node');
       assertDraftWritable(
-        await campusRepository.getBuildingMapVersionId(body.buildingId),
+        await campusRepository.getNodeMapVersionId(id),
         ctx.draftVersionId,
         ctx.publishedVersionId,
-        'Building',
+        'Node',
       );
+      const body = z
+        .object({
+          name: z.string().nullable().optional(),
+          latitude: z.number().optional(),
+          longitude: z.number().optional(),
+          floorId: z.string().uuid().nullable().optional(),
+          buildingId: z.string().uuid().nullable().optional(),
+          kind: z
+            .enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit'])
+            .optional(),
+          expectedUpdatedAt: z.string().datetime().optional(),
+        })
+        .parse(req.body);
+      if (body.buildingId) {
+        const building = await campusRepository.getBuildingById(body.buildingId);
+        if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
+        await assertResourceInSite(building.siteId, ctx.siteId, 'Building');
+      }
+      const updated = await campusRepository.updateNode(id, body);
+      if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
+      await pinPointRepository.saveNode(updated.id);
+      res.json(updated);
+    } catch (err) {
+      next(err);
     }
-    const created = await campusRepository.createNode({
-      name: body.name ?? null,
-      latitude: body.latitude,
-      longitude: body.longitude,
-      floorId: body.floorId ?? null,
-      buildingId: body.buildingId ?? null,
-      kind: body.kind,
-      siteId: ctx.siteId,
-      mapVersionId: ctx.draftVersionId,
-    });
-    await pinPointRepository.saveNode(created.id);
-    res.status(201).json(created);
-  } catch (err) {
-    next(err);
-  }
-});
+  },
+);
 
-mapEditorRouter.put('/paths/nodes/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const id = String(req.params.id);
-    const existing = await campusRepository.getNodeById(id);
-    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
-    await assertResourceInSite(existing.siteId, ctx.siteId, 'Node');
-    assertDraftWritable(
-      await campusRepository.getNodeMapVersionId(id),
-      ctx.draftVersionId,
-      ctx.publishedVersionId,
-      'Node',
-    );
-    const body = z
-      .object({
-        name: z.string().nullable().optional(),
-        latitude: z.number().optional(),
-        longitude: z.number().optional(),
-        floorId: z.string().uuid().nullable().optional(),
-        buildingId: z.string().uuid().nullable().optional(),
-        kind: z
-          .enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit'])
-          .optional(),
-        expectedUpdatedAt: z.string().datetime().optional(),
-      })
-      .parse(req.body);
-    if (body.buildingId) {
-      const building = await campusRepository.getBuildingById(body.buildingId);
-      if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
-      await assertResourceInSite(building.siteId, ctx.siteId, 'Building');
+mapEditorRouter.delete(
+  '/paths/nodes/:id',
+  idempotencyMiddleware,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const id = String(req.params.id);
+      assertDraftWritable(
+        await campusRepository.getNodeMapVersionId(id),
+        ctx.draftVersionId,
+        ctx.publishedVersionId,
+        'Node',
+      );
+      const cascade = req.query.cascade === 'true';
+      await campusRepository.deleteNodeSafe(id, ctx.siteId, cascade);
+      await pinPointRepository.saveNode(id);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
     }
-    const updated = await campusRepository.updateNode(id, body);
-    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
-    await pinPointRepository.saveNode(updated.id);
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-});
-
-mapEditorRouter.delete('/paths/nodes/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const id = String(req.params.id);
-    assertDraftWritable(
-      await campusRepository.getNodeMapVersionId(id),
-      ctx.draftVersionId,
-      ctx.publishedVersionId,
-      'Node',
-    );
-    const cascade = req.query.cascade === 'true';
-    await campusRepository.deleteNodeSafe(id, ctx.siteId, cascade);
-    await pinPointRepository.saveNode(id);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+  },
+);
 
 mapEditorRouter.get('/paths/edges', async (req, res, next) => {
   try {
@@ -455,94 +483,114 @@ mapEditorRouter.get('/paths/edges', async (req, res, next) => {
   }
 });
 
-mapEditorRouter.post('/paths/edges', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const body = z
-      .object({
-        fromNodeId: z.string().uuid(),
-        toNodeId: z.string().uuid(),
-        distanceM: z.number().positive().optional(),
-        kind: z.enum(['walkway', 'stairs', 'elevator', 'ramp', 'corridor']).default('walkway'),
-        bidirectional: z.boolean().default(true),
-        blocked: z.boolean().default(false),
-        safetyScore: z.number().min(0).max(1).default(0.9),
-        crowdScore: z.number().min(0).max(1).default(0.2),
-        accessibilityScore: z.number().min(0).max(1).default(0.9),
-      })
-      .parse(req.body);
-    const from = await campusRepository.getNodeById(body.fromNodeId);
-    const to = await campusRepository.getNodeById(body.toNodeId);
-    if (!from || !to) throw new AppError('INVALID_NODE', 'Edge endpoints must be existing nodes', 422);
-    if (!from.siteId || !to.siteId || from.siteId !== to.siteId) {
-      throw new AppError('CROSS_SITE_EDGE', 'Edges cannot connect nodes from different sites', 422);
+mapEditorRouter.post(
+  '/paths/edges',
+  idempotencyMiddleware,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const body = z
+        .object({
+          fromNodeId: z.string().uuid(),
+          toNodeId: z.string().uuid(),
+          distanceM: z.number().positive().optional(),
+          kind: z.enum(['walkway', 'stairs', 'elevator', 'ramp', 'corridor']).default('walkway'),
+          bidirectional: z.boolean().default(true),
+          blocked: z.boolean().default(false),
+          safetyScore: z.number().min(0).max(1).default(0.9),
+          crowdScore: z.number().min(0).max(1).default(0.2),
+          accessibilityScore: z.number().min(0).max(1).default(0.9),
+        })
+        .parse(req.body);
+      const from = await campusRepository.getNodeById(body.fromNodeId);
+      const to = await campusRepository.getNodeById(body.toNodeId);
+      if (!from || !to)
+        throw new AppError('INVALID_NODE', 'Edge endpoints must be existing nodes', 422);
+      if (!from.siteId || !to.siteId || from.siteId !== to.siteId) {
+        throw new AppError(
+          'CROSS_SITE_EDGE',
+          'Edges cannot connect nodes from different sites',
+          422,
+        );
+      }
+      await assertResourceInSite(from.siteId, ctx.siteId, 'Start node');
+      await assertResourceInSite(to.siteId, ctx.siteId, 'End node');
+      const distanceM =
+        body.distanceM ?? haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude);
+      const edge = await campusRepository.createEdge({
+        ...body,
+        distanceM,
+        mapVersionId: ctx.draftVersionId,
+      });
+      res.status(201).json(edge);
+    } catch (err) {
+      next(err);
     }
-    await assertResourceInSite(from.siteId, ctx.siteId, 'Start node');
-    await assertResourceInSite(to.siteId, ctx.siteId, 'End node');
-    const distanceM =
-      body.distanceM ??
-      haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude);
-    const edge = await campusRepository.createEdge({ ...body, distanceM, mapVersionId: ctx.draftVersionId });
-    res.status(201).json(edge);
-  } catch (err) {
-    next(err);
-  }
-});
+  },
+);
 
-mapEditorRouter.put('/paths/edges/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const id = String(req.params.id);
-    const existing = await campusRepository.getEdgeById(id);
-    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
-    await assertResourceInSite(existing.siteId, ctx.siteId, 'Edge');
-    assertDraftWritable(
-      await campusRepository.getEdgeMapVersionId(id),
-      ctx.draftVersionId,
-      ctx.publishedVersionId,
-      'Edge',
-    );
-    const body = z
-      .object({
-        fromNodeId: z.string().uuid().optional(),
-        toNodeId: z.string().uuid().optional(),
-        distanceM: z.number().positive().optional(),
-        kind: z.enum(['walkway', 'stairs', 'elevator', 'ramp', 'corridor']).optional(),
-        bidirectional: z.boolean().optional(),
-        blocked: z.boolean().optional(),
-        safetyScore: z.number().min(0).max(1).optional(),
-        crowdScore: z.number().min(0).max(1).optional(),
-        accessibilityScore: z.number().min(0).max(1).optional(),
-        expectedUpdatedAt: z.string().datetime().optional(),
-      })
-      .parse(req.body);
-    const updated = await campusRepository.updateEdge(id, body);
-    if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.put(
+  '/paths/edges/:id',
+  idempotencyMiddleware,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const id = String(req.params.id);
+      const existing = await campusRepository.getEdgeById(id);
+      if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
+      await assertResourceInSite(existing.siteId, ctx.siteId, 'Edge');
+      assertDraftWritable(
+        await campusRepository.getEdgeMapVersionId(id),
+        ctx.draftVersionId,
+        ctx.publishedVersionId,
+        'Edge',
+      );
+      const body = z
+        .object({
+          fromNodeId: z.string().uuid().optional(),
+          toNodeId: z.string().uuid().optional(),
+          distanceM: z.number().positive().optional(),
+          kind: z.enum(['walkway', 'stairs', 'elevator', 'ramp', 'corridor']).optional(),
+          bidirectional: z.boolean().optional(),
+          blocked: z.boolean().optional(),
+          safetyScore: z.number().min(0).max(1).optional(),
+          crowdScore: z.number().min(0).max(1).optional(),
+          accessibilityScore: z.number().min(0).max(1).optional(),
+          expectedUpdatedAt: z.string().datetime().optional(),
+        })
+        .parse(req.body);
+      const updated = await campusRepository.updateEdge(id, body);
+      if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-mapEditorRouter.delete('/paths/edges/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const id = String(req.params.id);
-    const existing = await campusRepository.getEdgeById(id);
-    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
-    await assertResourceInSite(existing.siteId, ctx.siteId, 'Edge');
-    assertDraftWritable(
-      await campusRepository.getEdgeMapVersionId(id),
-      ctx.draftVersionId,
-      ctx.publishedVersionId,
-      'Edge',
-    );
-    await campusRepository.deleteEdge(id);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.delete(
+  '/paths/edges/:id',
+  idempotencyMiddleware,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const id = String(req.params.id);
+      const existing = await campusRepository.getEdgeById(id);
+      if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Edge not found' });
+      await assertResourceInSite(existing.siteId, ctx.siteId, 'Edge');
+      assertDraftWritable(
+        await campusRepository.getEdgeMapVersionId(id),
+        ctx.draftVersionId,
+        ctx.publishedVersionId,
+        'Edge',
+      );
+      await campusRepository.deleteEdge(id);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 mapEditorRouter.get('/areas', async (req: AuthedRequest, res, next) => {
   try {
@@ -606,25 +654,29 @@ mapEditorRouter.put('/areas/:id', idempotencyMiddleware, async (req: AuthedReque
   }
 });
 
-mapEditorRouter.delete('/areas/:id', idempotencyMiddleware, async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const id = String(req.params.id);
-    const existing = await siteAreaRepository.getById(id);
-    if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Area not found' });
-    await assertResourceInSite(existing.siteId, ctx.siteId, 'Area');
-    assertDraftWritable(
-      await siteAreaRepository.getMapVersionId(id),
-      ctx.draftVersionId,
-      ctx.publishedVersionId,
-      'Area',
-    );
-    await siteAreaRepository.delete(id);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.delete(
+  '/areas/:id',
+  idempotencyMiddleware,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const id = String(req.params.id);
+      const existing = await siteAreaRepository.getById(id);
+      if (!existing) return res.status(404).json({ code: 'NOT_FOUND', message: 'Area not found' });
+      await assertResourceInSite(existing.siteId, ctx.siteId, 'Area');
+      assertDraftWritable(
+        await siteAreaRepository.getMapVersionId(id),
+        ctx.draftVersionId,
+        ctx.publishedVersionId,
+        'Area',
+      );
+      await siteAreaRepository.delete(id);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 mapEditorRouter.get('/map-builder/indoor/snapshot', async (req: AuthedRequest, res, next) => {
   try {
@@ -666,9 +718,11 @@ mapEditorRouter.post('/map-builder/indoor/floors', async (req: AuthedRequest, re
       'Building',
     );
     try {
-      res.status(201).json(
-        await floorLayoutRepository.createFloor({ ...body, mapVersionId: ctx.draftVersionId }),
-      );
+      res
+        .status(201)
+        .json(
+          await floorLayoutRepository.createFloor({ ...body, mapVersionId: ctx.draftVersionId }),
+        );
     } catch (err: unknown) {
       const pg = err as { code?: string };
       if (pg.code === '23505') {
@@ -752,9 +806,9 @@ mapEditorRouter.post('/map-builder/indoor/rooms', async (req: AuthedRequest, res
       })
       .parse(req.body);
     await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
-    res.status(201).json(
-      await floorLayoutRepository.createRoom({ ...body, mapVersionId: ctx.draftVersionId }),
-    );
+    res
+      .status(201)
+      .json(await floorLayoutRepository.createRoom({ ...body, mapVersionId: ctx.draftVersionId }));
   } catch (err) {
     next(err);
   }
@@ -778,10 +832,7 @@ mapEditorRouter.put('/map-builder/indoor/rooms/:id', async (req: AuthedRequest, 
         measuredLengthM: z.number().positive().max(500).nullable().optional(),
         measuredWidthM: z.number().positive().max(500).nullable().optional(),
         measuredHeightM: z.number().positive().max(50).nullable().optional(),
-        measurementSource: z
-          .enum(['camera_ar', 'floor_plan', 'manual'])
-          .nullable()
-          .optional(),
+        measurementSource: z.enum(['camera_ar', 'floor_plan', 'manual']).nullable().optional(),
         expectedUpdatedAt: z.string().datetime().optional(),
       })
       .parse(req.body);
@@ -820,9 +871,11 @@ mapEditorRouter.post('/map-builder/indoor/corridors', async (req: AuthedRequest,
       })
       .parse(req.body);
     await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
-    res.status(201).json(
-      await floorLayoutRepository.createCorridor({ ...body, mapVersionId: ctx.draftVersionId }),
-    );
+    res
+      .status(201)
+      .json(
+        await floorLayoutRepository.createCorridor({ ...body, mapVersionId: ctx.draftVersionId }),
+      );
   } catch (err) {
     next(err);
   }
@@ -833,7 +886,8 @@ mapEditorRouter.put('/map-builder/indoor/corridors/:id', async (req: AuthedReque
     const siteId = await editorSiteStrict(req);
     const id = String(req.params.id);
     const corridor = await floorLayoutRepository.getCorridorById(id);
-    if (!corridor) return res.status(404).json({ code: 'NOT_FOUND', message: 'Corridor not found' });
+    if (!corridor)
+      return res.status(404).json({ code: 'NOT_FOUND', message: 'Corridor not found' });
     await assertBuildingInEditorSite(corridor.buildingId, siteId);
     const body = z
       .object({
@@ -852,19 +906,23 @@ mapEditorRouter.put('/map-builder/indoor/corridors/:id', async (req: AuthedReque
   }
 });
 
-mapEditorRouter.delete('/map-builder/indoor/corridors/:id', async (req: AuthedRequest, res, next) => {
-  try {
-    const siteId = await editorSiteStrict(req);
-    const id = String(req.params.id);
-    const corridor = await floorLayoutRepository.getCorridorById(id);
-    if (!corridor) return res.status(404).json({ code: 'NOT_FOUND', message: 'Corridor not found' });
-    await assertBuildingInEditorSite(corridor.buildingId, siteId);
-    await floorLayoutRepository.deleteCorridor(id);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.delete(
+  '/map-builder/indoor/corridors/:id',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const siteId = await editorSiteStrict(req);
+      const id = String(req.params.id);
+      const corridor = await floorLayoutRepository.getCorridorById(id);
+      if (!corridor)
+        return res.status(404).json({ code: 'NOT_FOUND', message: 'Corridor not found' });
+      await assertBuildingInEditorSite(corridor.buildingId, siteId);
+      await floorLayoutRepository.deleteCorridor(id);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 mapEditorRouter.post('/map-builder/indoor/pois', async (req: AuthedRequest, res, next) => {
   try {
@@ -880,9 +938,9 @@ mapEditorRouter.post('/map-builder/indoor/pois', async (req: AuthedRequest, res,
       })
       .parse(req.body);
     await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
-    res.status(201).json(
-      await floorLayoutRepository.createPoi({ ...body, mapVersionId: ctx.draftVersionId }),
-    );
+    res
+      .status(201)
+      .json(await floorLayoutRepository.createPoi({ ...body, mapVersionId: ctx.draftVersionId }));
   } catch (err) {
     next(err);
   }
@@ -943,23 +1001,28 @@ mapEditorRouter.get('/map-builder/indoor/graph/snapshot', async (req: AuthedRequ
   }
 });
 
-mapEditorRouter.post('/map-builder/indoor/graph/ensure-map', async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const body = z.object({ buildingId: z.string().uuid() }).parse(req.body);
-    await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
-    res.status(201).json(
-      await indoorGraphEditorService.ensureDraftMap(
-        body.buildingId,
-        ctx.siteId,
-        req.user?.sub ?? null,
-        ctx.draftVersionId,
-      ),
-    );
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.post(
+  '/map-builder/indoor/graph/ensure-map',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const body = z.object({ buildingId: z.string().uuid() }).parse(req.body);
+      await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
+      res
+        .status(201)
+        .json(
+          await indoorGraphEditorService.ensureDraftMap(
+            body.buildingId,
+            ctx.siteId,
+            req.user?.sub ?? null,
+            ctx.draftVersionId,
+          ),
+        );
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 mapEditorRouter.post('/map-builder/indoor/graph/nodes', async (req: AuthedRequest, res, next) => {
   try {
@@ -970,48 +1033,61 @@ mapEditorRouter.post('/map-builder/indoor/graph/nodes', async (req: AuthedReques
       draftVersionId: ctx.draftVersionId,
       publishedVersionId: ctx.publishedVersionId,
     };
-    res.status(201).json(
-      await indoorGraphEditorService.createNodeFromPlan(
-        ctx.siteId,
-        body,
-        req.user?.sub ?? null,
-        versions,
-      ),
-    );
+    res
+      .status(201)
+      .json(
+        await indoorGraphEditorService.createNodeFromPlan(
+          ctx.siteId,
+          body,
+          req.user?.sub ?? null,
+          versions,
+        ),
+      );
   } catch (err) {
     next(err);
   }
 });
 
-mapEditorRouter.put('/map-builder/indoor/graph/nodes/:id', async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const body = graphNodeMoveSchema.parse(req.body);
-    const versions = {
-      draftVersionId: ctx.draftVersionId,
-      publishedVersionId: ctx.publishedVersionId,
-    };
-    res.json(
-      await indoorGraphEditorService.moveNodeFromPlan(ctx.siteId, String(req.params.id), body, versions),
-    );
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.put(
+  '/map-builder/indoor/graph/nodes/:id',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const body = graphNodeMoveSchema.parse(req.body);
+      const versions = {
+        draftVersionId: ctx.draftVersionId,
+        publishedVersionId: ctx.publishedVersionId,
+      };
+      res.json(
+        await indoorGraphEditorService.moveNodeFromPlan(
+          ctx.siteId,
+          String(req.params.id),
+          body,
+          versions,
+        ),
+      );
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-mapEditorRouter.delete('/map-builder/indoor/graph/nodes/:id', async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const versions = {
-      draftVersionId: ctx.draftVersionId,
-      publishedVersionId: ctx.publishedVersionId,
-    };
-    await indoorGraphEditorService.deleteNode(ctx.siteId, String(req.params.id), versions);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.delete(
+  '/map-builder/indoor/graph/nodes/:id',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const versions = {
+        draftVersionId: ctx.draftVersionId,
+        publishedVersionId: ctx.publishedVersionId,
+      };
+      await indoorGraphEditorService.deleteNode(ctx.siteId, String(req.params.id), versions);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 mapEditorRouter.post('/map-builder/indoor/graph/edges', async (req: AuthedRequest, res, next) => {
   try {
@@ -1022,98 +1098,134 @@ mapEditorRouter.post('/map-builder/indoor/graph/edges', async (req: AuthedReques
       draftVersionId: ctx.draftVersionId,
       publishedVersionId: ctx.publishedVersionId,
     };
-    res.status(201).json(
-      await indoorGraphEditorService.createEdge(ctx.siteId, body, req.user?.sub ?? null, versions),
-    );
+    res
+      .status(201)
+      .json(
+        await indoorGraphEditorService.createEdge(
+          ctx.siteId,
+          body,
+          req.user?.sub ?? null,
+          versions,
+        ),
+      );
   } catch (err) {
     next(err);
   }
 });
 
-mapEditorRouter.delete('/map-builder/indoor/graph/edges/:id', async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const versions = {
-      draftVersionId: ctx.draftVersionId,
-      publishedVersionId: ctx.publishedVersionId,
-    };
-    await indoorGraphEditorService.deleteEdge(ctx.siteId, String(req.params.id), versions);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.delete(
+  '/map-builder/indoor/graph/edges/:id',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const versions = {
+        draftVersionId: ctx.draftVersionId,
+        publishedVersionId: ctx.publishedVersionId,
+      };
+      await indoorGraphEditorService.deleteEdge(ctx.siteId, String(req.params.id), versions);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-mapEditorRouter.post('/map-builder/indoor/graph/rooms/link', async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const body = graphRoomLinkSchema.parse(req.body);
-    await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
-    const versions = {
-      draftVersionId: ctx.draftVersionId,
-      publishedVersionId: ctx.publishedVersionId,
-    };
-    res.status(201).json(
-      await indoorGraphEditorService.linkRoom(ctx.siteId, body, req.user?.sub ?? null, versions),
-    );
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.post(
+  '/map-builder/indoor/graph/rooms/link',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const body = graphRoomLinkSchema.parse(req.body);
+      await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
+      const versions = {
+        draftVersionId: ctx.draftVersionId,
+        publishedVersionId: ctx.publishedVersionId,
+      };
+      res
+        .status(201)
+        .json(
+          await indoorGraphEditorService.linkRoom(
+            ctx.siteId,
+            body,
+            req.user?.sub ?? null,
+            versions,
+          ),
+        );
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-mapEditorRouter.delete('/map-builder/indoor/graph/rooms/:roomId/link', async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const buildingId = z.string().uuid().parse(req.query.buildingId);
-    const mapId = typeof req.query.mapId === 'string' ? req.query.mapId : undefined;
-    await assertBuildingInEditorSite(buildingId, ctx.siteId);
-    const versions = {
-      draftVersionId: ctx.draftVersionId,
-      publishedVersionId: ctx.publishedVersionId,
-    };
-    await indoorGraphEditorService.unlinkRoom(
-      ctx.siteId,
-      buildingId,
-      String(req.params.roomId),
-      versions,
-      mapId,
-    );
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.delete(
+  '/map-builder/indoor/graph/rooms/:roomId/link',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const buildingId = z.string().uuid().parse(req.query.buildingId);
+      const mapId = typeof req.query.mapId === 'string' ? req.query.mapId : undefined;
+      await assertBuildingInEditorSite(buildingId, ctx.siteId);
+      const versions = {
+        draftVersionId: ctx.draftVersionId,
+        publishedVersionId: ctx.publishedVersionId,
+      };
+      await indoorGraphEditorService.unlinkRoom(
+        ctx.siteId,
+        buildingId,
+        String(req.params.roomId),
+        versions,
+        mapId,
+      );
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-mapEditorRouter.post('/map-builder/indoor/graph/handoffs', async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const body = graphHandoffSchema.parse(req.body);
-    await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
-    const versions = {
-      draftVersionId: ctx.draftVersionId,
-      publishedVersionId: ctx.publishedVersionId,
-    };
-    res.status(201).json(
-      await indoorGraphEditorService.createHandoff(ctx.siteId, body, req.user?.sub ?? null, versions),
-    );
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.post(
+  '/map-builder/indoor/graph/handoffs',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const body = graphHandoffSchema.parse(req.body);
+      await assertBuildingInEditorSite(body.buildingId, ctx.siteId);
+      const versions = {
+        draftVersionId: ctx.draftVersionId,
+        publishedVersionId: ctx.publishedVersionId,
+      };
+      res
+        .status(201)
+        .json(
+          await indoorGraphEditorService.createHandoff(
+            ctx.siteId,
+            body,
+            req.user?.sub ?? null,
+            versions,
+          ),
+        );
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-mapEditorRouter.delete('/map-builder/indoor/graph/handoffs/:id', async (req: AuthedRequest, res, next) => {
-  try {
-    const ctx = await editorDraftContext(req);
-    const versions = {
-      draftVersionId: ctx.draftVersionId,
-      publishedVersionId: ctx.publishedVersionId,
-    };
-    await indoorGraphEditorService.deleteHandoff(ctx.siteId, String(req.params.id), versions);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+mapEditorRouter.delete(
+  '/map-builder/indoor/graph/handoffs/:id',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const ctx = await editorDraftContext(req);
+      const versions = {
+        draftVersionId: ctx.draftVersionId,
+        publishedVersionId: ctx.publishedVersionId,
+      };
+      await indoorGraphEditorService.deleteHandoff(ctx.siteId, String(req.params.id), versions);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 adminRouter.use(mapEditorRouter);
 

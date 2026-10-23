@@ -33,8 +33,7 @@ export function dampRelativeBearing(
   maxStepDeg: number,
 ): number {
   const delta = targetRelDeg - currentRelDeg;
-  const wrapped =
-    delta > 180 ? delta - 360 : delta < -180 ? delta + 360 : delta;
+  const wrapped = delta > 180 ? delta - 360 : delta < -180 ? delta + 360 : delta;
   const step = Math.max(-maxStepDeg, Math.min(maxStepDeg, wrapped));
   let next = currentRelDeg + step;
   if (next > 180) next -= 360;

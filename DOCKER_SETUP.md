@@ -9,12 +9,14 @@ This guide will help you run CampusAR locally using Docker containers.
 ### 1. Install Docker Desktop
 
 **Windows:**
+
 - Download from: https://www.docker.com/products/docker-desktop
 - Install Docker Desktop for Windows
 - Enable WSL 2 backend (recommended)
 - Start Docker Desktop
 
 **Verify Installation:**
+
 ```bash
 docker --version
 docker-compose --version
@@ -36,6 +38,7 @@ Copy-Item .env.docker .env
 ```
 
 **Edit `.env` file** and change the security secrets (especially for production):
+
 - `JWT_ACCESS_SECRET` - Make it long and random
 - `JWT_REFRESH_SECRET` - Make it long and random
 - `POSTGRES_PASSWORD` - Change from default
@@ -54,6 +57,7 @@ docker-compose logs -f
 ```
 
 **Services will be available at:**
+
 - 🌐 **Web App (HTTPS)**: https://localhost
 - 🌐 **Web App (HTTP)**: http://localhost (redirects to HTTPS)
 - 🔌 **API**: http://localhost:4000
@@ -74,11 +78,13 @@ docker-compose exec api npm run db:seed
 ### 4. **Access the Application**
 
 Open your browser:
+
 ```
 https://localhost
 ```
 
 **Accept the self-signed certificate warning:**
+
 - Click "Advanced" → "Proceed to localhost (unsafe)"
 - This is normal for local development
 
@@ -89,12 +95,14 @@ https://localhost
 ### 1. **Find Your Computer's IP Address**
 
 **Windows:**
+
 ```powershell
 ipconfig
 # Look for "IPv4 Address" (e.g., 192.168.1.100)
 ```
 
 **Mac/Linux:**
+
 ```bash
 ifconfig | grep "inet "
 # Or: hostname -I
@@ -107,6 +115,7 @@ Make sure your phone is on the **same WiFi network**, then open:
 ```
 https://192.168.1.100
 ```
+
 (Replace with your actual IP address)
 
 ### 3. **Accept Certificate**
@@ -248,36 +257,43 @@ docker system prune -a
 ## Troubleshooting
 
 ### "Cannot connect to Docker daemon"
+
 - Ensure Docker Desktop is running
 - Check Docker Desktop settings
 - Restart Docker Desktop
 
 ### "Port is already allocated"
+
 - Another service is using ports 80, 443, 4000, or 5433
 - Stop the conflicting service or change ports in `docker-compose.yml`
 
 ### "Database connection failed"
+
 - Wait for database to be ready: `docker-compose logs -f db`
 - Check database health: `docker-compose ps`
 - Run migrations: `docker-compose exec api npm run db:migrate`
 
 ### "Certificate warnings won't go away"
+
 - This is normal for self-signed certificates
 - Accept the warning each time (can't be avoided in dev)
 - For production, use a proper SSL certificate
 
 ### "WebXR AR not available"
+
 - Must use HTTPS (not HTTP)
 - Must access from ARCore/ARKit compatible device
 - Check browser: Chrome on Android, Safari on iOS
 
 ### "Cannot access from phone"
+
 - Ensure phone and computer on same WiFi
 - Check firewall isn't blocking ports 80/443
 - Verify IP address is correct
 - Try accessing from computer first to verify it works
 
 ### Container won't start
+
 ```bash
 # Check logs
 docker-compose logs [service-name]
@@ -321,12 +337,14 @@ VITE_GOOGLE_MAPS_API_KEY=<your-api-key>
 ## Performance Tips
 
 ### 1. **Build Optimization**
+
 ```bash
 # Use BuildKit for faster builds
 DOCKER_BUILDKIT=1 docker-compose build
 ```
 
 ### 2. **Volume Mounts for Development**
+
 To avoid rebuilding for every code change, you can mount code as volumes:
 
 ```yaml
@@ -338,6 +356,7 @@ services:
 ```
 
 ### 3. **Resource Limits**
+
 Add resource limits in `docker-compose.yml`:
 
 ```yaml
@@ -355,19 +374,24 @@ services:
 ## Support
 
 ### Logs
+
 Always check logs first when troubleshooting:
+
 ```bash
 docker-compose logs -f --tail=100
 ```
 
 ### Health Checks
+
 Check service health:
+
 ```bash
 docker-compose ps
 # Look for "healthy" status
 ```
 
 ### Restart Fresh
+
 ```bash
 # Complete clean restart
 docker-compose down -v

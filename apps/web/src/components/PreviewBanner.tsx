@@ -31,9 +31,7 @@ export function PreviewBanner() {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 font-semibold">
           <Eye className="h-4 w-4 shrink-0" aria-hidden />
-          <span>
-            PREVIEWING DRAFT V{versionNumber} — Changes are not visible to users
-          </span>
+          <span>PREVIEWING DRAFT V{versionNumber} — Changes are not visible to users</span>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className="text-amber-900/80 dark:text-amber-200/80">

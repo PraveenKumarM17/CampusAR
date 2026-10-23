@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CAMPUS_CENTER } from '../../../lib/campus';
-import {
-  isValidWgs84,
-  rejectInvalidCoordinates,
-  toCesiumDegreesArray,
-} from './coordinates';
+import { isValidWgs84, rejectInvalidCoordinates, toCesiumDegreesArray } from './coordinates';
 import { resolveBuildingGeometry } from './buildingAdapter';
 import { FALLBACK_BUILDING_DEPTH_M, FALLBACK_BUILDING_WIDTH_M } from '../types/digitalTwin';
 import { walkwayCesiumDegrees, walkwaySegmentsFromGraph } from './walkwayAdapter';
@@ -147,7 +143,14 @@ describe('route overlay entities', () => {
         distanceM: 8,
         bearing: 10,
       },
-      { nodeId: 'b', latitude: 12.91, longitude: 77.52, instruction: '', distanceM: 10, bearing: 90 },
+      {
+        nodeId: 'b',
+        latitude: 12.91,
+        longitude: 77.52,
+        instruction: '',
+        distanceM: 10,
+        bearing: 90,
+      },
     ],
     nodeIds: ['a', 'j', 'b'],
     edgeIds: ['e1'],
@@ -234,7 +237,11 @@ describe('search categories', () => {
 describe('entrances and picks', () => {
   it('uses real entrance nodes and parses Cesium entity ids', () => {
     const list = entrancesFromNodes([
-      node('n1', 12.90095, 77.51835, { name: 'Admin Block Entrance', kind: 'entrance', buildingId: 'b1' }),
+      node('n1', 12.90095, 77.51835, {
+        name: 'Admin Block Entrance',
+        kind: 'entrance',
+        buildingId: 'b1',
+      }),
       node('n2', 12.9, 77.51, { name: 'Main Gate', kind: 'outdoor' }),
     ]);
     expect(list).toHaveLength(1);

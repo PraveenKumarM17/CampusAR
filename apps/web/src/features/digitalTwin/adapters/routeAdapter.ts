@@ -58,13 +58,15 @@ export function routeWaypointEntityId(index: number): string {
 }
 
 export function isRouteEntityId(entityId: string): boolean {
-  return entityId === 'nav-route' || entityId === 'nav-start' || entityId === 'nav-end' || entityId.startsWith('nav-waypoint-');
+  return (
+    entityId === 'nav-route' ||
+    entityId === 'nav-start' ||
+    entityId === 'nav-end' ||
+    entityId.startsWith('nav-waypoint-')
+  );
 }
 
 export function routeEntityIdsForOverlay(overlay: TwinRouteOverlay | null): string[] {
   if (!overlay) return [];
-  return [
-    ...ROUTE_ENTITY_CORE_IDS,
-    ...overlay.waypoints.map((_, i) => routeWaypointEntityId(i)),
-  ];
+  return [...ROUTE_ENTITY_CORE_IDS, ...overlay.waypoints.map((_, i) => routeWaypointEntityId(i))];
 }

@@ -22,55 +22,55 @@ Aligned to product entities: users, campus graph, routing config, hazards, crowd
 
 ### Identity
 
-| Entity | Description | Key attributes (conceptual) |
-|--------|-------------|-----------------------------|
-| **User** | Registered account | id, email, password hash, role, prefs JSON, timestamps |
-| **Role** | Enum or table | student/faculty/security/admin (V1 may be enum on User) |
+| Entity   | Description        | Key attributes (conceptual)                             |
+| -------- | ------------------ | ------------------------------------------------------- |
+| **User** | Registered account | id, email, password hash, role, prefs JSON, timestamps  |
+| **Role** | Enum or table      | student/faculty/security/admin (V1 may be enum on User) |
 
 Guest may have no User row.
 
 ### Campus graph & places
 
-| Entity | Description |
-|--------|-------------|
-| **Organization** | Customer (university, hospital, corporate campus, factory, government) |
-| **Site** | Physical location (main campus, HQ, hospital main). Map center/timezone live here. |
-| **Building** | Named structure belonging to a site |
-| **Place / Room** | Searchable destination; category; optional floor; link to node(s) |
-| **Node** | Walkable graph vertex; belongs to a site |
-| **Edge** | Walkable link; must connect nodes in the same site |
-| **EdgeAttributes** | Optional extension bag for lightingScore etc. (night mode later) |
+| Entity             | Description                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| **Organization**   | Customer (university, hospital, corporate campus, factory, government)             |
+| **Site**           | Physical location (main campus, HQ, hospital main). Map center/timezone live here. |
+| **Building**       | Named structure belonging to a site                                                |
+| **Place / Room**   | Searchable destination; category; optional floor; link to node(s)                  |
+| **Node**           | Walkable graph vertex; belongs to a site                                           |
+| **Edge**           | Walkable link; must connect nodes in the same site                                 |
+| **EdgeAttributes** | Optional extension bag for lightingScore etc. (night mode later)                   |
 
 ### Routing config
 
-| Entity | Description |
-|--------|-------------|
-| **RouteWeights** | Per-campus w_distance, w_safety, w_crowd; updated_by; updated_at |
-| **RoutingPolicy** | Optional flags (allowElevatorsInEmergency, predictionDefault) |
+| Entity            | Description                                                      |
+| ----------------- | ---------------------------------------------------------------- |
+| **RouteWeights**  | Per-campus w_distance, w_safety, w_crowd; updated_by; updated_at |
+| **RoutingPolicy** | Optional flags (allowElevatorsInEmergency, predictionDefault)    |
 
 ### Safety
 
-| Entity | Description |
-|--------|-------------|
-| **Hazard** | type (fire, construction, danger, …), severity, geometry (polygon/point+radius), active window, affectsRouting |
-| **EmergencyContact** | label, phone, sort order |
-| **EmergencyExit** | place/node reference, label |
-| **SosAlert** | user id nullable, location point/node, timestamp, status (open/acked), payload |
+| Entity               | Description                                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Hazard**           | type (fire, construction, danger, …), severity, geometry (polygon/point+radius), active window, affectsRouting |
+| **EmergencyContact** | label, phone, sort order                                                                                       |
+| **EmergencyExit**    | place/node reference, label                                                                                    |
+| **SosAlert**         | user id nullable, location point/node, timestamp, status (open/acked), payload                                 |
 
 ### Live sensing
 
-| Entity | Description |
-|--------|-------------|
-| **CrowdLevel** | per edge (or segment): occupancy score, updated_at, source (sim/mqtt/admin) |
-| **SensorReading** | sensor id, type, value, location, timestamp |
-| **CampusEvent** | time-bounded event; optional affectsRouting; crowd bias |
+| Entity            | Description                                                                 |
+| ----------------- | --------------------------------------------------------------------------- |
+| **CrowdLevel**    | per edge (or segment): occupancy score, updated_at, source (sim/mqtt/admin) |
+| **SensorReading** | sensor id, type, value, location, timestamp                                 |
+| **CampusEvent**   | time-bounded event; optional affectsRouting; crowd bias                     |
 
 ### Analytics
 
-| Entity | Description |
-|--------|-------------|
-| **AnalyticsEvent** | type, user/guest id, payload JSON, created_at |
-| **PopularDestination** (optional view/rollup) | place id, count, window |
+| Entity                                        | Description                                   |
+| --------------------------------------------- | --------------------------------------------- |
+| **AnalyticsEvent**                            | type, user/guest id, payload JSON, created_at |
+| **PopularDestination** (optional view/rollup) | place id, count, window                       |
 
 ---
 
@@ -100,27 +100,27 @@ erDiagram
 
 ## Indexing intent (not DDL)
 
-| Area | Index purpose |
-|------|----------------|
-| Place search | Trigram/GIN or ILIKE-optimized indexes on name/code; category filter |
-| Node/Edge geometry | Spatial indexes (GIST) on points/linestrings |
-| Hazard geometry | Spatial index; composite on (campus_id, active window) |
-| Edge endpoints | Indexes on from_node, to_node for graph load |
-| CrowdLevel | PK/FK on edge_id; updated_at for freshness queries |
-| AnalyticsEvent | (campus_id, type, created_at) for dashboards |
-| User email | Unique |
+| Area               | Index purpose                                                        |
+| ------------------ | -------------------------------------------------------------------- |
+| Place search       | Trigram/GIN or ILIKE-optimized indexes on name/code; category filter |
+| Node/Edge geometry | Spatial indexes (GIST) on points/linestrings                         |
+| Hazard geometry    | Spatial index; composite on (campus_id, active window)               |
+| Edge endpoints     | Indexes on from_node, to_node for graph load                         |
+| CrowdLevel         | PK/FK on edge_id; updated_at for freshness queries                   |
+| AnalyticsEvent     | (campus_id, type, created_at) for dashboards                         |
+| User email         | Unique                                                               |
 
 ---
 
 ## Geospatial support
 
-| Operation | Design support |
-|-----------|----------------|
-| Nearest node snap | Spatial kNN / order by distance with max radius |
+| Operation           | Design support                                      |
+| ------------------- | --------------------------------------------------- |
+| Nearest node snap   | Spatial kNN / order by distance with max radius     |
 | Hazard intersection | Edges intersecting hazard geometry → block/penalize |
-| Campus bounds check | Point in campus polygon |
-| Route polyline | Reconstruct from edge linestrings or node sequence |
-| Twin / map | Serve GeoJSON-like DTOs from geometry columns |
+| Campus bounds check | Point in campus polygon                             |
+| Route polyline      | Reconstruct from edge linestrings or node sequence  |
+| Twin / map          | Serve GeoJSON-like DTOs from geometry columns       |
 
 **SRID assumption:** WGS84 (EPSG:4326) for lat/lng consistency with browser GPS.
 
@@ -136,25 +136,25 @@ erDiagram
 
 ## Future scalability
 
-| Scale lever | Approach |
-|-------------|----------|
-| Multi-campus | Partition by `campus_id`; connection routing later |
-| Large graphs | Per-campus graph cache in API memory; invalidate on admin mutation |
+| Scale lever        | Approach                                                                  |
+| ------------------ | ------------------------------------------------------------------------- |
+| Multi-campus       | Partition by `campus_id`; connection routing later                        |
+| Large graphs       | Per-campus graph cache in API memory; invalidate on admin mutation        |
 | Crowd write spikes | Buffer writes; update CrowdLevel upsert; consider time-series store later |
-| Analytics volume | Partition events by month; rollup tables |
-| Read replicas | Analytics + heavy search on replica; routing can use cached graph |
-| Horizontal API | Stateless API; sticky WS or Redis pub/sub |
+| Analytics volume   | Partition events by month; rollup tables                                  |
+| Read replicas      | Analytics + heavy search on replica; routing can use cached graph         |
+| Horizontal API     | Stateless API; sticky WS or Redis pub/sub                                 |
 
 ---
 
 ## Data retention (conceptual policy)
 
-| Data | Guidance |
-|------|----------|
-| SOS | Retain per campus legal policy; restrict access |
-| Analytics events | 90–180 days raw, then aggregate |
-| Sensor readings | Downsample after 7–30 days |
-| Users | Soft-delete on request |
+| Data             | Guidance                                        |
+| ---------------- | ----------------------------------------------- |
+| SOS              | Retain per campus legal policy; restrict access |
+| Analytics events | 90–180 days raw, then aggregate                 |
+| Sensor readings  | Downsample after 7–30 days                      |
+| Users            | Soft-delete on request                          |
 
 Exact durations are policy decisions — document in ops runbooks at implementation time.
 

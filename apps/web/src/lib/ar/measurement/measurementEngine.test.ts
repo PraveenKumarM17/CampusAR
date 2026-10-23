@@ -15,7 +15,9 @@ function point(id: string, x: number, y: number, z: number): SpatialPoint {
 
 describe('MeasurementEngine', () => {
   it('calculates Euclidean distance in millimeters', () => {
-    expect(new MeasurementEngine().calculateDistance(point('a', 0, 0, 0), point('b', 300, 400, 0))).toBe(500);
+    expect(
+      new MeasurementEngine().calculateDistance(point('a', 0, 0, 0), point('b', 300, 400, 0)),
+    ).toBe(500);
   });
 
   it('creates an uncertainty range around the world-space distance', () => {

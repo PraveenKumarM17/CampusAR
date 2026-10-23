@@ -124,8 +124,13 @@ export function NavigatePage() {
   const [shareNote, setShareNote] = useState<string | null>(null);
   const [indoorHandoff, setIndoorHandoff] = useState<IndoorHandoff | null>(null);
   const navigate = useNavigate();
-  const { pose, error: gpsError, requestCompassPermission, refreshLocation, watching } =
-    useGeolocation(true);
+  const {
+    pose,
+    error: gpsError,
+    requestCompassPermission,
+    refreshLocation,
+    watching,
+  } = useGeolocation(true);
   const useGoogle = hasGoogleMapsKey();
   const useMapLibre = MAP_ENGINE === 'maplibre';
   const live = useCampusLive();
@@ -136,17 +141,15 @@ export function NavigatePage() {
 
   const placeNodes = useMemo(
     () =>
-      places.map(
-        (p): GraphNode => ({
-          id: p.id,
-          name: p.name,
-          latitude: p.latitude,
-          longitude: p.longitude,
-          floorId: p.floorId,
-          buildingId: p.buildingId,
-          kind: p.kind,
-        }),
-      ),
+      places.map((p): GraphNode => ({
+        id: p.id,
+        name: p.name,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        floorId: p.floorId,
+        buildingId: p.buildingId,
+        kind: p.kind,
+      })),
     [places],
   );
   const hasPublishedMap = siteHasPublishedMap({
@@ -265,7 +268,16 @@ export function NavigatePage() {
         setError('Could not validate shared route link.');
       }
     })();
-  }, [places.length, searchParams, setSource, setDestination, applyBuildingContext, token, campusApi, previewActive]);
+  }, [
+    places.length,
+    searchParams,
+    setSource,
+    setDestination,
+    applyBuildingContext,
+    token,
+    campusApi,
+    previewActive,
+  ]);
 
   // Keep share URL in sync with selected endpoints
   useEffect(() => {
@@ -383,8 +395,7 @@ export function NavigatePage() {
         }
       } catch (err) {
         if (reqId !== routeReqId.current) return;
-        const message =
-          err instanceof Error ? err.message : 'Routing failed';
+        const message = err instanceof Error ? err.message : 'Routing failed';
         setError(message);
         if (!recalc) setRoute(null);
       } finally {
@@ -480,7 +491,11 @@ export function NavigatePage() {
             type="button"
             onClick={() => setVoiceEnabled(!voiceEnabled)}
           >
-            {voiceEnabled ? <Mic size={14} className="sm:size-4" /> : <MicOff size={14} className="sm:size-4" />}
+            {voiceEnabled ? (
+              <Mic size={14} className="sm:size-4" />
+            ) : (
+              <MicOff size={14} className="sm:size-4" />
+            )}
             Voice
           </button>
           <button
@@ -592,7 +607,9 @@ export function NavigatePage() {
               }
             />
             {destNode && (
-              <p className="text-[10px] text-ink-faint sm:text-xs">To: {formatNodeLabel(destNode)}</p>
+              <p className="text-[10px] text-ink-faint sm:text-xs">
+                To: {formatNodeLabel(destNode)}
+              </p>
             )}
 
             <div className="flex gap-1.5 sm:gap-2">

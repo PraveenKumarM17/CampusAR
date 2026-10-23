@@ -119,7 +119,10 @@ export async function validateIndoorGraph(
     }
   }
 
-  const adjacency = buildAdjacency(nodes.filter((n) => n.active), edges);
+  const adjacency = buildAdjacency(
+    nodes.filter((n) => n.active),
+    edges,
+  );
   for (const node of nodes.filter((n) => n.active)) {
     const degree = adjacency.get(node.id)?.size ?? 0;
     if (degree === 0 && nodes.filter((n) => n.active).length > 1) {

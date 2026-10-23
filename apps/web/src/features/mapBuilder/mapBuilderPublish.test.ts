@@ -6,10 +6,7 @@ import {
   publishConfirmMessage,
 } from './mapBuilderPublish';
 
-function validation(
-  errors: number,
-  warnings: number,
-): UnifiedMapValidationResult {
+function validation(errors: number, warnings: number): UnifiedMapValidationResult {
   return {
     version: { id: 'v1', versionNumber: 2, status: 'draft', label: null },
     valid: errors === 0,

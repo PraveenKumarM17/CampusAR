@@ -9,7 +9,10 @@ export const FALLBACK_MAP_CENTER = {
 /** @deprecated Use active site metadata. Kept for tests and GPS fallback. */
 export const CAMPUS_CENTER = FALLBACK_MAP_CENTER;
 
-export const CAMPUS_MAP_CENTER: [number, number] = [FALLBACK_MAP_CENTER.lat, FALLBACK_MAP_CENTER.lon];
+export const CAMPUS_MAP_CENTER: [number, number] = [
+  FALLBACK_MAP_CENTER.lat,
+  FALLBACK_MAP_CENTER.lon,
+];
 
 export const CAMPUS_DEFAULT_ZOOM = 18;
 export const CAMPUS_MAX_ZOOM = 22;
@@ -30,7 +33,11 @@ export function siteLabel(site: Site | null | undefined): string {
   return `${site.organizationName} · ${site.name}`;
 }
 
-export function siteHasPublishedMap(counts: { buildings: number; nodes: number; edges: number }): boolean {
+export function siteHasPublishedMap(counts: {
+  buildings: number;
+  nodes: number;
+  edges: number;
+}): boolean {
   return counts.buildings > 0 || counts.nodes > 0 || counts.edges > 0;
 }
 

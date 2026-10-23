@@ -58,10 +58,22 @@ async function seedSite() {
 }
 
 async function cleanup() {
-  await pool.query(`DELETE FROM floor_pois WHERE building_id IN (SELECT id FROM buildings WHERE site_id = $1)`, [SITE_C]);
-  await pool.query(`DELETE FROM floor_corridors WHERE building_id IN (SELECT id FROM buildings WHERE site_id = $1)`, [SITE_C]);
-  await pool.query(`DELETE FROM rooms WHERE building_id IN (SELECT id FROM buildings WHERE site_id = $1)`, [SITE_C]);
-  await pool.query(`DELETE FROM floors WHERE building_id IN (SELECT id FROM buildings WHERE site_id = $1)`, [SITE_C]);
+  await pool.query(
+    `DELETE FROM floor_pois WHERE building_id IN (SELECT id FROM buildings WHERE site_id = $1)`,
+    [SITE_C],
+  );
+  await pool.query(
+    `DELETE FROM floor_corridors WHERE building_id IN (SELECT id FROM buildings WHERE site_id = $1)`,
+    [SITE_C],
+  );
+  await pool.query(
+    `DELETE FROM rooms WHERE building_id IN (SELECT id FROM buildings WHERE site_id = $1)`,
+    [SITE_C],
+  );
+  await pool.query(
+    `DELETE FROM floors WHERE building_id IN (SELECT id FROM buildings WHERE site_id = $1)`,
+    [SITE_C],
+  );
   await pool.query(`DELETE FROM buildings WHERE site_id = $1`, [SITE_C]);
   await pool.query(`DELETE FROM sites WHERE id = $1`, [SITE_C]);
   await pool.query(`DELETE FROM organizations WHERE id = $1`, [ORG_C]);
@@ -76,14 +88,13 @@ describe('indoor map builder', () => {
     if (canUseDb) await cleanup();
   });
 
-  it.skipIf(!canUseDb)('creates floor, corridor, rooms, poi, validates and reloads layout', async () => {
-    const token = await loginAdmin();
-    const auth = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_C };
+  it.skipIf(!canUseDb)(
+    'creates floor, corridor, rooms, poi, validates and reloads layout',
+    async () => {
+      const token = await loginAdmin();
+      const auth = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_C };
 
-    const building = await request(app)
-      .post('/api/admin/buildings')
-      .set(auth)
-      .send({
+      const building = await request(app).post('/api/admin/buildings').set(auth).send({
         name: 'Main Wing',
         code: 'MAIN',
         description: null,
@@ -91,32 +102,29 @@ describe('indoor map builder', () => {
         longitude: 77.55,
         floorsCount: 1,
       });
-    expect(building.status).toBe(201);
-    const buildingId = building.body.id as string;
+      expect(building.status).toBe(201);
+      const buildingId = building.body.id as string;
 
-    const dup = await request(app)
-      .post('/api/admin/map-builder/indoor/floors')
-      .set(auth)
-      .send({ buildingId, level: 0, name: 'Ground Floor' });
-    expect(dup.status).toBe(201);
-    const floorId = dup.body.id as string;
+      const dup = await request(app)
+        .post('/api/admin/map-builder/indoor/floors')
+        .set(auth)
+        .send({ buildingId, level: 0, name: 'Ground Floor' });
+      expect(dup.status).toBe(201);
+      const floorId = dup.body.id as string;
 
-    const dupLevel = await request(app)
-      .post('/api/admin/map-builder/indoor/floors')
-      .set(auth)
-      .send({ buildingId, level: 0, name: 'Duplicate' });
-    expect(dupLevel.status).toBe(422);
+      const dupLevel = await request(app)
+        .post('/api/admin/map-builder/indoor/floors')
+        .set(auth)
+        .send({ buildingId, level: 0, name: 'Duplicate' });
+      expect(dupLevel.status).toBe(422);
 
-    const corridor = await request(app)
-      .post('/api/admin/map-builder/indoor/corridors')
-      .set(auth)
-      .send({ buildingId, floorId, name: 'Main hall', localGeometry: CORRIDOR_RECT });
-    expect(corridor.status).toBe(201);
+      const corridor = await request(app)
+        .post('/api/admin/map-builder/indoor/corridors')
+        .set(auth)
+        .send({ buildingId, floorId, name: 'Main hall', localGeometry: CORRIDOR_RECT });
+      expect(corridor.status).toBe(201);
 
-    const roomA = await request(app)
-      .post('/api/admin/map-builder/indoor/rooms')
-      .set(auth)
-      .send({
+      const roomA = await request(app).post('/api/admin/map-builder/indoor/rooms').set(auth).send({
         buildingId,
         floorId,
         name: 'Room A',
@@ -124,12 +132,9 @@ describe('indoor map builder', () => {
         category: 'office',
         localGeometry: ROOM_RECT,
       });
-    expect(roomA.status).toBe(201);
+      expect(roomA.status).toBe(201);
 
-    const poi = await request(app)
-      .post('/api/admin/map-builder/indoor/pois')
-      .set(auth)
-      .send({
+      const poi = await request(app).post('/api/admin/map-builder/indoor/pois').set(auth).send({
         buildingId,
         floorId,
         name: 'Reception',
@@ -137,71 +142,74 @@ describe('indoor map builder', () => {
         localX: 1,
         localY: 1,
       });
-    expect(poi.status).toBe(201);
+      expect(poi.status).toBe(201);
 
-    const invalid = await request(app)
-      .post('/api/admin/map-builder/indoor/rooms')
-      .set(auth)
-      .send({
-        buildingId,
-        floorId,
-        name: 'Tiny',
-        code: 'TINY',
-        category: 'other',
-        localGeometry: [
-          { x: 0, y: 0 },
-          { x: 0.01, y: 0 },
-          { x: 0.01, y: 0.01 },
-        ],
-      });
-    expect(invalid.status).toBe(422);
+      const invalid = await request(app)
+        .post('/api/admin/map-builder/indoor/rooms')
+        .set(auth)
+        .send({
+          buildingId,
+          floorId,
+          name: 'Tiny',
+          code: 'TINY',
+          category: 'other',
+          localGeometry: [
+            { x: 0, y: 0 },
+            { x: 0.01, y: 0 },
+            { x: 0.01, y: 0.01 },
+          ],
+        });
+      expect(invalid.status).toBe(422);
 
-    const snapshot = await request(app)
-      .get(`/api/admin/map-builder/indoor/snapshot?buildingId=${buildingId}`)
-      .set(auth);
-    expect(snapshot.status).toBe(200);
-    expect(snapshot.body.rooms.length).toBeGreaterThanOrEqual(1);
+      const snapshot = await request(app)
+        .get(`/api/admin/map-builder/indoor/snapshot?buildingId=${buildingId}`)
+        .set(auth);
+      expect(snapshot.status).toBe(200);
+      expect(snapshot.body.rooms.length).toBeGreaterThanOrEqual(1);
 
-    const validate = await request(app)
-      .get(`/api/admin/map-builder/indoor/validate?buildingId=${buildingId}`)
-      .set(auth);
-    expect(validate.status).toBe(200);
+      const validate = await request(app)
+        .get(`/api/admin/map-builder/indoor/validate?buildingId=${buildingId}`)
+        .set(auth);
+      expect(validate.status).toBe(200);
 
-    const layout = await request(app)
-      .get(`/api/campus/buildings/${buildingId}/indoor-layout?floorId=${floorId}`)
-      .set('X-Site-Id', SITE_C);
-    expect(layout.status).toBe(404);
+      const layout = await request(app)
+        .get(`/api/campus/buildings/${buildingId}/indoor-layout?floorId=${floorId}`)
+        .set('X-Site-Id', SITE_C);
+      expect(layout.status).toBe(404);
 
-    const draftLayout = await request(app)
-      .get(`/api/admin/map-builder/indoor/snapshot?buildingId=${buildingId}`)
-      .set(auth);
-    expect(draftLayout.status).toBe(200);
-    expect(draftLayout.body.rooms.length).toBe(1);
+      const draftLayout = await request(app)
+        .get(`/api/admin/map-builder/indoor/snapshot?buildingId=${buildingId}`)
+        .set(auth);
+      expect(draftLayout.status).toBe(200);
+      expect(draftLayout.body.rooms.length).toBe(1);
 
-    const updated = await request(app)
-      .put(`/api/admin/map-builder/indoor/rooms/${roomA.body.id}`)
-      .set(auth)
-      .send({
-        localGeometry: [
-          { x: 3, y: 2 },
-          { x: 7, y: 2 },
-          { x: 7, y: 5 },
-          { x: 3, y: 5 },
-        ],
-        expectedUpdatedAt: roomA.body.updatedAt,
-      });
-    expect(updated.status).toBe(200);
+      const updated = await request(app)
+        .put(`/api/admin/map-builder/indoor/rooms/${roomA.body.id}`)
+        .set(auth)
+        .send({
+          localGeometry: [
+            { x: 3, y: 2 },
+            { x: 7, y: 2 },
+            { x: 7, y: 5 },
+            { x: 3, y: 5 },
+          ],
+          expectedUpdatedAt: roomA.body.updatedAt,
+        });
+      expect(updated.status).toBe(200);
 
-    const stale = await request(app)
-      .put(`/api/admin/map-builder/indoor/rooms/${roomA.body.id}`)
-      .set(auth)
-      .send({
-        localGeometry: ROOM_RECT,
-        expectedUpdatedAt: roomA.body.updatedAt,
-      });
-    expect(stale.status).toBe(409);
+      const stale = await request(app)
+        .put(`/api/admin/map-builder/indoor/rooms/${roomA.body.id}`)
+        .set(auth)
+        .send({
+          localGeometry: ROOM_RECT,
+          expectedUpdatedAt: roomA.body.updatedAt,
+        });
+      expect(stale.status).toBe(409);
 
-    const delFloor = await request(app).delete(`/api/admin/map-builder/indoor/floors/${floorId}`).set(auth);
-    expect(delFloor.status).toBe(409);
-  });
+      const delFloor = await request(app)
+        .delete(`/api/admin/map-builder/indoor/floors/${floorId}`)
+        .set(auth);
+      expect(delFloor.status).toBe(409);
+    },
+  );
 });

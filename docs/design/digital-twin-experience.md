@@ -25,10 +25,10 @@ flowchart TB
 
 ## Heatmaps
 
-- Path network colored by crowd bands (same as map legend)  
-- Transition 300ms on WS tick  
-- Toggle “Heat” off → neutral paths  
-- Building fills stay neutral (unless future sensor building tint)  
+- Path network colored by crowd bands (same as map legend)
+- Transition 300ms on WS tick
+- Toggle “Heat” off → neutral paths
+- Building fills stay neutral (unless future sensor building tint)
 
 ---
 
@@ -42,18 +42,18 @@ UI copy: “Crowd heat” not “Live users” unless aggregate hexes ship later
 
 ## Hazards
 
-- Volumes/pins by type colors  
-- Selecting pin opens small callout: type, until time, “Affects routing”  
-- Toggle Hazards layer  
-- Emergency types pulse subtly (disable if reduced motion)  
+- Volumes/pins by type colors
+- Selecting pin opens small callout: type, until time, “Affects routing”
+- Toggle Hazards layer
+- Emergency types pulse subtly (disable if reduced motion)
 
 ---
 
 ## Crowd
 
-- Depends on WS + snapshot  
-- StatusChip: Live / Live·Simulated / Offline  
-- If sim: persistent subtle banner “Showing simulated sensors”  
+- Depends on WS + snapshot
+- StatusChip: Live / Live·Simulated / Offline
+- If sim: persistent subtle banner “Showing simulated sensors”
 
 ---
 
@@ -61,9 +61,9 @@ UI copy: “Crowd heat” not “Live users” unless aggregate hexes ship later
 
 V1 minimal:
 
-- Heat on/off  
-- Hazards on/off  
-- Building labels on/off  
+- Heat on/off
+- Hazards on/off
+- Building labels on/off
 
 Future: floor filter, category, time scrubber — don’t clutter V1 toolbar.
 
@@ -71,12 +71,12 @@ Future: floor filter, category, time scrubber — don’t clutter V1 toolbar.
 
 ## Controls
 
-| Control | Behaviour |
-|---------|-----------|
-| Reset camera | Default overview |
-| Help | One-paragraph tips sheet |
-| Navigate | Optional: closes twin context → Map with campus center |
-| Fullscreen | Browser fullscreen optional |
+| Control      | Behaviour                                              |
+| ------------ | ------------------------------------------------------ |
+| Reset camera | Default overview                                       |
+| Help         | One-paragraph tips sheet                               |
+| Navigate     | Optional: closes twin context → Map with campus center |
+| Fullscreen   | Browser fullscreen optional                            |
 
 Orbit: left drag; pan: right/two-finger; zoom: wheel/pinch.
 
@@ -93,9 +93,9 @@ Future: toggle “Popular destinations” pins — keep off by default.
 
 ## Empty / error
 
-- WebGL unsupported → illustration + Open Map  
-- No geometry → Admin CTA if admin else “Campus model unavailable”  
-- Offline → last snapshot + reconnecting  
+- WebGL unsupported → illustration + Open Map
+- No geometry → Admin CTA if admin else “Campus model unavailable”
+- Offline → last snapshot + reconnecting
 
 ---
 
@@ -107,7 +107,7 @@ If FPS low: toast once “Simplified twin mode” and reduce shadows/labels — 
 
 ## Trust & professionalism
 
-- No skybox fantasy / neon grid floor  
-- Daylight neutral lighting  
-- Campus footprint recognizable  
-- Same legend language as Map  
+- No skybox fantasy / neon grid floor
+- Daylight neutral lighting
+- Campus footprint recognizable
+- Same legend language as Map

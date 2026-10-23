@@ -10,7 +10,9 @@ describe('evaluateGpsMovement', () => {
   const t0 = 10_000;
 
   it('returns not walking with fewer than two samples', () => {
-    expect(evaluateGpsMovement([{ latitude: 12.9, longitude: 77.51, timestamp: t0 }], false, t0)).toEqual({
+    expect(
+      evaluateGpsMovement([{ latitude: 12.9, longitude: 77.51, timestamp: t0 }], false, t0),
+    ).toEqual({
       walking: false,
       displacementM: 0,
     });

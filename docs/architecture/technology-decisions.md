@@ -6,22 +6,22 @@ Architecture Decision Records (compact). Product requirements are fixed; these c
 
 ## Decision summary
 
-| Area | Decision | Status |
-|------|----------|--------|
-| Frontend framework | React + TypeScript + Vite | Accepted |
-| Styling | Tailwind CSS | Accepted |
-| Maps | MapLibre GL | Accepted |
-| 3D / Twin / doll | Three.js (+ React Three Fiber optional) | Accepted |
-| Backend runtime | Node.js + TypeScript | Accepted |
-| HTTP framework | Express (adapter-swappable) | Accepted |
-| Database | PostgreSQL + PostGIS | Accepted |
-| Auth | JWT access + refresh | Accepted |
-| Realtime | WebSocket | Accepted |
-| Containers | Docker / Compose | Accepted |
-| Monorepo | npm workspaces (or pnpm) | Accepted |
-| Future BLE | Client PositionProvider port | Planned |
-| Future MQTT | Ingest worker adapter | Planned |
-| Future ML | CrowdPredictor port → TF Serving / ONNX | Planned |
+| Area               | Decision                                | Status   |
+| ------------------ | --------------------------------------- | -------- |
+| Frontend framework | React + TypeScript + Vite               | Accepted |
+| Styling            | Tailwind CSS                            | Accepted |
+| Maps               | MapLibre GL                             | Accepted |
+| 3D / Twin / doll   | Three.js (+ React Three Fiber optional) | Accepted |
+| Backend runtime    | Node.js + TypeScript                    | Accepted |
+| HTTP framework     | Express (adapter-swappable)             | Accepted |
+| Database           | PostgreSQL + PostGIS                    | Accepted |
+| Auth               | JWT access + refresh                    | Accepted |
+| Realtime           | WebSocket                               | Accepted |
+| Containers         | Docker / Compose                        | Accepted |
+| Monorepo           | npm workspaces (or pnpm)                | Accepted |
+| Future BLE         | Client PositionProvider port            | Planned  |
+| Future MQTT        | Ingest worker adapter                   | Planned  |
+| Future ML          | CrowdPredictor port → TF Serving / ONNX | Planned  |
 
 ---
 
@@ -147,13 +147,13 @@ Architecture Decision Records (compact). Product requirements are fixed; these c
 
 ## Deliberately deferred
 
-| Tech | Why deferred |
-|------|--------------|
-| Kubernetes (mandatory) | Premature for single-campus pilot |
+| Tech                     | Why deferred                            |
+| ------------------------ | --------------------------------------- |
+| Kubernetes (mandatory)   | Premature for single-campus pilot       |
 | Graph microservice split | Modular monolith until scale/team needs |
-| Redis (mandatory V1) | Add when multi-instance WS/cache needed |
-| GraphQL | REST sufficient; fewer moving parts |
-| Micro-frontend | Single product SPA |
+| Redis (mandatory V1)     | Add when multi-instance WS/cache needed |
+| GraphQL                  | REST sufficient; fewer moving parts     |
+| Micro-frontend           | Single product SPA                      |
 
 ---
 

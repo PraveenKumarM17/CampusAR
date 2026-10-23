@@ -77,7 +77,11 @@ describe('navigationValidation', () => {
         '00000000-0000-0000-0000-000000000099',
         'a1000001-0000-0000-0000-000000000014',
       ),
-    ).rejects.toMatchObject({ code: 'INVALID_NODE', status: 422, details: { reason: 'not_found' } });
+    ).rejects.toMatchObject({
+      code: 'INVALID_NODE',
+      status: 422,
+      details: { reason: 'not_found' },
+    });
   });
 
   it('validateRouteEndpoints rejects inactive place', async () => {

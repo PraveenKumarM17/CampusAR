@@ -50,12 +50,7 @@ function toPolygonCoords(ring: GeoPoint[]): number[][][] {
 }
 
 /** Approximate a geographic circle as a closed GeoJSON polygon ring. */
-function circlePolygon(
-  lat: number,
-  lon: number,
-  radiusM: number,
-  steps = 48,
-): GeoJSON.Feature {
+function circlePolygon(lat: number, lon: number, radiusM: number, steps = 48): GeoJSON.Feature {
   const coords: number[][] = [];
   const latRad = (lat * Math.PI) / 180;
   const mPerDegLat = 111_320;
@@ -368,15 +363,7 @@ export function CampusMapLibreMap({
         type: 'circle',
         source: 'campus-places',
         paint: {
-          'circle-radius': [
-            'match',
-            ['get', 'role'],
-            'source',
-            9,
-            'destination',
-            9,
-            6,
-          ],
+          'circle-radius': ['match', ['get', 'role'], 'source', 9, 'destination', 9, 6],
           'circle-color': [
             'match',
             ['get', 'role'],

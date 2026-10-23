@@ -6,12 +6,12 @@ Scale guidance from pilot to campus-wide without rewriting domain boundaries.
 
 ## Load profiles (order-of-magnitude)
 
-| Concurrent users | Character | Primary bottlenecks |
-|------------------|-----------|---------------------|
-| **10** | Dev/demo | None; single Node + Postgres fine |
-| **100** | Small pilot | Route calc CPU; WS fan-out OK in-process |
-| **1000** | Busy campus hour | DB connections; WS broadcast; graph load |
-| **10000** | Multi-building peak / multi-campus path | Horizontal API; shared pub/sub; cache; possibly read replicas |
+| Concurrent users | Character                               | Primary bottlenecks                                           |
+| ---------------- | --------------------------------------- | ------------------------------------------------------------- |
+| **10**           | Dev/demo                                | None; single Node + Postgres fine                             |
+| **100**          | Small pilot                             | Route calc CPU; WS fan-out OK in-process                      |
+| **1000**         | Busy campus hour                        | DB connections; WS broadcast; graph load                      |
+| **10000**        | Multi-building peak / multi-campus path | Horizontal API; shared pub/sub; cache; possibly read replicas |
 
 “Users” ≈ concurrent clients with open app; navigators ⊂ users.
 
@@ -20,17 +20,20 @@ Scale guidance from pilot to campus-wide without rewriting domain boundaries.
 ## Strategy by tier
 
 ### 10 users
+
 - Single API instance, Compose or one VM
 - In-memory graph cache optional
 - IoT simulator on
 
 ### 100 users
+
 - Still one API possible
 - Connection pool sized
 - Proxy rate limits
 - Ensure route p95 within budget with fixture load test
 
 ### 1000 users
+
 - **2+ API replicas** behind proxy
 - **Redis pub/sub** for WS fan-out
 - Graph snapshot cache per process; invalidate via pub/sub on admin mutation
@@ -38,6 +41,7 @@ Scale guidance from pilot to campus-wide without rewriting domain boundaries.
 - Consider separating static web to CDN
 
 ### 10000 users
+
 - Autoscale API on CPU/RPS/WS count
 - Read replica for analytics/search
 - Optional extract **Realtime** or **Routing** service
@@ -49,12 +53,12 @@ Scale guidance from pilot to campus-wide without rewriting domain boundaries.
 
 ## Caching
 
-| Cache | Content | Invalidation |
-|-------|---------|--------------|
-| Process graph snapshot | Nodes/edges/weights | Admin mutation event |
-| Places search | Short TTL | Write-through on place CRUD |
-| HTTP CDN | SPA assets | Content hash |
-| Redis (later) | Session revoke list, pub/sub, optional twin snapshot | TTL / explicit |
+| Cache                  | Content                                              | Invalidation                |
+| ---------------------- | ---------------------------------------------------- | --------------------------- |
+| Process graph snapshot | Nodes/edges/weights                                  | Admin mutation event        |
+| Places search          | Short TTL                                            | Write-through on place CRUD |
+| HTTP CDN               | SPA assets                                           | Content hash                |
+| Redis (later)          | Session revoke list, pub/sub, optional twin snapshot | TTL / explicit              |
 
 Do not cache route results long — crowd/hazards change.
 
@@ -70,14 +74,14 @@ Do not cache route results long — crowd/hazards change.
 
 ## Database scaling
 
-| Technique | When |
-|-----------|------|
-| Indexes / query tune | First |
-| Connection pooling (PgBouncer) | 1000+ |
-| Read replicas | Analytics/search heavy |
-| Partition analytics_events | High write volume |
-| Vertical bump | Short-term |
-| Shard by campus | Multi-campus V5 |
+| Technique                      | When                   |
+| ------------------------------ | ---------------------- |
+| Indexes / query tune           | First                  |
+| Connection pooling (PgBouncer) | 1000+                  |
+| Read replicas                  | Analytics/search heavy |
+| Partition analytics_events     | High write volume      |
+| Vertical bump                  | Short-term             |
+| Shard by campus                | Multi-campus V5        |
 
 Graph size for one campus rarely needs sharding if cached in API.
 

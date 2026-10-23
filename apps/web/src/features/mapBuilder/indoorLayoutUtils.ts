@@ -24,7 +24,8 @@ export function planToLocalVec3(point: LocalVec2, elevationM = 0): LocalVec3 {
 
 export function nodeKindColor(kind: string): { fill: string; stroke: string } {
   if (kind === 'entrance') return { fill: '#22c55e', stroke: '#15803d' };
-  if (kind === 'room_entrance' || kind === 'destination') return { fill: '#a855f7', stroke: '#7e22ce' };
+  if (kind === 'room_entrance' || kind === 'destination')
+    return { fill: '#a855f7', stroke: '#7e22ce' };
   if (kind === 'stairs') return { fill: '#f59e0b', stroke: '#b45309' };
   if (kind === 'elevator') return { fill: '#06b6d4', stroke: '#0e7490' };
   if (kind === 'ramp') return { fill: '#14b8a6', stroke: '#0f766e' };

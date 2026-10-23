@@ -43,12 +43,12 @@ stateDiagram-v2
 
 ## Accuracy handling
 
-| Accuracy | Behaviour |
-|----------|-----------|
-| ≤ 20 m | Normal snap confidence |
-| 20–50 m | Warn; snap with low confidence |
-| > 50 m | Prefer manual confirmation for source |
-| null / unknown | Treat as poor |
+| Accuracy       | Behaviour                             |
+| -------------- | ------------------------------------- |
+| ≤ 20 m         | Normal snap confidence                |
+| 20–50 m        | Warn; snap with low confidence        |
+| > 50 m         | Prefer manual confirmation for source |
+| null / unknown | Treat as poor                         |
 
 Surface accuracy to UI sparingly (banner, not constant noise).
 
@@ -92,12 +92,12 @@ Between sparse fixes:
 
 ## Battery optimization
 
-| Mode | GPS behaviour |
-|------|----------------|
-| Map browse | Single shot or low-frequency watch |
-| Active navigation | Higher frequency / high accuracy |
-| Background tab | Pause or heavily throttle watch |
-| Arrived / idle | Stop watch |
+| Mode              | GPS behaviour                      |
+| ----------------- | ---------------------------------- |
+| Map browse        | Single shot or low-frequency watch |
+| Active navigation | Higher frequency / high accuracy   |
+| Background tab    | Pause or heavily throttle watch    |
+| Arrived / idle    | Stop watch                         |
 
 Prefer stopping watches whenever leaving Navigate/AR.
 
@@ -124,14 +124,14 @@ Copy must explain why location is needed (navigation), per platform norms.
 
 ## Failure cases
 
-| Failure | User outcome |
-|---------|--------------|
-| Permission denied | Manual node selection |
-| Timeout | Retry + manual |
-| Outside campus | Warn; allow manual |
-| Mock GPS | Ignore anti-spoof V1 (product assumption) |
-| Jump discontinuity | Outlier reject / debounce off-route |
-| Indoor GPS drift | Prompt floor/manual; future BLE |
+| Failure            | User outcome                              |
+| ------------------ | ----------------------------------------- |
+| Permission denied  | Manual node selection                     |
+| Timeout            | Retry + manual                            |
+| Outside campus     | Warn; allow manual                        |
+| Mock GPS           | Ignore anti-spoof V1 (product assumption) |
+| Jump discontinuity | Outlier reject / debounce off-route       |
+| Indoor GPS drift   | Prompt floor/manual; future BLE           |
 
 ---
 

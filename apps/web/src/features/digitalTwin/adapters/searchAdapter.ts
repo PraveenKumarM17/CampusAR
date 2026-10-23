@@ -1,4 +1,9 @@
-import type { CampusPOI, DigitalTwinBuilding, ParkingArea, TwinSearchHit } from '../types/digitalTwin';
+import type {
+  CampusPOI,
+  DigitalTwinBuilding,
+  ParkingArea,
+  TwinSearchHit,
+} from '../types/digitalTwin';
 
 export function filterTwinBuildings(
   buildings: DigitalTwinBuilding[],
@@ -45,7 +50,8 @@ export function searchTwinObjects(input: {
   }
 
   for (const poi of input.pois) {
-    if (q && !poi.name.toLowerCase().includes(q) && !poi.category.toLowerCase().includes(q)) continue;
+    if (q && !poi.name.toLowerCase().includes(q) && !poi.category.toLowerCase().includes(q))
+      continue;
     hits.push({
       id: poi.id,
       name: poi.name,

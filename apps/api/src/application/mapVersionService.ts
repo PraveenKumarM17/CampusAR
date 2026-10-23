@@ -85,7 +85,11 @@ export const mapVersionService = {
     }));
   },
 
-  async rollbackToVersion(siteId: string, sourceVersionId: string, userId: string | null): Promise<SiteMapVersion> {
+  async rollbackToVersion(
+    siteId: string,
+    sourceVersionId: string,
+    userId: string | null,
+  ): Promise<SiteMapVersion> {
     const source = await this.getVersion(siteId, sourceVersionId);
     const existingDraft = await this.getDraftVersion(siteId);
     if (existingDraft) {

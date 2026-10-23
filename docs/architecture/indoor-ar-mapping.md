@@ -4,10 +4,10 @@ Indoor graphs **do not use GPS / WGS84**.
 
 ## Frames
 
-| System | Used by | Units | Origin |
-|--------|---------|-------|--------|
-| WGS84 lat/lng | Outdoor `/map`, `/navigate`, outdoor A* | degrees | Earth |
-| AR local meters v1 (`ar-local-meters-v1`) | Indoor mapper + indoor A* | meters | QR / floor origin for **one published map** |
+| System                                    | Used by                                 | Units   | Origin                                      |
+| ----------------------------------------- | --------------------------------------- | ------- | ------------------------------------------- |
+| WGS84 lat/lng                             | Outdoor `/map`, `/navigate`, outdoor A* | degrees | Earth                                       |
+| AR local meters v1 (`ar-local-meters-v1`) | Indoor mapper + indoor A*               | meters  | QR / floor origin for **one published map** |
 
 Unity / AR Foundation convention (Y-up, right-handed):
 

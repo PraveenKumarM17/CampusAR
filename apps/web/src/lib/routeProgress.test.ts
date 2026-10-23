@@ -121,12 +121,12 @@ describe('evaluateOffRouteRecalc', () => {
 
 describe('isNearDestination', () => {
   it('detects proximity to final node', () => {
-    expect(
-      isNearDestination({ latitude: 12.903, longitude: 77.518 }, path, ARRIVAL_RADIUS_M),
-    ).toBe(true);
-    expect(
-      isNearDestination({ latitude: 12.901, longitude: 77.518 }, path, ARRIVAL_RADIUS_M),
-    ).toBe(false);
+    expect(isNearDestination({ latitude: 12.903, longitude: 77.518 }, path, ARRIVAL_RADIUS_M)).toBe(
+      true,
+    );
+    expect(isNearDestination({ latitude: 12.901, longitude: 77.518 }, path, ARRIVAL_RADIUS_M)).toBe(
+      false,
+    );
   });
 });
 

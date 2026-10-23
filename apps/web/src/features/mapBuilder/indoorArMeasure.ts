@@ -6,11 +6,7 @@ export const DEFAULT_FLOOR_HEIGHT_M = 3.5;
 const CAMERA_OPEN_TIMEOUT_MS = 12_000;
 const VIDEO_PLAY_TIMEOUT_MS = 4_000;
 
-export function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  message: string,
-): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
@@ -95,7 +91,9 @@ export async function attachCameraToVideo(
   });
 }
 
-export async function probeCameraPermission(): Promise<'granted' | 'denied' | 'prompt' | 'unknown'> {
+export async function probeCameraPermission(): Promise<
+  'granted' | 'denied' | 'prompt' | 'unknown'
+> {
   try {
     const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
     return status.state;
@@ -541,7 +539,7 @@ function lerp(a: number, b: number, t: number): number {
 
 /** Shortest-path interpolation for compass degrees. */
 export function lerpAngleDeg(a: number, b: number, t: number): number {
-  let delta = ((b - a + 540) % 360) - 180;
+  const delta = ((b - a + 540) % 360) - 180;
   return a + delta * t;
 }
 
@@ -585,11 +583,7 @@ function mat3MulVec3(m: number[], v: LocalVec3): LocalVec3 {
 }
 
 /** View forward in world space (device −Z axis). */
-export function forwardFromFullOrientation(
-  alpha: number,
-  beta: number,
-  gamma: number,
-): LocalVec3 {
+export function forwardFromFullOrientation(alpha: number, beta: number, gamma: number): LocalVec3 {
   const m = rotationMatrixFromDeviceOrientation(alpha, beta, gamma);
   const f = mat3MulVec3(m, { x: 0, y: 0, z: -1 });
   const len = Math.hypot(f.x, f.y, f.z) || 1;
@@ -612,9 +606,9 @@ function cameraBasisFromOrientation(alpha: number, beta: number, gamma: number) 
   rx /= rlen;
   ry /= rlen;
   rz /= rlen;
-  let ux = ry * forward.z - rz * forward.y;
-  let uy = rz * forward.x - rx * forward.z;
-  let uz = rx * forward.y - ry * forward.x;
+  const ux = ry * forward.z - rz * forward.y;
+  const uy = rz * forward.x - rx * forward.z;
+  const uz = rx * forward.y - ry * forward.x;
   const ulen = Math.hypot(ux, uy, uz) || 1;
   return {
     forward: {
@@ -675,7 +669,7 @@ export function projectWorldToCameraScreen(
   const camY = vx * up.x + vy * up.y + vz * up.z;
 
   const fovRad = (DEFAULT_FOV_DEG * Math.PI) / 180;
-  const scale = (height / 2) / Math.tan(fovRad / 2);
+  const scale = height / 2 / Math.tan(fovRad / 2);
   return {
     x: width / 2 + (camX / camZ) * scale,
     y: height / 2 - (camY / camZ) * scale,
@@ -731,7 +725,12 @@ export class CameraPoseTracker {
     this.eye = { x: 0, y: CAMERA_EYE_Y, z: 0 };
   }
 
-  updateOrientation(alpha: number, beta: number, gamma: number, timestamp = performance.now()): void {
+  updateOrientation(
+    alpha: number,
+    beta: number,
+    gamma: number,
+    timestamp = performance.now(),
+  ): void {
     this.lastOrientationMs = timestamp;
     const f = this.filterStrength;
     this.filtered = {
@@ -741,10 +740,7 @@ export class CameraPoseTracker {
     };
   }
 
-  updateMotion(
-    deviceAccel: LocalVec3 | null,
-    timestamp = performance.now(),
-  ): void {
+  updateMotion(deviceAccel: LocalVec3 | null, timestamp = performance.now()): void {
     if (!this.calibrated || !deviceAccel) return;
     const dt = Math.min(0.05, Math.max(0.001, (timestamp - this.lastMotionMs) / 1000));
     this.lastMotionMs = timestamp;

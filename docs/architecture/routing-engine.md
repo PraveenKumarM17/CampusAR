@@ -19,11 +19,11 @@ Behavioural design only. Product rules: [`../product/ai-routing-logic.md`](../pr
 
 ## Graph model
 
-| Concept | Meaning |
-|---------|---------|
-| **Graph** | Directed or bidirectional walkable network for one campus |
-| **Snapshot** | Immutable in-memory copy used for one calculate call (or short TTL cache) |
-| **Effective edge** | Edge after blocks, hazards, crowd, prediction, accessibility filters |
+| Concept            | Meaning                                                                   |
+| ------------------ | ------------------------------------------------------------------------- |
+| **Graph**          | Directed or bidirectional walkable network for one campus                 |
+| **Snapshot**       | Immutable in-memory copy used for one calculate call (or short TTL cache) |
+| **Effective edge** | Edge after blocks, hazards, crowd, prediction, accessibility filters      |
 
 ```mermaid
 flowchart LR
@@ -36,13 +36,13 @@ flowchart LR
 
 ## Node model
 
-| Field (conceptual) | Purpose |
-|--------------------|---------|
-| id | Stable identifier |
-| coordinate | Lat/lng (and optional altitude) |
-| type | entrance, junction, indoor, exit, elevator lobby, … |
-| floor / buildingId | Indoor readiness |
-| tags | search/snap hints |
+| Field (conceptual) | Purpose                                             |
+| ------------------ | --------------------------------------------------- |
+| id                 | Stable identifier                                   |
+| coordinate         | Lat/lng (and optional altitude)                     |
+| type               | entrance, junction, indoor, exit, elevator lobby, … |
+| floor / buildingId | Indoor readiness                                    |
+| tags               | search/snap hints                                   |
 
 Nodes are **routing anchors**; Places reference one or more nodes (entrances).
 
@@ -50,18 +50,18 @@ Nodes are **routing anchors**; Places reference one or more nodes (entrances).
 
 ## Edge model
 
-| Field (conceptual) | Purpose |
-|--------------------|---------|
-| id | Stable identifier |
-| fromNode / toNode | Topology |
-| geometry | Linestring for map/twin |
-| lengthMeters | Base distance |
-| bidirectional | If false, one-way walk |
-| flags | stairs, elevator, ramp, stepFree, indoor |
-| baseSafety | Static safety prior |
-| blocked | Admin hard close |
-| liveCrowd | Joined from CrowdLevel |
-| predictedCrowd | From predictor port |
+| Field (conceptual) | Purpose                                  |
+| ------------------ | ---------------------------------------- |
+| id                 | Stable identifier                        |
+| fromNode / toNode  | Topology                                 |
+| geometry           | Linestring for map/twin                  |
+| lengthMeters       | Base distance                            |
+| bidirectional      | If false, one-way walk                   |
+| flags              | stairs, elevator, ramp, stepFree, indoor |
+| baseSafety         | Static safety prior                      |
+| blocked            | Admin hard close                         |
+| liveCrowd          | Joined from CrowdLevel                   |
+| predictedCrowd     | From predictor port                      |
 
 ---
 
@@ -91,12 +91,12 @@ Defaults for α and hysteresis: product assumptions (e.g. α=0.6, recalc improve
 
 ## GPS snapping (engine-adjacent)
 
-| Step | Behaviour |
-|------|-----------|
-| Input | Pose (lat, lng, accuracy) |
+| Step    | Behaviour                                                  |
+| ------- | ---------------------------------------------------------- |
+| Input   | Pose (lat, lng, accuracy)                                  |
 | Process | Nearest node within max snap radius; prefer walkable nodes |
-| Output | `nodeId` + snap distance + confidence |
-| Fail | Outside radius → require manual selection |
+| Output  | `nodeId` + snap distance + confidence                      |
+| Fail    | Outside radius → require manual selection                  |
 
 May run client-side for UX and/or server-side for authoritative snap.
 
@@ -106,11 +106,11 @@ May run client-side for UX and/or server-side for authoritative snap.
 
 Client (primarily) compares pose to current path corridor:
 
-| Signal | Behaviour |
-|--------|-----------|
-| Distance to polyline / next nodes > threshold | Mark off-route |
-| Debounce N fixes | Avoid GPS jitter false positives |
-| Action | Trigger recalculate from nearest node |
+| Signal                                        | Behaviour                             |
+| --------------------------------------------- | ------------------------------------- |
+| Distance to polyline / next nodes > threshold | Mark off-route                        |
+| Debounce N fixes                              | Avoid GPS jitter false positives      |
+| Action                                        | Trigger recalculate from nearest node |
 
 ---
 
@@ -146,12 +146,12 @@ port CrowdPredictor {
 }
 ```
 
-| Requirement | Rule |
-|-------------|------|
-| Cold start | Neutral or live copy — must not fail route |
-| Disable flag | Skip port; live-only |
+| Requirement  | Rule                                                |
+| ------------ | --------------------------------------------------- |
+| Cold start   | Neutral or live copy — must not fail route          |
+| Disable flag | Skip port; live-only                                |
 | Transparency | `predictionMethod`, `predictionUsed` in result meta |
-| Swap | EWMA → remote LSTM without changing Pathfinder |
+| Swap         | EWMA → remote LSTM without changing Pathfinder      |
 
 ---
 
@@ -174,13 +174,13 @@ Training pipelines are **offline** and never imported by domain pathfinder.
 
 ## Failure matrix
 
-| Case | Result |
-|------|--------|
-| Disconnected graph | `NO_ROUTE` |
-| Accessibility eliminates all paths | `NO_ROUTE` + reason |
-| Predictor timeout | Continue live-only |
-| Empty graph | `SERVICE_UNAVAILABLE` / config error |
-| Source = dest | Zero-length success or friendly no-op per product |
+| Case                               | Result                                            |
+| ---------------------------------- | ------------------------------------------------- |
+| Disconnected graph                 | `NO_ROUTE`                                        |
+| Accessibility eliminates all paths | `NO_ROUTE` + reason                               |
+| Predictor timeout                  | Continue live-only                                |
+| Empty graph                        | `SERVICE_UNAVAILABLE` / config error              |
+| Source = dest                      | Zero-length success or friendly no-op per product |
 
 ---
 

@@ -6,10 +6,7 @@ import { ApiError } from '../../lib/api';
 import { useCampusApi } from '../../hooks/useCampusApi';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavStore, usePrefsStore } from '../../stores/themeStore';
-import {
-  parseIndoorParams,
-  placeBelongsToBuilding,
-} from '../../lib/buildingNavigation';
+import { parseIndoorParams, placeBelongsToBuilding } from '../../lib/buildingNavigation';
 import { FloorLayoutViewer } from './FloorLayoutViewer';
 import { IndoorArNavigator } from './IndoorArNavigator';
 import { IndoorQrScanner } from './IndoorQrScanner';
@@ -109,8 +106,7 @@ export function IndoorPage() {
       .catch((err: unknown) => {
         if (cancelled) return;
         setSelected(null);
-        const gone =
-          err instanceof ApiError && (err.status === 404 || err.code === 'NOT_FOUND');
+        const gone = err instanceof ApiError && (err.status === 404 || err.code === 'NOT_FOUND');
         setRestoreError(
           gone
             ? 'That indoor destination was deleted or unpublished. Return to search to choose another place.'
@@ -217,7 +213,11 @@ export function IndoorPage() {
       {restoreError && (
         <div className="rounded-md border border-accent-danger/40 bg-accent-danger/10 px-4 py-3 text-sm">
           <p className="text-accent-danger">{restoreError}</p>
-          <button type="button" className="mt-2 text-sm font-semibold underline" onClick={() => navigate('/navigate')}>
+          <button
+            type="button"
+            className="mt-2 text-sm font-semibold underline"
+            onClick={() => navigate('/navigate')}
+          >
             Return to search
           </button>
         </div>
@@ -225,8 +225,12 @@ export function IndoorPage() {
 
       {guided && !restoreError && (
         <div className="panel rounded-md p-4">
-          <p className="font-semibold">{indoorDestinationName ?? selected?.name ?? 'Indoor destination'}</p>
-          {indoorDestinationDetail && <p className="text-sm text-ink-mute">{indoorDestinationDetail}</p>}
+          <p className="font-semibold">
+            {indoorDestinationName ?? selected?.name ?? 'Indoor destination'}
+          </p>
+          {indoorDestinationDetail && (
+            <p className="text-sm text-ink-mute">{indoorDestinationDetail}</p>
+          )}
           <p className="mt-2 text-sm">Scan the nearest CampusAR marker</p>
         </div>
       )}
@@ -248,11 +252,7 @@ export function IndoorPage() {
             <QrCode size={16} /> Localize
           </button>
         </div>
-        <button
-          className="btn-ghost w-full"
-          type="button"
-          onClick={() => setScannerOpen(true)}
-        >
+        <button className="btn-ghost w-full" type="button" onClick={() => setScannerOpen(true)}>
           <Camera size={16} /> Scan marker with camera
         </button>
         {guided && (

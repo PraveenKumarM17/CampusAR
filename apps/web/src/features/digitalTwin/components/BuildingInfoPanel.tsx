@@ -56,16 +56,18 @@ export function BuildingInfoPanel({
   const published = indoor?.indoorMap?.status === 'published';
   const canNavigate = Boolean(
     (pick.kind === 'building' && building) ||
-      (pick.kind === 'entrance' && entrance) ||
-      (pick.kind === 'poi' && poi?.metadata?.nodeId) ||
-      (pick.kind === 'parking' && parking),
+    (pick.kind === 'entrance' && entrance) ||
+    (pick.kind === 'poi' && poi?.metadata?.nodeId) ||
+    (pick.kind === 'parking' && parking),
   );
 
   return (
     <aside className="max-h-[45vh] overflow-auto border border-line bg-paper-raised/95 p-4 shadow-lg backdrop-blur-sm sm:max-h-[70vh] sm:w-80">
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>
-          <p className="text-[11px] uppercase tracking-wide text-ink-mute">{pickKindLabel(pick.kind)}</p>
+          <p className="text-[11px] uppercase tracking-wide text-ink-mute">
+            {pickKindLabel(pick.kind)}
+          </p>
           <h2 className="font-display text-lg font-semibold">{title}</h2>
           <p className="text-xs text-ink-faint">{subtitle}</p>
         </div>
@@ -150,7 +152,12 @@ export function BuildingInfoPanel({
       )}
       <div className="mt-4 flex flex-col gap-2">
         {canNavigate && (
-          <button type="button" className="btn-primary" disabled={navigateBusy} onClick={onNavigate}>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={navigateBusy}
+            onClick={onNavigate}
+          >
             {navigateBusy ? 'Preparing…' : navigateLabel}
           </button>
         )}

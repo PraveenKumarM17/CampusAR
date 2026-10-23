@@ -14,6 +14,8 @@ export interface PinPointRecord {
 }
 
 export interface PinPointDoc {
+  /** Postgres node id; set by the upsert filter, not by toPinPointDoc. */
+  _id?: string;
   stableId: string | null;
   siteId: string | null;
   mapVersionId: string | null;

@@ -16,8 +16,12 @@ describe('buildingHandoff', () => {
 
   it('rejects places from another building', () => {
     expect(placeBelongsToBuilding({ buildingId: 'it-block', active: true }, 'it-block')).toBe(true);
-    expect(placeBelongsToBuilding({ buildingId: 'ece-block', active: true }, 'it-block')).toBe(false);
-    expect(placeBelongsToBuilding({ buildingId: 'it-block', active: false }, 'it-block')).toBe(false);
+    expect(placeBelongsToBuilding({ buildingId: 'ece-block', active: true }, 'it-block')).toBe(
+      false,
+    );
+    expect(placeBelongsToBuilding({ buildingId: 'it-block', active: false }, 'it-block')).toBe(
+      false,
+    );
   });
 
   it('names the other building when a QR marker is rejected', () => {

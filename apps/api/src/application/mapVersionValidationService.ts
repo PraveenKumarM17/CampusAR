@@ -1,4 +1,8 @@
-import type { MapValidationIssue, SiteMapVersion, UnifiedMapValidationResult } from '@campusar/shared';
+import type {
+  MapValidationIssue,
+  SiteMapVersion,
+  UnifiedMapValidationResult,
+} from '@campusar/shared';
 import { validateSiteMap } from './mapValidation';
 import { validateIndoorLayout } from './indoorLayoutValidation';
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
@@ -49,7 +53,11 @@ async function validateVersionScopeIntegrity(
     }
   }
 
-  const { rows: crossVersionEdges } = await query<{ id: string; from_node_id: string; to_node_id: string }>(
+  const { rows: crossVersionEdges } = await query<{
+    id: string;
+    from_node_id: string;
+    to_node_id: string;
+  }>(
     `SELECT e.id, e.from_node_id, e.to_node_id
      FROM edges e
      WHERE e.site_id = $1 AND e.map_version_id = $2`,

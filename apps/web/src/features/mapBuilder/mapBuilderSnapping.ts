@@ -1,9 +1,4 @@
-import {
-  point,
-  lineString,
-  nearestPointOnLine,
-  distance as turfDistance,
-} from '@turf/turf';
+import { point, lineString, nearestPointOnLine, distance as turfDistance } from '@turf/turf';
 import type { Building, GeoPoint, GraphEdge, GraphNode } from '@campusar/shared';
 import { haversineMeters } from '../../lib/geo';
 
@@ -21,8 +16,7 @@ function ringToLineCoords(ring: GeoPoint[]): [number, number][] {
   const coords = ring.map((p) => [p.longitude, p.latitude] as [number, number]);
   if (
     coords.length &&
-    (coords[0][0] !== coords[coords.length - 1][0] ||
-      coords[0][1] !== coords[coords.length - 1][1])
+    (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])
   ) {
     coords.push(coords[0]);
   }
@@ -174,15 +168,10 @@ function destinationPoint(
   const θ = (bearing * Math.PI) / 180;
   const φ1 = (lat * Math.PI) / 180;
   const λ1 = (lon * Math.PI) / 180;
-  const φ2 = Math.asin(
-    Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ),
-  );
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
   const λ2 =
     λ1 +
-    Math.atan2(
-      Math.sin(θ) * Math.sin(δ) * Math.cos(φ1),
-      Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2),
-    );
+    Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
   return { latitude: (φ2 * 180) / Math.PI, longitude: (λ2 * 180) / Math.PI };
 }
 

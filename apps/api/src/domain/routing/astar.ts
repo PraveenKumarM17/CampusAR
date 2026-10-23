@@ -225,7 +225,11 @@ export function aStar(
   goalId: string,
   nodes: Map<string, RoutingNode>,
   adjacency: Map<string, ScoredNeighbor[]>,
-  options?: { maxDistanceM?: number; wDistance?: number; distanceFn?: (a: RoutingNode, b: RoutingNode) => number },
+  options?: {
+    maxDistanceM?: number;
+    wDistance?: number;
+    distanceFn?: (a: RoutingNode, b: RoutingNode) => number;
+  },
 ): AStarResult | null {
   if (startId === goalId) {
     return { nodeIds: [startId], edgeIds: [], totalDistanceM: 0, cost: 0 };

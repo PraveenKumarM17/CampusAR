@@ -1,12 +1,7 @@
 export type UserRole = 'admin' | 'user' | 'guest';
 
 export type OrganizationType =
-  | 'university'
-  | 'hospital'
-  | 'corporate'
-  | 'factory'
-  | 'government'
-  | 'other';
+  'university' | 'hospital' | 'corporate' | 'factory' | 'government' | 'other';
 
 export type SiteStatus = 'draft' | 'active' | 'archived';
 
@@ -143,7 +138,18 @@ export interface MapValidationIssue {
   level: MapValidationLevel;
   code: string;
   message: string;
-  resourceType?: 'building' | 'node' | 'edge' | 'entrance' | 'area' | 'floor' | 'room' | 'corridor' | 'poi' | 'place' | 'handoff';
+  resourceType?:
+    | 'building'
+    | 'node'
+    | 'edge'
+    | 'entrance'
+    | 'area'
+    | 'floor'
+    | 'room'
+    | 'corridor'
+    | 'poi'
+    | 'place'
+    | 'handoff';
   resourceId?: string;
 }
 
@@ -319,14 +325,7 @@ export interface IndoorGraphEditorSnapshot extends IndoorFloorLayoutSnapshot {
 }
 
 export type IndoorGraphTool =
-  | 'select'
-  | 'node'
-  | 'connect'
-  | 'entrance'
-  | 'stairs'
-  | 'elevator'
-  | 'room_entrance'
-  | 'handoff';
+  'select' | 'node' | 'connect' | 'entrance' | 'stairs' | 'elevator' | 'room_entrance' | 'handoff';
 
 export interface IndoorLayoutValidationResult {
   errors: MapValidationIssue[];
@@ -565,12 +564,7 @@ export interface IotStatus {
 }
 
 export type WsMessageType =
-  | 'crowd'
-  | 'sensors'
-  | 'hazard'
-  | 'iot_status'
-  | 'ping'
-  | 'map_published';
+  'crowd' | 'sensors' | 'hazard' | 'iot_status' | 'ping' | 'map_published';
 
 export interface WsMessage<T = unknown> {
   type: WsMessageType;
@@ -636,14 +630,7 @@ export type IndoorNodeKind =
 export type IndoorEdgeKind = 'walk' | 'stairs' | 'elevator' | 'ramp' | 'escalator';
 
 export type IndoorPlaceCategory =
-  | 'building'
-  | 'floor'
-  | 'room'
-  | 'cabin'
-  | 'person'
-  | 'cubicle'
-  | 'facility'
-  | 'other';
+  'building' | 'floor' | 'room' | 'cabin' | 'person' | 'cubicle' | 'facility' | 'other';
 
 export interface LocalVec3 {
   x: number;

@@ -35,13 +35,13 @@ CampusAR V1 is a web-based smart-campus navigation product. Users search campus 
 
 ### FR-1 Identity & access
 
-| ID | Requirement |
-|----|-------------|
-| FR-1.1 | Users can **Continue as Guest** on an organization URL/QR without creating an account (primary path) |
-| FR-1.2 | Organization administrators can log in with email/password and receive a session (JWT or equivalent) |
-| FR-1.3 | Admin tokens can refresh; logout and membership revocation invalidate access |
+| ID     | Requirement                                                                                            |
+| ------ | ------------------------------------------------------------------------------------------------------ |
+| FR-1.1 | Users can **Continue as Guest** on an organization URL/QR without creating an account (primary path)   |
+| FR-1.2 | Organization administrators can log in with email/password and receive a session (JWT or equivalent)   |
+| FR-1.3 | Admin tokens can refresh; logout and membership revocation invalidate access                           |
 | FR-1.4 | Admin Dashboard screens and APIs require Organization Admin (or future Super Admin); guests are denied |
-| FR-1.5 | Guest access is limited to navigation-related features for the resolved organization |
+| FR-1.5 | Guest access is limited to navigation-related features for the resolved organization                   |
 
 **Why:** Majority of users are visitors; credentials are reserved for people who configure the org. See [login-experience.md](./login-experience.md), [role-permissions.md](./role-permissions.md).
 
@@ -49,48 +49,48 @@ CampusAR V1 is a web-based smart-campus navigation product. Users search campus 
 
 ### FR-2 Campus discovery
 
-| ID | Requirement |
-|----|-------------|
-| FR-2.1 | List buildings and rooms |
-| FR-2.2 | Search by name/code/category |
-| FR-2.3 | Filter by room category |
+| ID     | Requirement                                     |
+| ------ | ----------------------------------------------- |
+| FR-2.1 | List buildings and rooms                        |
+| FR-2.2 | Search by name/code/category                    |
+| FR-2.3 | Filter by room category                         |
 | FR-2.4 | Select source and destination nodes for routing |
 
 **Why:** Discovery is the top of the navigation funnel.
 
 ### FR-3 Routing
 
-| ID | Requirement |
-|----|-------------|
-| FR-3.1 | Compute route between two graph nodes |
+| ID     | Requirement                                                                  |
+| ------ | ---------------------------------------------------------------------------- |
+| FR-3.1 | Compute route between two graph nodes                                        |
 | FR-3.2 | Apply accessibility preferences (wheelchair, avoid stairs, prefer lift/ramp) |
-| FR-3.3 | Factor crowd, safety, and blocked edges into path choice |
-| FR-3.4 | Optionally apply predictive crowd penalties |
-| FR-3.5 | Recalculate routes on demand and on a timer during active navigation |
-| FR-3.6 | Return turn-by-turn instructions, distance, ETA |
+| FR-3.3 | Factor crowd, safety, and blocked edges into path choice                     |
+| FR-3.4 | Optionally apply predictive crowd penalties                                  |
+| FR-3.5 | Recalculate routes on demand and on a timer during active navigation         |
+| FR-3.6 | Return turn-by-turn instructions, distance, ETA                              |
 
 **Why:** Core product value vs static maps.
 
 ### FR-4 Guidance UX
 
-| ID | Requirement |
-|----|-------------|
-| FR-4.1 | Map mode shows route and progress context |
-| FR-4.2 | Navigate mode shows instruction list and map |
-| FR-4.3 | AR mode uses device camera when permitted |
-| FR-4.4 | AR shows directional cue aligned to bearing/compass when available |
+| ID     | Requirement                                                                 |
+| ------ | --------------------------------------------------------------------------- |
+| FR-4.1 | Map mode shows route and progress context                                   |
+| FR-4.2 | Navigate mode shows instruction list and map                                |
+| FR-4.3 | AR mode uses device camera when permitted                                   |
+| FR-4.4 | AR shows directional cue aligned to bearing/compass when available          |
 | FR-4.5 | User can choose male/female guide avatar; avatar reflects walk/turn/arrival |
-| FR-4.6 | Explicit success state on destination reached |
-| FR-4.7 | Optional text-to-speech for instructions |
+| FR-4.6 | Explicit success state on destination reached                               |
+| FR-4.7 | Optional text-to-speech for instructions                                    |
 
 **Why:** Multiple modalities for different contexts (desk vs walking outdoors).
 
 ### FR-5 Safety
 
-| ID | Requirement |
-|----|-------------|
-| FR-5.1 | Display active danger zones |
-| FR-5.2 | List emergency exits and contacts |
+| ID     | Requirement                                              |
+| ------ | -------------------------------------------------------- |
+| FR-5.1 | Display active danger zones                              |
+| FR-5.2 | List emergency exits and contacts                        |
 | FR-5.3 | SOS creates a logged event and user-visible confirmation |
 | FR-5.4 | Hazards/events that affect routing update path selection |
 
@@ -98,38 +98,38 @@ CampusAR V1 is a web-based smart-campus navigation product. Users search campus 
 
 ### FR-6 Operations
 
-| ID | Requirement |
-|----|-------------|
+| ID     | Requirement                                    |
+| ------ | ---------------------------------------------- |
 | FR-6.1 | Admin CRUD for key campus entities and weights |
-| FR-6.2 | Admin can start/stop IoT simulation |
-| FR-6.3 | Digital Twin reflects live crowd/hazard state |
-| FR-6.4 | Analytics summarize searches and navigations |
+| FR-6.2 | Admin can start/stop IoT simulation            |
+| FR-6.3 | Digital Twin reflects live crowd/hazard state  |
+| FR-6.4 | Analytics summarize searches and navigations   |
 
 **Why:** Product must be operable without engineering for day-to-day campus changes.
 
 ### FR-7 Platform
 
-| ID | Requirement |
-|----|-------------|
-| FR-7.1 | REST API with validation and error codes |
+| ID     | Requirement                                       |
+| ------ | ------------------------------------------------- |
+| FR-7.1 | REST API with validation and error codes          |
 | FR-7.2 | Real-time channel for crowd/sensor/hazard updates |
-| FR-7.3 | Health endpoint and deployable containers |
-| FR-7.4 | Shared typed contracts between clients and API |
+| FR-7.3 | Health endpoint and deployable containers         |
+| FR-7.4 | Shared typed contracts between clients and API    |
 
 ## Non-functional requirements
 
-| ID | Category | Requirement |
-|----|----------|-------------|
-| NFR-1 | Performance | Route p95 < 200 ms for ≤ ~1k edges |
-| NFR-2 | Latency | AR first meaningful paint of guidance < 3 s after route ready (device-dependent) |
-| NFR-3 | Availability | 99.5% for production API |
-| NFR-4 | Security | Passwords hashed; JWT secrets configurable; role checks on admin routes |
-| NFR-5 | Privacy | Minimize PII; SOS location stored for ops; retention policy TBD with campus |
-| NFR-6 | Accessibility | Keyboard-usable web flows; respect accessibility routing prefs |
-| NFR-7 | Scalability | Stateless API instances behind load balancer-ready design |
-| NFR-8 | Observability | Structured logs; health checks; basic request logging |
-| NFR-9 | Usability | SUS ≥ 75 on primary navigation task |
-| NFR-10 | Maintainability | Clean module boundaries; documented extension points for IoT/ML/AR |
+| ID     | Category        | Requirement                                                                      |
+| ------ | --------------- | -------------------------------------------------------------------------------- |
+| NFR-1  | Performance     | Route p95 < 200 ms for ≤ ~1k edges                                               |
+| NFR-2  | Latency         | AR first meaningful paint of guidance < 3 s after route ready (device-dependent) |
+| NFR-3  | Availability    | 99.5% for production API                                                         |
+| NFR-4  | Security        | Passwords hashed; JWT secrets configurable; role checks on admin routes          |
+| NFR-5  | Privacy         | Minimize PII; SOS location stored for ops; retention policy TBD with campus      |
+| NFR-6  | Accessibility   | Keyboard-usable web flows; respect accessibility routing prefs                   |
+| NFR-7  | Scalability     | Stateless API instances behind load balancer-ready design                        |
+| NFR-8  | Observability   | Structured logs; health checks; basic request logging                            |
+| NFR-9  | Usability       | SUS ≥ 75 on primary navigation task                                              |
+| NFR-10 | Maintainability | Clean module boundaries; documented extension points for IoT/ML/AR               |
 
 ## Constraints
 
@@ -141,14 +141,14 @@ CampusAR V1 is a web-based smart-campus navigation product. Users search campus 
 
 ## Assumptions
 
-| ID | Assumption |
-|----|------------|
-| A-1 | Single campus graph in V1 |
-| A-2 | English UI first; multilingual later |
-| A-3 | Walking is the primary mode; no transit/bike multimodal in V1 |
-| A-4 | Crowd data may be simulated |
+| ID  | Assumption                                                               |
+| --- | ------------------------------------------------------------------------ |
+| A-1 | Single campus graph in V1                                                |
+| A-2 | English UI first; multilingual later                                     |
+| A-3 | Walking is the primary mode; no transit/bike multimodal in V1            |
+| A-4 | Crowd data may be simulated                                              |
 | A-5 | Users have modern smartphones for AR; desktop still usable for map/admin |
-| A-6 | Campus admins can be trained in < 1 hour to publish a hazard |
+| A-6 | Campus admins can be trained in < 1 hour to publish a hazard             |
 
 ## Risks (summary)
 

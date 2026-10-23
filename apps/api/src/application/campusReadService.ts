@@ -17,10 +17,7 @@ export const campusReadService = {
     return campusRepository.listFloors(buildingId, scope.siteId, scope.mapVersionId);
   },
 
-  listRooms(
-    filters: { buildingId?: string; category?: string },
-    scope: MapReadScope,
-  ) {
+  listRooms(filters: { buildingId?: string; category?: string }, scope: MapReadScope) {
     return campusRepository.listRooms({
       buildingId: filters.buildingId,
       category: filters.category,
@@ -53,7 +50,11 @@ export const campusReadService = {
     const building = await campusRepository.getBuildingById(buildingId);
     if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
     if (building.siteId !== scope.siteId) {
-      throw new AppError('CROSS_SITE_REFERENCE', 'Building does not belong to the active site', 422);
+      throw new AppError(
+        'CROSS_SITE_REFERENCE',
+        'Building does not belong to the active site',
+        422,
+      );
     }
     const buildingVersion = await campusRepository.getBuildingMapVersionId(buildingId);
     if (buildingVersion !== scope.mapVersionId) {

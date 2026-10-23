@@ -1,3 +1,4 @@
+import type { Feature, FeatureCollection } from 'geojson';
 import { AppError } from '../domain/errors';
 import { measurementPathRepository } from '../infrastructure/repositories/measurementPathRepository';
 import type {
@@ -9,12 +10,7 @@ import type {
 } from '../infrastructure/repositories/measurementPathRepository';
 import { siteRepository } from '../infrastructure/repositories/siteRepository';
 import { mapVersionRepository } from '../infrastructure/repositories/mapVersionRepository';
-import type {
-  Matrix4x4,
-  RaycastTargetType,
-  TrackingState,
-  Vector3D,
-} from '@campusar/shared';
+import type { Matrix4x4, RaycastTargetType, TrackingState, Vector3D } from '@campusar/shared';
 
 export interface MeasurementPathWithDetails extends MeasurementPath {
   points: MeasurementPoint[];
@@ -65,7 +61,11 @@ export const measurementPathService = {
         throw new AppError('MAP_VERSION_NOT_FOUND', 'Map version not found', 404);
       }
       if (version.status !== 'draft') {
-        throw new AppError('VERSION_NOT_DRAFT', 'Can only add measurements to draft map versions', 422);
+        throw new AppError(
+          'VERSION_NOT_DRAFT',
+          'Can only add measurements to draft map versions',
+          422,
+        );
       }
     }
 
@@ -125,7 +125,11 @@ export const measurementPathService = {
     if (existing.mapVersionId) {
       const version = await mapVersionRepository.getById(existing.mapVersionId);
       if (version && version.status !== 'draft') {
-        throw new AppError('VERSION_NOT_DRAFT', 'Can only modify measurements in draft map versions', 422);
+        throw new AppError(
+          'VERSION_NOT_DRAFT',
+          'Can only modify measurements in draft map versions',
+          422,
+        );
       }
     }
 
@@ -150,7 +154,11 @@ export const measurementPathService = {
     if (existing.mapVersionId) {
       const version = await mapVersionRepository.getById(existing.mapVersionId);
       if (version && version.status !== 'draft') {
-        throw new AppError('VERSION_NOT_DRAFT', 'Can only delete measurements from draft map versions', 422);
+        throw new AppError(
+          'VERSION_NOT_DRAFT',
+          'Can only delete measurements from draft map versions',
+          422,
+        );
       }
     }
 
@@ -177,7 +185,11 @@ export const measurementPathService = {
     if (path.mapVersionId) {
       const version = await mapVersionRepository.getById(path.mapVersionId);
       if (version && version.status !== 'draft') {
-        throw new AppError('VERSION_NOT_DRAFT', 'Can only add points to measurements in draft map versions', 422);
+        throw new AppError(
+          'VERSION_NOT_DRAFT',
+          'Can only add points to measurements in draft map versions',
+          422,
+        );
       }
     }
 
@@ -186,7 +198,11 @@ export const measurementPathService = {
     const ordinal = existingPoints.length + 1;
 
     const spatial = 'worldPosition' in point ? point : null;
-    const gps: GpsPoint | undefined = spatial ? spatial.gps : 'latitude' in point ? point : undefined;
+    const gps: GpsPoint | undefined = spatial
+      ? spatial.gps
+      : 'latitude' in point
+        ? point
+        : undefined;
     const timestamp = spatial?.timestamp ?? gps?.timestamp;
     const pointInput: CreatePointInput = {
       pathId,
@@ -227,7 +243,11 @@ export const measurementPathService = {
     if (path.mapVersionId) {
       const version = await mapVersionRepository.getById(path.mapVersionId);
       if (version && version.status !== 'draft') {
-        throw new AppError('VERSION_NOT_DRAFT', 'Can only add points to measurements in draft map versions', 422);
+        throw new AppError(
+          'VERSION_NOT_DRAFT',
+          'Can only add points to measurements in draft map versions',
+          422,
+        );
       }
     }
 
@@ -253,7 +273,10 @@ export const measurementPathService = {
   /**
    * Update a measurement point
    */
-  async updatePoint(pointId: string, updates: Partial<CreatePointInput>): Promise<MeasurementPoint> {
+  async updatePoint(
+    pointId: string,
+    updates: Partial<CreatePointInput>,
+  ): Promise<MeasurementPoint> {
     const updated = await measurementPathRepository.updatePoint(pointId, updates);
     if (!updated) {
       throw new AppError('POINT_NOT_FOUND', 'Measurement point not found', 404);
@@ -288,7 +311,7 @@ export const measurementPathService = {
   /**
    * Snap points to nearest indoor nodes
    */
-  async snapPointsToIndoorGraph(pathId: string, snapRadiusM: number = 2.0): Promise<void> {
+  async snapPointsToIndoorGraph(pathId: string, _snapRadiusM: number = 2.0): Promise<void> {
     // TODO: Implement snapping logic to indoor nodes
     // This will be implemented when integrating with the indoor graph
     throw new AppError('NOT_IMPLEMENTED', 'Snapping not yet implemented', 501);
@@ -297,13 +320,18 @@ export const measurementPathService = {
   /**
    * Export path as GeoJSON
    */
-  async exportPathAsGeoJson(pathId: string): Promise<any> {
+  async exportPathAsGeoJson(pathId: string): Promise<FeatureCollection> {
     const pathDetails = await this.getPathWithDetails(pathId);
     if (!pathDetails) {
       throw new AppError('PATH_NOT_FOUND', 'Measurement path not found', 404);
     }
 
-    const features: any[] = pathDetails.points.map((point) => ({
+    const geoPoints = pathDetails.points.filter(
+      (p): p is typeof p & { latitude: number; longitude: number } =>
+        p.latitude != null && p.longitude != null,
+    );
+
+    const features: Feature[] = geoPoints.map((point): Feature => ({
       type: 'Feature',
       geometry: {
         type: 'Point',
@@ -319,12 +347,12 @@ export const measurementPathService = {
     }));
 
     // Add LineString feature for the path
-    if (pathDetails.points.length >= 2) {
+    if (geoPoints.length >= 2) {
       features.push({
         type: 'Feature',
         geometry: {
           type: 'LineString',
-          coordinates: pathDetails.points.map((p) => [p.longitude, p.latitude, p.altitude || 0]),
+          coordinates: geoPoints.map((p) => [p.longitude, p.latitude, p.altitude || 0]),
         },
         properties: {
           name: pathDetails.name,
@@ -357,12 +385,16 @@ export const measurementPathService = {
     const points = pathDetails.points;
     const edges = pathDetails.edges;
     const firstGpsPoint = points.find((point) => point.latitude != null && point.longitude != null);
-    const lastGpsPoint = [...points].reverse().find((point) => point.latitude != null && point.longitude != null);
+    const lastGpsPoint = [...points]
+      .reverse()
+      .find((point) => point.latitude != null && point.longitude != null);
 
     const totalLengthM = edges.reduce((sum, edge) => sum + edge.lengthM, 0);
     const accuracies = points.filter((p) => p.accuracyM !== null).map((p) => p.accuracyM!);
     const averageAccuracyM =
-      accuracies.length > 0 ? accuracies.reduce((sum, acc) => sum + acc, 0) / accuracies.length : null;
+      accuracies.length > 0
+        ? accuracies.reduce((sum, acc) => sum + acc, 0) / accuracies.length
+        : null;
 
     return {
       pointCount: points.length,

@@ -69,9 +69,7 @@ export function MapBuilderLayersPanel({
       buildings: buildings.filter((b) =>
         matchesQuery(`${b.name} ${b.code}`, groupState.buildings.query),
       ),
-      nodes: nodes.filter((n) =>
-        matchesQuery(`${n.name ?? ''} ${n.kind}`, groupState.nodes.query),
-      ),
+      nodes: nodes.filter((n) => matchesQuery(`${n.name ?? ''} ${n.kind}`, groupState.nodes.query)),
       edges: edges.filter((e) => matchesQuery(edgeLabel(e, nodes), groupState.edges.query)),
       areas: areas.filter((a) => matchesQuery(`${a.name} ${a.type}`, groupState.areas.query)),
     }),
@@ -103,7 +101,11 @@ export function MapBuilderLayersPanel({
             aria-label={state.open ? `Collapse ${title}` : `Expand ${title}`}
             onClick={() => toggleOpen(key)}
           >
-            {state.open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {state.open ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
           </button>
           <label className="flex flex-1 cursor-pointer items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
             <input
@@ -145,7 +147,9 @@ export function MapBuilderLayersPanel({
                       >
                         <span className="block truncate">{row.label}</span>
                         {row.sub ? (
-                          <span className="block truncate text-[10px] text-ink-faint">{row.sub}</span>
+                          <span className="block truncate text-[10px] text-ink-faint">
+                            {row.sub}
+                          </span>
                         ) : null}
                       </button>
                     </li>

@@ -1,4 +1,10 @@
-import type { MembershipRole, Organization, OrganizationType, Site, SiteStatus } from '@campusar/shared';
+import type {
+  MembershipRole,
+  Organization,
+  OrganizationType,
+  Site,
+  SiteStatus,
+} from '@campusar/shared';
 import { query } from '../db/pool';
 
 interface OrgRow {
@@ -67,10 +73,10 @@ export const siteRepository = {
   },
 
   async getBySlug(orgSlug: string, siteSlug: string): Promise<Site | null> {
-    const { rows } = await query<SiteRow>(
-      `${SITE_SELECT} WHERE o.slug = $1 AND s.slug = $2`,
-      [orgSlug, siteSlug],
-    );
+    const { rows } = await query<SiteRow>(`${SITE_SELECT} WHERE o.slug = $1 AND s.slug = $2`, [
+      orgSlug,
+      siteSlug,
+    ]);
     return rows[0] ? mapSite(rows[0]) : null;
   },
 
@@ -131,10 +137,7 @@ export const siteRepository = {
     return rows.map(mapOrg);
   },
 
-  async membershipRole(
-    userId: string,
-    organizationId: string,
-  ): Promise<MembershipRole | null> {
+  async membershipRole(userId: string, organizationId: string): Promise<MembershipRole | null> {
     const { rows } = await query<{ role: MembershipRole }>(
       `SELECT role FROM organization_memberships WHERE user_id = $1 AND organization_id = $2`,
       [userId, organizationId],

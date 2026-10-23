@@ -70,7 +70,9 @@ describe('siteContext authorization', () => {
     getById.mockResolvedValue(HOSPITAL_SITE);
     membershipRole.mockResolvedValue(null);
 
-    await expect(assertCanEditSite(req('user', 'rnsit-org-admin'), HOSPITAL_SITE.id)).rejects.toMatchObject({
+    await expect(
+      assertCanEditSite(req('user', 'rnsit-org-admin'), HOSPITAL_SITE.id),
+    ).rejects.toMatchObject({
       code: 'FORBIDDEN',
       status: 403,
     });
@@ -80,11 +82,15 @@ describe('siteContext authorization', () => {
     getById.mockResolvedValue(RNSIT_SITE);
     membershipRole.mockResolvedValue('org_admin');
 
-    await expect(assertCanEditSite(req('user', 'rnsit-org-admin'), RNSIT_SITE.id)).resolves.toBeUndefined();
+    await expect(
+      assertCanEditSite(req('user', 'rnsit-org-admin'), RNSIT_SITE.id),
+    ).resolves.toBeUndefined();
   });
 
   it('rejects unauthenticated writes', async () => {
-    await expect(assertCanEditSite({} as AuthedRequest, RNSIT_SITE.id)).rejects.toBeInstanceOf(AppError);
+    await expect(assertCanEditSite({} as AuthedRequest, RNSIT_SITE.id)).rejects.toBeInstanceOf(
+      AppError,
+    );
   });
 });
 

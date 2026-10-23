@@ -9,6 +9,7 @@
 Primary objective: produce a **walkable path** from source node to destination node that minimizes a **composite cost** while respecting **hard constraints**.
 
 Secondary objectives:
+
 - Prefer safer corridors when policy weights say so.
 - Reduce time lost to congestion (live and optionally predicted).
 - Honor accessibility preferences.
@@ -20,14 +21,14 @@ Non-objectives (V1): global multi-agent traffic assignment; driving; guaranteed 
 
 ## Optimization goals
 
-| Goal | Meaning | V1 mechanism |
-|------|---------|--------------|
-| Shortness | Prefer shorter walk | Base edge length / time |
-| Fluency | Avoid congested segments | Live crowd → cost multiplier |
-| Foresight | Avoid soon-to-be congested | Prediction → cost multiplier |
-| Safety | Avoid incidents / prefer safe | Hazard penalties / blocks + safety weight |
-| Access | Step-free when requested | Edge exclusion |
-| Stability | Don’t flicker routes every second | Recalc thresholds / hysteresis |
+| Goal      | Meaning                           | V1 mechanism                              |
+| --------- | --------------------------------- | ----------------------------------------- |
+| Shortness | Prefer shorter walk               | Base edge length / time                   |
+| Fluency   | Avoid congested segments          | Live crowd → cost multiplier              |
+| Foresight | Avoid soon-to-be congested        | Prediction → cost multiplier              |
+| Safety    | Avoid incidents / prefer safe     | Hazard penalties / blocks + safety weight |
+| Access    | Step-free when requested          | Edge exclusion                            |
+| Stability | Don’t flicker routes every second | Recalc thresholds / hysteresis            |
 
 ---
 
@@ -35,8 +36,8 @@ Non-objectives (V1): global multi-agent traffic assignment; driving; guaranteed 
 
 Admin-configurable weights (example triad):
 
-- `w_distance` — importance of physical length/time  
-- `w_safety` — importance of safety score  
+- `w_distance` — importance of physical length/time
+- `w_safety` — importance of safety score
 - `w_crowd` — importance of congestion (live + predicted blend)
 
 **Effective edge cost (conceptual):**
@@ -51,17 +52,21 @@ else:
 ```
 
 ### Normalization
+
 Weights should be validated (e.g. each ≥ 0, sum > 0).  
 **Assumption:** server normalizes weights to sum to 1.0 if admin enters arbitrary positives.
 
 ### distanceCost
+
 Proportional to length (meters) or nominal walking time.
 
 ### safetyCost
+
 Derived from hazard proximity/severity and optional lighting. Higher = worse.  
 Unaffected edges → near 0.
 
 ### crowdCost
+
 Blend:
 
 ```text
@@ -76,14 +81,17 @@ crowdCost = α * liveOccupancyPenalty + (1-α) * predictedOccupancyPenalty
 ## Crowd prediction behaviour
 
 ### V1 approach
+
 Schedule-aware exponential smoothing / EWMA over historical occupancy by edge and time-of-day bucket (simulator or ingested counts).
 
 ### Behavioural requirements
+
 - Output per edge: predicted occupancy score in a bounded range (e.g. 0–1 or 0–100).
 - On cold start: predicted = live or neutral mid value — **never block routing**.
 - Expose `predictionMethod` / version in route metadata for demos and debugging.
 
 ### What prediction must not do
+
 - Invent closed paths.
 - Override fire hard-blocks.
 - Fail the API if model missing.
@@ -92,12 +100,12 @@ Schedule-aware exponential smoothing / EWMA over historical occupancy by edge an
 
 ## Safety scoring
 
-| Input | Effect |
-|-------|--------|
-| Fire / emergency polygon | Hard exclude intersecting edges |
-| Construction | Exclude or score → very high safetyCost |
-| Active danger | safetyCost by severity tier |
-| Soft advisory | small safetyCost |
+| Input                    | Effect                                  |
+| ------------------------ | --------------------------------------- |
+| Fire / emergency polygon | Hard exclude intersecting edges         |
+| Construction             | Exclude or score → very high safetyCost |
+| Active danger            | safetyCost by severity tier             |
+| Soft advisory            | small safetyCost                        |
 
 Admin `w_safety` scales how much soft safetyCost matters relative to distance.
 
@@ -106,6 +114,7 @@ Admin `w_safety` scales how much soft safetyCost matters relative to distance.
 ## Accessibility scoring
 
 V1 uses **constraints**, not soft scores:
+
 - `avoidStairs` / `wheelchair`: exclude `stairs` edges; allow `ramp`/`elevator`/`stepFree`.
 - Optional future: soft penalty for long detours vs stair shortcut when user sets “prefer step-free but allow stairs if detour > X%”.
 
@@ -116,12 +125,14 @@ Emergency policy may additionally exclude elevators (see Safety Workflow).
 ## Live re-routing policy
 
 Recalculate when:
+
 - Periodic interval while navigating.
 - Off-route.
 - Hard hazard change.
 - Crowd delta on current path exceeds threshold **Assumption: +30% occupancy or crosses “high” band**.
 
 Apply new path if:
+
 - New total cost improves by ≥ **Assumption: 10%**, OR
 - Old path now infeasible.
 
@@ -132,6 +143,7 @@ Otherwise keep current path (stability).
 ## Explainability (product requirement)
 
 Route response should allow UI to show chips such as:
+
 - “Avoiding construction”
 - “Crowd-aware”
 - “Prediction on”

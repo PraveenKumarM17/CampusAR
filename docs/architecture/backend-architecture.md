@@ -50,22 +50,26 @@ flowchart TB
 ```
 
 ### Presentation / Interfaces
+
 - Map HTTP/WS to use cases
 - Auth middleware, rate limit, correlation id
 - OpenAPI description (contract, not business logic)
 - Translate domain errors → HTTP status + error envelope
 
 ### Application
+
 - Orchestrate transactions (“calculate route”, “create hazard”, “SOS”)
 - Authorize at use-case boundary (role checks)
 - No SQL; no Express types leaking inward
 
 ### Domain
+
 - Graph cost rules, accessibility constraints, hard-block policy order (see product AI routing)
 - Pure pathfinding against in-memory graph snapshot
 - Predictor **port** (interface), not algorithm details as product code lock-in
 
 ### Infrastructure
+
 - Repository implementations, JWT, env config, IoT simulator, WS hub bridge, logging
 
 ---
@@ -107,15 +111,15 @@ apps/api/src/
 
 ## Repositories (ports)
 
-| Port | Responsibility |
-|------|----------------|
-| UserRepository | Identity persistence |
-| CampusRepository | Buildings, rooms, nodes, edges, places search |
-| HazardRepository | Danger zones / construction |
-| CrowdRepository | Edge crowd levels / readings |
-| ConfigRepository | Route weights, feature flags |
-| AnalyticsRepository | Event write + aggregate read |
-| SosRepository | SOS alerts |
+| Port                | Responsibility                                |
+| ------------------- | --------------------------------------------- |
+| UserRepository      | Identity persistence                          |
+| CampusRepository    | Buildings, rooms, nodes, edges, places search |
+| HazardRepository    | Danger zones / construction                   |
+| CrowdRepository     | Edge crowd levels / readings                  |
+| ConfigRepository    | Route weights, feature flags                  |
+| AnalyticsRepository | Event write + aggregate read                  |
+| SosRepository       | SOS alerts                                    |
 
 Implementations use PostGIS; domain receives plain objects / value types.
 
@@ -123,14 +127,14 @@ Implementations use PostGIS; domain receives plain objects / value types.
 
 ## Services
 
-| Application service | Domain collaborators |
-|---------------------|----------------------|
-| AuthService | UserRepo, token issuer |
-| NavigationService | CampusRepo, HazardRepo, CrowdRepo, ConfigRepo, Pathfinder, CrowdPredictor |
-| SafetyService | HazardRepo, SosRepo, contacts |
-| AdminService | Campus/Hazard/Config/Crowd repos + event bus |
-| AnalyticsService | AnalyticsRepo |
-| LiveOpsService | IoT control + broadcast |
+| Application service | Domain collaborators                                                      |
+| ------------------- | ------------------------------------------------------------------------- |
+| AuthService         | UserRepo, token issuer                                                    |
+| NavigationService   | CampusRepo, HazardRepo, CrowdRepo, ConfigRepo, Pathfinder, CrowdPredictor |
+| SafetyService       | HazardRepo, SosRepo, contacts                                             |
+| AdminService        | Campus/Hazard/Config/Crowd repos + event bus                              |
+| AnalyticsService    | AnalyticsRepo                                                             |
+| LiveOpsService      | IoT control + broadcast                                                   |
 
 ---
 
@@ -165,12 +169,12 @@ V1 may use manual constructor injection (explicit, testable). Avoid service loca
 
 ## Background jobs
 
-| Job | V1 | Future |
-|-----|----|--------|
-| IoT simulator tick | `setInterval` in-process | MQTT worker |
-| Hazard expiry sweeper | Periodic job | Same |
-| Analytics rollup | On-read aggregate OK | Materialized job |
-| Predictor training | — | Offline pipeline |
+| Job                   | V1                       | Future           |
+| --------------------- | ------------------------ | ---------------- |
+| IoT simulator tick    | `setInterval` in-process | MQTT worker      |
+| Hazard expiry sweeper | Periodic job             | Same             |
+| Analytics rollup      | On-read aggregate OK     | Materialized job |
+| Predictor training    | —                        | Offline pipeline |
 
 Jobs publish through the same domain events / WS bridge as request path mutations.
 
@@ -189,13 +193,13 @@ Detail: [`websocket-architecture.md`](./websocket-architecture.md).
 
 ## Logging
 
-| Field | Purpose |
-|-------|---------|
-| `requestId` / `correlationId` | Trace |
-| `userId` / `role` | Audit (where appropriate) |
-| `route` / `method` | HTTP |
-| `event` | Domain actions (`route_computed`, `sos_created`) |
-| `durationMs` | Performance |
+| Field                         | Purpose                                          |
+| ----------------------------- | ------------------------------------------------ |
+| `requestId` / `correlationId` | Trace                                            |
+| `userId` / `role`             | Audit (where appropriate)                        |
+| `route` / `method`            | HTTP                                             |
+| `event`                       | Domain actions (`route_computed`, `sos_created`) |
+| `durationMs`                  | Performance                                      |
 
 Levels: debug/info/warn/error. No secrets/PII in logs (emails hashed or omitted in production).
 
@@ -212,20 +216,20 @@ Clients consume stable `code` strings.
 
 ## Testing strategy (backend)
 
-| Layer | Test |
-|-------|------|
-| Domain | Pathfinder fixtures, cost ordering, accessibility exclusions |
-| Application | Use cases with in-memory fakes |
-| HTTP | Smoke/integration with test DB |
-| Contracts | OpenAPI lint optional |
+| Layer       | Test                                                         |
+| ----------- | ------------------------------------------------------------ |
+| Domain      | Pathfinder fixtures, cost ordering, accessibility exclusions |
+| Application | Use cases with in-memory fakes                               |
+| HTTP        | Smoke/integration with test DB                               |
+| Contracts   | OpenAPI lint optional                                        |
 
 ---
 
 ## Extension points
 
-| Port | V1 impl | Future impl |
-|------|---------|-------------|
-| CrowdPredictor | Schedule EWMA | LSTM remote |
-| IoTIngest | Simulator | MQTT bridge |
-| Notifier | No-op / log | SMS/email |
-| AuditLogger | DB timestamps | Append-only audit store |
+| Port           | V1 impl       | Future impl             |
+| -------------- | ------------- | ----------------------- |
+| CrowdPredictor | Schedule EWMA | LSTM remote             |
+| IoTIngest      | Simulator     | MQTT bridge             |
+| Notifier       | No-op / log   | SMS/email               |
+| AuditLogger    | DB timestamps | Append-only audit store |

@@ -77,7 +77,12 @@ export function IndoorArNavigator({ route, destinationName, onFinish }: Props) {
 
   return (
     <section className="relative min-h-[28rem] overflow-hidden rounded-md border border-line bg-ink-950 text-white">
-      <video ref={videoRef} className="absolute inset-0 h-full w-full object-cover" playsInline muted />
+      <video
+        ref={videoRef}
+        className="absolute inset-0 h-full w-full object-cover"
+        playsInline
+        muted
+      />
       <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/80" />
 
       <div className="relative z-10 flex min-h-[28rem] flex-col items-center justify-between p-4">

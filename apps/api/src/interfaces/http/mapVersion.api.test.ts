@@ -55,10 +55,10 @@ async function seedSites() {
 
 async function cleanup() {
   await pool.query(`DELETE FROM site_map_versions WHERE site_id IN ($1, $2)`, [SITE_V, SITE_OTHER]);
-  await pool.query(
-    `UPDATE sites SET published_map_version_id = NULL WHERE id IN ($1, $2)`,
-    [SITE_V, SITE_OTHER],
-  );
+  await pool.query(`UPDATE sites SET published_map_version_id = NULL WHERE id IN ($1, $2)`, [
+    SITE_V,
+    SITE_OTHER,
+  ]);
   await pool.query(`DELETE FROM sites WHERE id IN ($1, $2)`, [SITE_V, SITE_OTHER]);
   await pool.query(`DELETE FROM organizations WHERE id = $1`, [ORG_V]);
 }
@@ -162,12 +162,15 @@ describe('site map versioning foundation', () => {
     expect(res.status).toBe(403);
   });
 
-  it.skipIf(!canUseDb)('public campus reads continue resolving live published spatial data', async () => {
-    const res = await request(app).get('/api/campus/buildings').set('X-Site-Id', RNSIT_SITE);
-    expect(res.status).toBe(200);
-    expect(res.body.length).toBeGreaterThan(0);
-    expect(res.body.some((b: { id: string }) => b.id === RNSIT_BUILDING)).toBe(true);
-  });
+  it.skipIf(!canUseDb)(
+    'public campus reads continue resolving live published spatial data',
+    async () => {
+      const res = await request(app).get('/api/campus/buildings').set('X-Site-Id', RNSIT_SITE);
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBeGreaterThan(0);
+      expect(res.body.some((b: { id: string }) => b.id === RNSIT_BUILDING)).toBe(true);
+    },
+  );
 
   it.skipIf(!canUseDb)('database prevents two published versions per site', async () => {
     await expect(

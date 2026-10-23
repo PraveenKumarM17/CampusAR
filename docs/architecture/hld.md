@@ -7,6 +7,7 @@
 **Structure:** Feature-sliced UI (`map`, `navigate`, `ar`, `twin`, `safety`, `admin`, `analytics`, `auth`) over shared shell, API client, and stores.
 
 **Key capabilities:**
+
 - Auth / guest session
 - MapLibre campus map + selection
 - Navigate turn-by-turn + optional TTS
@@ -199,23 +200,23 @@ flowchart LR
 
 ## Cross-cutting concerns
 
-| Concern | HLD approach |
-|---------|--------------|
-| Validation | Zod at HTTP boundary; domain invariants inside |
-| Errors | Typed domain errors → stable API error envelope |
-| Logging | Correlation id per request / WS session |
-| Config | Env-based; never commit secrets |
+| Concern       | HLD approach                                          |
+| ------------- | ----------------------------------------------------- |
+| Validation    | Zod at HTTP boundary; domain invariants inside        |
+| Errors        | Typed domain errors → stable API error envelope       |
+| Logging       | Correlation id per request / WS session               |
+| Config        | Env-based; never commit secrets                       |
 | Feature flags | Env / config table for prediction default, sim on/off |
 
 ---
 
 ## Evolution without redesign
 
-| Future need | HLD extension |
-|-------------|----------------|
-| BLE | New `PositionProvider`; same snap/route APIs |
-| MQTT | New ingest adapter writing crowd/sensor; same WS events |
-| LSTM | New `CrowdPredictor` implementation or remote client |
-| Unity | Same REST/WS contracts; shared DTOs |
-| Multi-campus | `campus_id` on entities + tenant middleware |
+| Future need    | HLD extension                                              |
+| -------------- | ---------------------------------------------------------- |
+| BLE            | New `PositionProvider`; same snap/route APIs               |
+| MQTT           | New ingest adapter writing crowd/sensor; same WS events    |
+| LSTM           | New `CrowdPredictor` implementation or remote client       |
+| Unity          | Same REST/WS contracts; shared DTOs                        |
+| Multi-campus   | `campus_id` on entities + tenant middleware                |
 | Split services | Extract Routing or Realtime first along context boundaries |

@@ -15,9 +15,7 @@ function buildAdj(
   return adj;
 }
 
-function buildFullAdj(
-  edges: GraphEdge[],
-): Map<string, { otherId: string; edgeId: string }[]> {
+function buildFullAdj(edges: GraphEdge[]): Map<string, { otherId: string; edgeId: string }[]> {
   const adj = new Map<string, { otherId: string; edgeId: string }[]>();
   const touch = (id: string) => {
     if (!adj.has(id)) adj.set(id, []);
@@ -120,10 +118,7 @@ export function cycleClosedByNewEdge(
 }
 
 /** Edges that touch cycle places but connect out to non-place nodes (messy auto links). */
-export function strayEdgesTouchingPlaces(
-  placeIds: Set<string>,
-  edges: GraphEdge[],
-): GraphEdge[] {
+export function strayEdgesTouchingPlaces(placeIds: Set<string>, edges: GraphEdge[]): GraphEdge[] {
   return edges.filter((e) => {
     const a = placeIds.has(e.fromNodeId);
     const b = placeIds.has(e.toNodeId);

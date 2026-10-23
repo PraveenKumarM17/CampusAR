@@ -112,7 +112,11 @@ class IoTSimulator {
       }
 
       broadcast('crowd', { levels }, site.id);
-      broadcast('sensors', { readings: sensors.slice(-Math.max(buildings.length, 1) * 4) }, site.id);
+      broadcast(
+        'sensors',
+        { readings: sensors.slice(-Math.max(buildings.length, 1) * 4) },
+        site.id,
+      );
     }
     broadcast('iot_status', this.status());
   }

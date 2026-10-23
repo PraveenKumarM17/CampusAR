@@ -88,10 +88,7 @@ async function assertBuildingInSite(buildingId: string, siteId: string) {
   return building;
 }
 
-async function assertBuildingInDraftVersion(
-  buildingId: string,
-  versions: EditorVersionContext,
-) {
+async function assertBuildingInDraftVersion(buildingId: string, versions: EditorVersionContext) {
   assertDraftWritable(
     await campusRepository.getBuildingMapVersionId(buildingId),
     versions.draftVersionId,
@@ -216,7 +213,11 @@ export const indoorGraphEditorService = {
     const map = body.mapId
       ? await assertMapInSite(body.mapId, siteId, versions)
       : await this.ensureDraftMap(body.buildingId, siteId, userId, versions.draftVersionId);
-    const elevationM = await floorElevationM(body.buildingId, body.floorId, versions.draftVersionId);
+    const elevationM = await floorElevationM(
+      body.buildingId,
+      body.floorId,
+      versions.draftVersionId,
+    );
     const local = floorPlanToLocalVec3({ x: body.planX, y: body.planY }, elevationM);
     return indoorService.createNode({
       mapId: map.id,
@@ -243,7 +244,11 @@ export const indoorGraphEditorService = {
       versions.publishedVersionId,
       'Indoor node',
     );
-    const elevationM = await floorElevationM(node.buildingId, node.floorId, versions.draftVersionId);
+    const elevationM = await floorElevationM(
+      node.buildingId,
+      node.floorId,
+      versions.draftVersionId,
+    );
     const local = floorPlanToLocalVec3({ x: body.planX, y: body.planY }, elevationM);
     return indoorService.updateNode(nodeId, {
       localX: local.x,
@@ -331,7 +336,11 @@ export const indoorGraphEditorService = {
     let nodeId = body.nodeId ?? null;
     if (!nodeId && body.createEntrance !== false) {
       const point = resolveRoomEntrancePoint(room.localGeometry, body.planX, body.planY);
-      const elevationM = await floorElevationM(body.buildingId, room.floorId, versions.draftVersionId);
+      const elevationM = await floorElevationM(
+        body.buildingId,
+        room.floorId,
+        versions.draftVersionId,
+      );
       const local = floorPlanToLocalVec3(point, elevationM);
       const node = await indoorService.createNode({
         mapId: map.id,
@@ -350,7 +359,11 @@ export const indoorGraphEditorService = {
     }
     const node = await assertNodeInSite(nodeId, siteId);
     if (node.floorId !== room.floorId) {
-      throw new AppError('FLOOR_MISMATCH', 'Room and navigation node must be on the same floor', 422);
+      throw new AppError(
+        'FLOOR_MISMATCH',
+        'Room and navigation node must be on the same floor',
+        422,
+      );
     }
 
     const existing = await indoorRepository.findPlaceByRoomId(map.id, room.id);
@@ -385,8 +398,8 @@ export const indoorGraphEditorService = {
     await assertBuildingInSite(buildingId, siteId);
     const map = mapId
       ? await assertMapInSite(mapId, siteId, versions)
-      : (await indoorRepository.getDraftMapByBuilding(buildingId, versions.draftVersionId)) ??
-        (await indoorRepository.getPublishedMapByBuilding(buildingId, versions.draftVersionId));
+      : ((await indoorRepository.getDraftMapByBuilding(buildingId, versions.draftVersionId)) ??
+        (await indoorRepository.getPublishedMapByBuilding(buildingId, versions.draftVersionId)));
     if (!map) return;
     await indoorRepository.deactivatePlaceByRoomId(map.id, roomId);
   },

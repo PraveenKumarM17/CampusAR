@@ -18,12 +18,10 @@ export async function resolveEditorPreviewScope(
   const siteId = await resolveEditorSiteId(req);
   const version = await mapVersionService.getVersion(siteId, versionId);
   if (version.status !== 'draft') {
-    throw new AppError(
-      'PREVIEW_DRAFT_ONLY',
-      'Only draft map versions can be previewed',
-      422,
-      { versionId, status: version.status },
-    );
+    throw new AppError('PREVIEW_DRAFT_ONLY', 'Only draft map versions can be previewed', 422, {
+      versionId,
+      status: version.status,
+    });
   }
   return { siteId, mapVersionId: version.id, version };
 }

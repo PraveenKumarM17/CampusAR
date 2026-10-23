@@ -7,7 +7,8 @@ import type { AuthedRequest } from '../interfaces/http/middleware/auth';
 export function readRequestedSiteId(req: Request): string | undefined {
   const header = req.headers?.['x-site-id'];
   if (typeof header === 'string' && header.trim()) return header.trim();
-  if (typeof req.query.siteId === 'string' && req.query.siteId.trim()) return req.query.siteId.trim();
+  if (typeof req.query.siteId === 'string' && req.query.siteId.trim())
+    return req.query.siteId.trim();
   const body = req.body as { siteId?: unknown } | undefined;
   if (typeof body?.siteId === 'string' && body.siteId.trim()) return body.siteId.trim();
   return undefined;
@@ -80,7 +81,7 @@ export async function assertCanEditSite(req: AuthedRequest, siteId: string): Pro
   if (!site) throw new AppError('SITE_NOT_FOUND', 'Site was not found', 404);
   const membership = await siteRepository.membershipRole(user.sub, site.organizationId);
   if (!membership) {
-    throw new AppError('FORBIDDEN', 'You cannot modify another organization\'s map', 403);
+    throw new AppError('FORBIDDEN', "You cannot modify another organization's map", 403);
   }
   if (membership === 'member') {
     throw new AppError('FORBIDDEN', 'Insufficient permissions', 403);
