@@ -26,13 +26,13 @@
 
 ## Interaction principles
 
-| Principle | Practice |
-|-----------|----------|
-| Direct manipulation | Tap map to set source/destination; drag twin orbit |
-| Immediate feedback | Buttons show pressed/loading; route request shows progress |
-| Reversible | Cancel navigation; undo SOS within confirm step |
+| Principle            | Practice                                                                       |
+| -------------------- | ------------------------------------------------------------------------------ |
+| Direct manipulation  | Tap map to set source/destination; drag twin orbit                             |
+| Immediate feedback   | Buttons show pressed/loading; route request shows progress                     |
+| Reversible           | Cancel navigation; undo SOS within confirm step                                |
 | Consistent placement | Primary CTA bottom-right (desktop) / bottom sticky (mobile) for navigate start |
-| Honest system status | Live / simulated / offline chips always accurate |
+| Honest system status | Live / simulated / offline chips always accurate                               |
 
 ## Motion principles
 
@@ -52,9 +52,9 @@
 
 ## Anti-patterns (explicitly banned)
 
-- Purple-on-white / indigo glow “AI product” look  
-- Warm cream + terracotta “default AI landing” cliché  
-- Newspaper broadsheet dense rules as primary chrome  
-- Card grids in the landing hero  
-- Detached floating stickers on map/AR camera  
+- Purple-on-white / indigo glow “AI product” look
+- Warm cream + terracotta “default AI landing” cliché
+- Newspaper broadsheet dense rules as primary chrome
+- Card grids in the landing hero
+- Detached floating stickers on map/AR camera
 - Dark mode as the only designed theme (light is default)

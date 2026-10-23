@@ -1,8 +1,4 @@
-import {
-  CROWD_BAND_COLORS,
-  ROUTE_KIND_COLORS,
-  type TwinRouteKind,
-} from '../types/digitalTwin';
+import { CROWD_BAND_COLORS, ROUTE_KIND_COLORS, type TwinRouteKind } from '../types/digitalTwin';
 
 /** Centralized Digital Twin visual styles. Cesium components must import from here. */
 export const TWIN_STYLES = {

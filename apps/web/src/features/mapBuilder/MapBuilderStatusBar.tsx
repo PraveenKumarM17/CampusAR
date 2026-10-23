@@ -108,7 +108,11 @@ export function MapBuilderStatusBar({
           title={publishTitle}
           onClick={onPublish}
         >
-          {publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+          {publishBusy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Upload className="h-3.5 w-3.5" />
+          )}
           {publishBusy ? 'Publishing…' : 'Publish'}
         </button>
       </div>

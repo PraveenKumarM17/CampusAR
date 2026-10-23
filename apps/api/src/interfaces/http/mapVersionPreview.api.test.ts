@@ -69,7 +69,10 @@ async function seedSites() {
 }
 
 async function cleanup() {
-  await pool.query(`DELETE FROM site_map_versions WHERE site_id IN ($1, $2)`, [SITE_P, SITE_P_OTHER]);
+  await pool.query(`DELETE FROM site_map_versions WHERE site_id IN ($1, $2)`, [
+    SITE_P,
+    SITE_P_OTHER,
+  ]);
   await pool.query(`UPDATE sites SET published_map_version_id = NULL WHERE id IN ($1, $2)`, [
     SITE_P,
     SITE_P_OTHER,
@@ -115,7 +118,9 @@ describe('authorized draft preview mode (Step 3B)', () => {
         .set(headers)
         .send({ name: renamed });
 
-      const publicRes = await request(app).get('/api/campus/buildings').set('X-Site-Id', RNSIT_SITE);
+      const publicRes = await request(app)
+        .get('/api/campus/buildings')
+        .set('X-Site-Id', RNSIT_SITE);
       const previewRes = await request(app)
         .get(previewPath(draftId, '/campus/buildings'))
         .set(headers);
@@ -202,32 +207,41 @@ describe('authorized draft preview mode (Step 3B)', () => {
     expect(res.body.code).toBe('PREVIEW_DRAFT_ONLY');
   });
 
-  it.skipIf(!canUseDb)('preview never falls back to published when draft building was renamed', async () => {
-    const token = await loginAdmin();
-    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
-    const draftId = await ensureDraft(RNSIT_SITE, token);
-    const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
+  it.skipIf(!canUseDb)(
+    'preview never falls back to published when draft building was renamed',
+    async () => {
+      const token = await loginAdmin();
+      const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': RNSIT_SITE };
+      const draftId = await ensureDraft(RNSIT_SITE, token);
+      const published = await mapVersionService.getPublishedVersion(RNSIT_SITE);
 
-    const pubBuilding = await request(app).get('/api/campus/buildings').set('X-Site-Id', RNSIT_SITE);
-    const pubName = pubBuilding.body.find((b: { id: string }) => b.id === RNSIT_BUILDING)?.name;
+      const pubBuilding = await request(app)
+        .get('/api/campus/buildings')
+        .set('X-Site-Id', RNSIT_SITE);
+      const pubName = pubBuilding.body.find((b: { id: string }) => b.id === RNSIT_BUILDING)?.name;
 
-    const snap = await request(app).get('/api/admin/map-builder/snapshot').set(headers);
-    const draftBuilding = snap.body.buildings.find((b: { code: string }) => b.code === 'ADMIN');
-    const unique = `NoFallback ${Date.now()}`;
-    await request(app)
-      .put(`/api/admin/buildings/${draftBuilding.id}`)
-      .set(headers)
-      .send({ name: unique });
+      const snap = await request(app).get('/api/admin/map-builder/snapshot').set(headers);
+      const draftBuilding = snap.body.buildings.find((b: { code: string }) => b.code === 'ADMIN');
+      const unique = `NoFallback ${Date.now()}`;
+      await request(app)
+        .put(`/api/admin/buildings/${draftBuilding.id}`)
+        .set(headers)
+        .send({ name: unique });
 
-    const preview = await request(app).get(previewPath(draftId, '/campus/buildings')).set(headers);
-    expect(preview.status).toBe(200);
-    expect(preview.body.some((b: { name: string }) => b.name === unique)).toBe(true);
-    expect(preview.body.some((b: { id: string }) => b.id === RNSIT_BUILDING)).toBe(false);
+      const preview = await request(app)
+        .get(previewPath(draftId, '/campus/buildings'))
+        .set(headers);
+      expect(preview.status).toBe(200);
+      expect(preview.body.some((b: { name: string }) => b.name === unique)).toBe(true);
+      expect(preview.body.some((b: { id: string }) => b.id === RNSIT_BUILDING)).toBe(false);
 
-    const pubAfter = await request(app).get('/api/campus/buildings').set('X-Site-Id', RNSIT_SITE);
-    expect(pubAfter.body.find((b: { id: string }) => b.id === RNSIT_BUILDING)?.name).toBe(pubName);
-    expect(published.id).not.toBe(draftId);
-  });
+      const pubAfter = await request(app).get('/api/campus/buildings').set('X-Site-Id', RNSIT_SITE);
+      expect(pubAfter.body.find((b: { id: string }) => b.id === RNSIT_BUILDING)?.name).toBe(
+        pubName,
+      );
+      expect(published.id).not.toBe(draftId);
+    },
+  );
 
   it.skipIf(!canUseDb)('preview outdoor navigation routes using draft nodes only', async () => {
     const token = await loginAdmin();
@@ -245,20 +259,17 @@ describe('authorized draft preview mode (Step 3B)', () => {
     expect(n1.status).toBe(201);
     expect(n2.status).toBe(201);
 
-    await request(app)
-      .post('/api/admin/paths/edges')
-      .set(headers)
-      .send({
-        fromNodeId: n1.body.id,
-        toNodeId: n2.body.id,
-        distanceM: 100,
-        kind: 'walkway',
-        bidirectional: true,
-        blocked: false,
-        safetyScore: 0.9,
-        crowdScore: 0.2,
-        accessibilityScore: 0.9,
-      });
+    await request(app).post('/api/admin/paths/edges').set(headers).send({
+      fromNodeId: n1.body.id,
+      toNodeId: n2.body.id,
+      distanceM: 100,
+      kind: 'walkway',
+      bidirectional: true,
+      blocked: false,
+      safetyScore: 0.9,
+      crowdScore: 0.2,
+      accessibilityScore: 0.9,
+    });
 
     const previewRoute = await request(app)
       .post(previewPath(draftId, '/navigation/route'))
@@ -331,17 +342,14 @@ describe('authorized draft preview mode (Step 3B)', () => {
     const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_P_OTHER };
     const draftId = await ensureDraft(SITE_P_OTHER, token);
 
-    const buildingRes = await request(app)
-      .post('/api/admin/buildings')
-      .set(headers)
-      .send({
-        name: 'Preview Indoor',
-        code: 'PIND',
-        description: null,
-        latitude: 13.02,
-        longitude: 77.56,
-        floorsCount: 1,
-      });
+    const buildingRes = await request(app).post('/api/admin/buildings').set(headers).send({
+      name: 'Preview Indoor',
+      code: 'PIND',
+      description: null,
+      latitude: 13.02,
+      longitude: 77.56,
+      floorsCount: 1,
+    });
     expect(buildingRes.status).toBe(201);
     const buildingId = buildingRes.body.id as string;
 
@@ -385,7 +393,18 @@ describe('authorized draft preview mode (Step 3B)', () => {
               floorId,
               name: 'Room P',
               category: 'office',
-              localGeometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]] },
+              localGeometry: {
+                type: 'Polygon',
+                coordinates: [
+                  [
+                    [0, 0],
+                    [1, 0],
+                    [1, 1],
+                    [0, 1],
+                    [0, 0],
+                  ],
+                ],
+              },
             })
         ).body.id,
         nodeId: n2.body.id,
@@ -398,14 +417,11 @@ describe('authorized draft preview mode (Step 3B)', () => {
     const place = places.body[0];
     if (!place) return;
 
-    const route = await request(app)
-      .post(previewPath(draftId, '/indoor/route'))
-      .set(headers)
-      .send({
-        sourceNodeId: n1.body.id,
-        destinationPlaceId: place.id,
-        expectedBuildingId: buildingId,
-      });
+    const route = await request(app).post(previewPath(draftId, '/indoor/route')).set(headers).send({
+      sourceNodeId: n1.body.id,
+      destinationPlaceId: place.id,
+      expectedBuildingId: buildingId,
+    });
     expect(route.status).toBe(200);
     expect(route.body.destinationPlaceId).toBe(place.id);
     expect(placeRes.status).toBe(201);
@@ -432,7 +448,9 @@ describe('authorized draft preview mode (Step 3B)', () => {
 
     const previewAreas = await request(app).get(previewPath(draftId, '/campus/areas')).set(headers);
     expect(previewAreas.status).toBe(200);
-    expect(previewAreas.body.some((a: { name: string }) => a.name === 'Preview Parking')).toBe(true);
+    expect(previewAreas.body.some((a: { name: string }) => a.name === 'Preview Parking')).toBe(
+      true,
+    );
   });
 
   it.skipIf(!canUseDb)('preview endpoints do not mutate draft or published data', async () => {

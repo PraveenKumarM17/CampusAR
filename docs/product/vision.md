@@ -14,32 +14,33 @@ Help every visitor and member of an organization reach their destination with co
 
 Large private sites combine outdoor open spaces with dense multi-story buildings. Existing tools fail in complementary ways:
 
-| Approach | Limitation |
-|----------|------------|
-| **GPS / consumer maps** | Degrades indoors and near concrete; room-level guidance is impractical; no org ownership |
-| **Static PDF / printed maps** | No crowds, closures, events, or safety conditions |
-| **Siloed AR prototypes** | Often outdoor-only or localization-only; lack operational routing |
-| **Single-campus custom apps** | Do not scale; every new site needs engineering |
-| **Admin dashboards alone** | Do not help end users walk the path |
+| Approach                      | Limitation                                                                               |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| **GPS / consumer maps**       | Degrades indoors and near concrete; room-level guidance is impractical; no org ownership |
+| **Static PDF / printed maps** | No crowds, closures, events, or safety conditions                                        |
+| **Siloed AR prototypes**      | Often outdoor-only or localization-only; lack operational routing                        |
+| **Single-campus custom apps** | Do not scale; every new site needs engineering                                           |
+| **Admin dashboards alone**    | Do not help end users walk the path                                                      |
 
 The result: visitors get lost; peak corridors clog; emergencies lack adaptive egress guidance; operators lack a live picture of movement and hazards; vendors cannot productize one codebase across customers.
 
 ## Platform vision (NaaS)
 
-| Capability | Intent |
-|------------|--------|
-| **Organization workspaces** | Unlimited tenants; hard isolation |
-| **Self-serve map editor** | Click-to-build nodes and paths |
-| **QR + slug entry** | Guests land on the right org instantly |
-| **Brandable shell** | Logo, theme, splash per org |
-| **Positioning-agnostic routing** | GPS today; BLE / Wi‑Fi / SLAM / UWB later |
-| **Industry templates** | University, corporate, hospital, mall, generic—data, not forks |
+| Capability                       | Intent                                                         |
+| -------------------------------- | -------------------------------------------------------------- |
+| **Organization workspaces**      | Unlimited tenants; hard isolation                              |
+| **Self-serve map editor**        | Click-to-build nodes and paths                                 |
+| **QR + slug entry**              | Guests land on the right org instantly                         |
+| **Brandable shell**              | Logo, theme, splash per org                                    |
+| **Positioning-agnostic routing** | GPS today; BLE / Wi‑Fi / SLAM / UWB later                      |
+| **Industry templates**           | University, corporate, hospital, mall, generic—data, not forks |
 
 See [`multi-tenancy.md`](./multi-tenancy.md).
 
 ## Objectives
 
 ### Reference product (V1 — first tenant)
+
 1. Enable authenticated and guest users to **search** places and **navigate** outdoor + near-building routes with turn-by-turn guidance.
 2. Deliver **safety-aware** and **accessibility-aware** routing preferences.
 3. Provide a usable **Web AR** guidance mode for mobile browsers.
@@ -47,6 +48,7 @@ See [`multi-tenancy.md`](./multi-tenancy.md).
 5. Establish a **modular platform** ready for tenancy, BLE/IoT, predictive models, and native AR without rewriting the core.
 
 ### Platform (NaaS — strategic)
+
 6. Make **Organization** the root entity; scope all domain data by tenant.
 7. Let org admins **visually edit** navigation graphs without developers.
 8. Support **public org URLs and QR codes** for frictionless guest navigation.
@@ -55,17 +57,17 @@ See [`multi-tenancy.md`](./multi-tenancy.md).
 
 ## Success metrics (vision-level)
 
-| Metric | Target (directional) |
-|--------|----------------------|
+| Metric                                                           | Target (directional)               |
+| ---------------------------------------------------------------- | ---------------------------------- |
 | Median time-to-destination for first-time visitors vs static map | ≥ 15% reduction in guided sessions |
-| Route computation latency (p95) | < 200 ms for site-scale graphs |
-| AR session completion (start → usable first instruction) | ≥ 60% of started AR sessions |
-| SUS (guided navigation task) | ≥ 75 |
-| Admin hazard publish → live route effect | < 5 minutes |
-| Time for org admin to create first navigable OD pair (editor) | < 30 minutes |
-| Cross-tenant data access incidents | **Zero** |
-| Guest sessions started via QR | Primary acquisition signal per org |
-| System uptime (staging/prod) | ≥ 99.5% monthly |
+| Route computation latency (p95)                                  | < 200 ms for site-scale graphs     |
+| AR session completion (start → usable first instruction)         | ≥ 60% of started AR sessions       |
+| SUS (guided navigation task)                                     | ≥ 75                               |
+| Admin hazard publish → live route effect                         | < 5 minutes                        |
+| Time for org admin to create first navigable OD pair (editor)    | < 30 minutes                       |
+| Cross-tenant data access incidents                               | **Zero**                           |
+| Guest sessions started via QR                                    | Primary acquisition signal per org |
+| System uptime (staging/prod)                                     | ≥ 99.5% monthly                    |
 
 Detailed KPIs: [success-metrics.md](./success-metrics.md).
 
@@ -81,13 +83,13 @@ Detailed KPIs: [success-metrics.md](./success-metrics.md).
 
 ## Target audience
 
-| Segment | Priority | Need |
-|---------|----------|------|
-| Site visitors (guests, patients, attendees, candidates) | Primary | First-visit orientation via QR |
-| Students / employees / regulars | Primary | Daily facility navigation |
-| Org admins / facilities | Primary (B2B buyer) | Graph stewardship, branding, analytics |
-| Security / safety officers | Secondary | SOS awareness, hazard publication |
-| Platform operators (CampusAR) | Internal | Tenant lifecycle, support, billing |
+| Segment                                                 | Priority            | Need                                   |
+| ------------------------------------------------------- | ------------------- | -------------------------------------- |
+| Site visitors (guests, patients, attendees, candidates) | Primary             | First-visit orientation via QR         |
+| Students / employees / regulars                         | Primary             | Daily facility navigation              |
+| Org admins / facilities                                 | Primary (B2B buyer) | Graph stewardship, branding, analytics |
+| Security / safety officers                              | Secondary           | SOS awareness, hazard publication      |
+| Platform operators (CampusAR)                           | Internal            | Tenant lifecycle, support, billing     |
 
 Vertical examples: universities, corporate campuses, hospitals, airports (landside), malls, industrial/tech parks, exhibition centers, government buildings.
 

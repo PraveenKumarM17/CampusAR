@@ -1,7 +1,12 @@
 import { BoundingSphere, Cartesian3, Math as CesiumMath, type Viewer } from 'cesium';
 import { campusCameraTarget } from '../../../lib/cesiumCampus';
 import { CAMPUS_CENTER } from '../../../lib/campus';
-import type { CampusPOI, DigitalTwinBuilding, TwinCameraMode, TwinRouteOverlay } from '../types/digitalTwin';
+import type {
+  CampusPOI,
+  DigitalTwinBuilding,
+  TwinCameraMode,
+  TwinRouteOverlay,
+} from '../types/digitalTwin';
 import { toCesiumDegreesArray } from '../adapters/coordinates';
 
 export function flyToCampus(

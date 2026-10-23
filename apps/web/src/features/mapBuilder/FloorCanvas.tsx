@@ -1,5 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
-import type { FloorCorridor, FloorPoi, IndoorEdge, IndoorNode, LocalVec2, Room } from '@campusar/shared';
+import type {
+  FloorCorridor,
+  FloorPoi,
+  IndoorEdge,
+  IndoorNode,
+  LocalVec2,
+  Room,
+} from '@campusar/shared';
 import {
   boundsFromRings,
   localVec3ToPlan,
@@ -20,7 +27,12 @@ import {
 const GRID = 1;
 const HANDLE_HIT_M = 0.45;
 
-function clientToLocal(svg: SVGSVGElement, clientX: number, clientY: number, fine = false): LocalVec2 {
+function clientToLocal(
+  svg: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+  fine = false,
+): LocalVec2 {
   const raw = clientToLocalRaw(svg, clientX, clientY);
   const step = fine ? 0.1 : GRID;
   return { x: Math.round(raw.x / step) * step, y: Math.round(raw.y / step) * step };
@@ -129,7 +141,9 @@ export function FloorCanvas({
   const panning = useRef(false);
   const panOrigin = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-  const nodePoints = new Map(nodes.map((n) => [n.id, localVec3ToPlan({ x: n.localX, y: n.localY, z: n.localZ })]));
+  const nodePoints = new Map(
+    nodes.map((n) => [n.id, localVec3ToPlan({ x: n.localX, y: n.localY, z: n.localZ })]),
+  );
 
   const rings = [
     ...rooms.map((r) => r.localGeometry ?? []),
@@ -140,7 +154,15 @@ export function FloorCanvas({
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
 
-  const isGraphTool = ['node', 'connect', 'entrance', 'stairs', 'elevator', 'room_entrance', 'handoff'].includes(tool);
+  const isGraphTool = [
+    'node',
+    'connect',
+    'entrance',
+    'stairs',
+    'elevator',
+    'room_entrance',
+    'handoff',
+  ].includes(tool);
 
   const snap = (pt: LocalVec2) => snapMeasurePoint(pt, measureSnapTargets, MEASURE_SNAP_M);
 
@@ -245,7 +267,11 @@ export function FloorCanvas({
   return (
     <div className="relative h-full min-h-[420px] overflow-hidden rounded-lg border border-line bg-paper">
       <div className="absolute right-2 top-2 z-10 flex gap-1">
-        <button type="button" className="btn-secondary text-xs" onClick={() => setScale((s) => s + 4)}>
+        <button
+          type="button"
+          className="btn-secondary text-xs"
+          onClick={() => setScale((s) => s + 4)}
+        >
           Zoom +
         </button>
         <button
@@ -276,10 +302,21 @@ export function FloorCanvas({
       >
         <defs>
           <pattern id="grid" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
-            <path d={`M ${GRID} 0 L 0 0 0 ${GRID}`} fill="none" stroke="#e5e7eb" strokeWidth="0.05" />
+            <path
+              d={`M ${GRID} 0 L 0 0 0 ${GRID}`}
+              fill="none"
+              stroke="#e5e7eb"
+              strokeWidth="0.05"
+            />
           </pattern>
         </defs>
-        <rect x={bounds.minX} y={bounds.minY} width={width || 20} height={height || 20} fill="url(#grid)" />
+        <rect
+          x={bounds.minX}
+          y={bounds.minY}
+          width={width || 20}
+          height={height || 20}
+          fill="url(#grid)"
+        />
 
         {corridors.map((c) => (
           <polygon
@@ -307,10 +344,16 @@ export function FloorCanvas({
                 strokeWidth={roomLinks[r.id] ? 0.12 : 0.08}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (tool === 'select' || tool === 'room_entrance' || tool === 'handoff') onSelect('room', r.id);
+                  if (tool === 'select' || tool === 'room_entrance' || tool === 'handoff')
+                    onSelect('room', r.id);
                 }}
               />
-              <text x={r.localGeometry[0].x + 0.3} y={r.localGeometry[0].y + 0.8} fontSize={0.6} fill="#1e3a8a">
+              <text
+                x={r.localGeometry[0].x + 0.3}
+                y={r.localGeometry[0].y + 0.8}
+                fontSize={0.6}
+                fill="#1e3a8a"
+              >
                 {r.name}
               </text>
             </g>
@@ -357,7 +400,8 @@ export function FloorCanvas({
                 strokeWidth={selected || pending ? 0.1 : 0.06}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (tool === 'select' || tool === 'connect' || tool === 'handoff') onSelect('node', n.id);
+                  if (tool === 'select' || tool === 'connect' || tool === 'handoff')
+                    onSelect('node', n.id);
                 }}
               />
               {n.name ? (

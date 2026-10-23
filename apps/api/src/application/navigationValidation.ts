@@ -93,7 +93,11 @@ export async function validateRouteEndpoints(
   );
   assertSameSite(sourceNode?.siteId, destinationNode?.siteId);
   if (siteId && sourceNode?.siteId && sourceNode.siteId !== siteId) {
-    throw new AppError('CROSS_SITE_ROUTE', 'Start and destination must belong to the requested site', 422);
+    throw new AppError(
+      'CROSS_SITE_ROUTE',
+      'Start and destination must belong to the requested site',
+      422,
+    );
   }
   if (siteId) {
     const published = await mapVersionService.getPublishedVersion(siteId);
@@ -140,7 +144,11 @@ export async function validateRouteEndpointsForVersion(
   );
   assertSameSite(sourceNode?.siteId, destinationNode?.siteId);
   if (sourceNode?.siteId && sourceNode.siteId !== siteId) {
-    throw new AppError('CROSS_SITE_ROUTE', 'Start and destination must belong to the requested site', 422);
+    throw new AppError(
+      'CROSS_SITE_ROUTE',
+      'Start and destination must belong to the requested site',
+      422,
+    );
   }
   const [fromVersion, toVersion] = await Promise.all([
     campusRepository.getNodeMapVersionId(sourceNodeId),
@@ -226,7 +234,10 @@ export async function resolveShareEndpoints(
   }
 
   return {
-    valid: errors.length === 0 && (fromId == null || source != null) && (toId == null || destination != null),
+    valid:
+      errors.length === 0 &&
+      (fromId == null || source != null) &&
+      (toId == null || destination != null),
     source,
     destination,
     errors,

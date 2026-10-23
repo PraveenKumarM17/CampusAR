@@ -51,7 +51,11 @@ import { entranceEntityId } from '../../features/digitalTwin/adapters/entranceAd
 import { greenEntityId } from '../../features/digitalTwin/adapters/greenAreaAdapter';
 import { parkingEntityId } from '../../features/digitalTwin/adapters/parkingAdapter';
 import { poiEntityId } from '../../features/digitalTwin/adapters/poiAdapter';
-import { TWIN_STYLES, walkwayStroke, routeStroke } from '../../features/digitalTwin/utils/visualization';
+import {
+  TWIN_STYLES,
+  walkwayStroke,
+  routeStroke,
+} from '../../features/digitalTwin/utils/visualization';
 import { deriveBuildingCrowd } from '../../features/digitalTwin/utils/buildingVisualization';
 import type { GraphEdge, GraphNode } from '@campusar/shared';
 
@@ -146,11 +150,7 @@ function addHybridBasemap(viewer: Viewer): void {
   );
 }
 
-function buildingEntityGraphics(
-  b: DigitalTwinBuilding,
-  fillHex: string,
-  outline: Color,
-) {
+function buildingEntityGraphics(b: DigitalTwinBuilding, fillHex: string, outline: Color) {
   const height = b.heightM;
   const position = Cartesian3.fromDegrees(b.longitude, b.latitude, height / 2);
   const ring =
@@ -557,7 +557,10 @@ export const CesiumDigitalTwin = forwardRef<CesiumDigitalTwinHandle, CesiumDigit
         const entity = sources.buildings.entities.getById(buildingEntityId(b.id));
         if (!entity) continue;
         const selected = selectedBuildingId === b.id;
-        const outline = cssColor(selected ? SELECTED_BUILDING_OUTLINE : TWIN_STYLES.buildingOutline, 0.85);
+        const outline = cssColor(
+          selected ? SELECTED_BUILDING_OUTLINE : TWIN_STYLES.buildingOutline,
+          0.85,
+        );
         if (entity.box) {
           entity.box.outlineColor = new ConstantProperty(outline);
           entity.box.outlineWidth = new ConstantProperty(selected ? 3 : 1);

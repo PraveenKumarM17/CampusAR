@@ -25,26 +25,16 @@ import { useNavStore } from '../../stores/themeStore';
 import { useNavigate } from 'react-router-dom';
 import { useCampusLive } from '../../hooks/useCampusLive';
 import { useGeolocation } from '../../hooks/useGeolocation';
-import {
-  CAMPUS_DEFAULT_ZOOM,
-  CAMPUS_MAX_ZOOM,
-  siteHasPublishedMap,
-} from '../../lib/campus';
+import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAX_ZOOM, siteHasPublishedMap } from '../../lib/campus';
 import { closestNamedPlace, namedPlaceNodes, snapGpsForRouting } from '../../lib/geo';
-import {
-  buildingContextToNavPatch,
-  loadBuildingContext,
-} from '../../lib/buildingNavigation';
+import { buildingContextToNavPatch, loadBuildingContext } from '../../lib/buildingNavigation';
 import {
   BasemapModeSwitcher,
   RealBasemapTiles,
   type BasemapMode,
 } from '../../components/maps/RealBasemap';
 import { InvalidateMapSize } from '../../components/maps/InvalidateMapSize';
-import {
-  GoogleCampusMap,
-  hasGoogleMapsKey,
-} from '../../components/maps/GoogleCampusMap';
+import { GoogleCampusMap, hasGoogleMapsKey } from '../../components/maps/GoogleCampusMap';
 import {
   BreakFollowOnInteract,
   FollowUser,
@@ -65,15 +55,7 @@ function FitBounds({ points, enabled }: { points: [number, number][]; enabled: b
   return null;
 }
 
-function RecenterButton({
-  lat,
-  lon,
-  onClick,
-}: {
-  lat: number;
-  lon: number;
-  onClick?: () => void;
-}) {
+function RecenterButton({ lat, lon, onClick }: { lat: number; lon: number; onClick?: () => void }) {
   const map = useMap();
   return (
     <button
@@ -116,8 +98,13 @@ export function MapPage() {
   const useMapLibre = MAP_ENGINE === 'maplibre';
   const live = useCampusLive();
   const campusApi = useCampusApi();
-  const { pose, error: gpsError, requestCompassPermission, refreshLocation, watching } =
-    useGeolocation(true);
+  const {
+    pose,
+    error: gpsError,
+    requestCompassPermission,
+    refreshLocation,
+    watching,
+  } = useGeolocation(true);
 
   useEffect(() => {
     Promise.all([
@@ -514,12 +501,7 @@ export function MapPage() {
                       click: () => handlePlaceClick(node.id),
                     }}
                   >
-                    <Tooltip
-                      direction="top"
-                      offset={[0, -6]}
-                      opacity={0.95}
-                      permanent
-                    >
+                    <Tooltip direction="top" offset={[0, -6]} opacity={0.95} permanent>
                       <span className="font-semibold text-white whitespace-nowrap">
                         {node.name ?? node.kind}
                       </span>
@@ -539,7 +521,9 @@ export function MapPage() {
                 b.footprint && b.footprint.length >= 3 ? (
                   <Polygon
                     key={`b-${b.id}`}
-                    positions={b.footprint.map((p) => [p.latitude, p.longitude] as [number, number])}
+                    positions={b.footprint.map(
+                      (p) => [p.latitude, p.longitude] as [number, number],
+                    )}
                     pathOptions={{
                       color: '#0f6b63',
                       fillColor: '#0f6b63',
@@ -562,7 +546,12 @@ export function MapPage() {
                     key={`b-${b.id}`}
                     center={[b.latitude, b.longitude]}
                     radius={3}
-                    pathOptions={{ color: '#ffffff', fillColor: '#0f6b63', fillOpacity: 0.35, weight: 1 }}
+                    pathOptions={{
+                      color: '#ffffff',
+                      fillColor: '#0f6b63',
+                      fillOpacity: 0.35,
+                      weight: 1,
+                    }}
                   >
                     <Popup>
                       <strong>{b.name}</strong>
@@ -625,7 +614,7 @@ export function MapPage() {
               }`}
               onClick={handleTrackMe}
             >
-              <LocateFixed size={14} className="text-accent sm:size-4" /> 
+              <LocateFixed size={14} className="text-accent sm:size-4" />
               <span className="hidden sm:inline">Track me</span>
             </button>
           )}
@@ -641,11 +630,12 @@ export function MapPage() {
             <p className="label text-xs sm:text-sm">Route</p>
             <p className="text-xs text-ink-mute sm:text-sm">
               From:{' '}
-              <span className="font-medium text-ink">{sourceNode?.name ?? '— (enable GPS or tap map)'}</span>
+              <span className="font-medium text-ink">
+                {sourceNode?.name ?? '— (enable GPS or tap map)'}
+              </span>
             </p>
             <p className="mt-1 text-xs text-ink-mute sm:text-sm">
-              To:{' '}
-              <span className="font-medium text-ink">{destNode?.name ?? '—'}</span>
+              To: <span className="font-medium text-ink">{destNode?.name ?? '—'}</span>
             </p>
             <label className="label mt-2 text-xs sm:mt-3 sm:text-sm">Go to</label>
             <select
@@ -699,19 +689,19 @@ export function MapPage() {
                 .slice()
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map((b) => (
-                    <li key={b.id}>
-                      <button
-                        type="button"
-                        className="w-full rounded-md border border-line bg-paper-soft px-2 py-1.5 text-left transition-colors hover:border-accent/40"
-                        onClick={() => {
-                          void startBuildingRoute(b.id);
-                        }}
-                      >
-                        <p className="text-xs font-medium sm:text-sm">{b.name}</p>
-                        <p className="text-[10px] text-ink-faint sm:text-xs">{b.code}</p>
-                      </button>
-                    </li>
-                  ))}
+                  <li key={b.id}>
+                    <button
+                      type="button"
+                      className="w-full rounded-md border border-line bg-paper-soft px-2 py-1.5 text-left transition-colors hover:border-accent/40"
+                      onClick={() => {
+                        void startBuildingRoute(b.id);
+                      }}
+                    >
+                      <p className="text-xs font-medium sm:text-sm">{b.name}</p>
+                      <p className="text-[10px] text-ink-faint sm:text-xs">{b.code}</p>
+                    </button>
+                  </li>
+                ))}
             </ul>
           </div>
         </aside>

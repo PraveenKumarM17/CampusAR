@@ -31,7 +31,12 @@ const GEO_HIGH: PositionOptions = {
 
 type GpsRefs = {
   compassHeadingRef: MutableRefObject<number | null>;
-  lastFixRef: MutableRefObject<{ lat: number; lon: number; t: number; accuracy: number | null } | null>;
+  lastFixRef: MutableRefObject<{
+    lat: number;
+    lon: number;
+    t: number;
+    accuracy: number | null;
+  } | null>;
   courseHeadingRef: MutableRefObject<number | null>;
   smoothedRef: MutableRefObject<{ lat: number; lon: number } | null>;
   bestAccuracyRef: MutableRefObject<number | null>;
@@ -180,9 +185,12 @@ export function useGeolocation(enabled = true): GeoWatchState {
   const [compassAvailable, setCompassAvailable] = useState(false);
   const [compassHeading, setCompassHeading] = useState<number | null>(null);
   const compassHeadingRef = useRef<number | null>(null);
-  const lastFixRef = useRef<{ lat: number; lon: number; t: number; accuracy: number | null } | null>(
-    null,
-  );
+  const lastFixRef = useRef<{
+    lat: number;
+    lon: number;
+    t: number;
+    accuracy: number | null;
+  } | null>(null);
   const courseHeadingRef = useRef<number | null>(null);
   const smoothedRef = useRef<{ lat: number; lon: number } | null>(null);
   const bestAccuracyRef = useRef<number | null>(null);
@@ -302,8 +310,7 @@ export function useGeolocation(enabled = true): GeoWatchState {
     const tick = window.setInterval(() => {
       setPose((prev) => {
         if (!prev) return prev;
-        const nextHeading =
-          compassHeadingRef.current ?? courseHeadingRef.current ?? prev.heading;
+        const nextHeading = compassHeadingRef.current ?? courseHeadingRef.current ?? prev.heading;
         if (nextHeading == null || nextHeading === prev.heading) return prev;
         return { ...prev, heading: nextHeading };
       });

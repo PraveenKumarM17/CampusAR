@@ -10,7 +10,11 @@ describe('centralized twin styles', () => {
   });
 
   it('marks blocked walkways with the high-attention style', () => {
-    const blocked = walkwayStroke({ blocked: true, accessibilityScore: 1, liveCrowdHex: '#0f6b63' });
+    const blocked = walkwayStroke({
+      blocked: true,
+      accessibilityScore: 1,
+      liveCrowdHex: '#0f6b63',
+    });
     expect(blocked.color).toBe(TWIN_STYLES.walkwayBlocked.color);
     expect(blocked.width).toBe(TWIN_STYLES.walkwayBlocked.width);
   });

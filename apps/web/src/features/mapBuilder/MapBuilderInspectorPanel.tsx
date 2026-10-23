@@ -91,12 +91,9 @@ export function MapBuilderInspectorPanel({
 
   const selectedBuilding =
     selection?.kind === 'building' ? buildings.find((b) => b.id === selection.id) : null;
-  const selectedNode =
-    selection?.kind === 'node' ? nodes.find((n) => n.id === selection.id) : null;
-  const selectedEdge =
-    selection?.kind === 'edge' ? edges.find((e) => e.id === selection.id) : null;
-  const selectedArea =
-    selection?.kind === 'area' ? areas.find((a) => a.id === selection.id) : null;
+  const selectedNode = selection?.kind === 'node' ? nodes.find((n) => n.id === selection.id) : null;
+  const selectedEdge = selection?.kind === 'edge' ? edges.find((e) => e.id === selection.id) : null;
+  const selectedArea = selection?.kind === 'area' ? areas.find((a) => a.id === selection.id) : null;
 
   const inConflict =
     Boolean(conflictFeatureId) &&

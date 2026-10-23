@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildCrowdByEdge,
-  campusCameraTarget,
-  crowdColor,
-} from './cesiumCampus';
+import { buildCrowdByEdge, campusCameraTarget, crowdColor } from './cesiumCampus';
 
 describe('cesiumCampus', () => {
   it('maps crowd intensity to path colors', () => {
@@ -48,7 +44,17 @@ describe('cesiumCampus', () => {
 
   it('centers camera on campus data', () => {
     const target = campusCameraTarget(
-      [{ id: 'b1', name: 'A', code: 'A', description: null, latitude: 12.901, longitude: 77.518, floorsCount: 4 }],
+      [
+        {
+          id: 'b1',
+          name: 'A',
+          code: 'A',
+          description: null,
+          latitude: 12.901,
+          longitude: 77.518,
+          floorsCount: 4,
+        },
+      ],
       [],
     );
     expect(target.latitude).toBeCloseTo(12.901, 3);

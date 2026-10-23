@@ -1,11 +1,6 @@
 import type { QueryResultRow } from 'pg';
 import { pool } from '../db/pool';
-import type {
-  Matrix4x4,
-  RaycastTargetType,
-  TrackingState,
-  Vector3D,
-} from '@campusar/shared';
+import type { Matrix4x4, RaycastTargetType, TrackingState, Vector3D } from '@campusar/shared';
 
 export interface MeasurementPath {
   id: string;
@@ -137,7 +132,11 @@ function rowToPoint(row: QueryResultRow): MeasurementPoint {
     worldPosition:
       row.world_x_mm == null || row.world_y_mm == null || row.world_z_mm == null
         ? null
-        : { x: parseFloat(row.world_x_mm), y: parseFloat(row.world_y_mm), z: parseFloat(row.world_z_mm) },
+        : {
+            x: parseFloat(row.world_x_mm),
+            y: parseFloat(row.world_y_mm),
+            z: parseFloat(row.world_z_mm),
+          },
     worldTransform: row.world_transform ?? null,
     raycastTarget: row.raycast_target ?? null,
     trackingState: row.tracking_state ?? null,
@@ -183,7 +182,7 @@ export const measurementPathRepository = {
         input.status ?? 'draft',
         input.createdBy ?? null,
         JSON.stringify(input.metadata ?? {}),
-      ]
+      ],
     );
     return rowToPath(result.rows[0]);
   },
@@ -230,7 +229,7 @@ export const measurementPathRepository = {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await pool.query(
       `SELECT * FROM measurement_paths_with_geometry ${whereClause} ORDER BY created_at DESC`,
-      values
+      values,
     );
     return result.rows.map(rowToPath);
   },
@@ -270,7 +269,7 @@ export const measurementPathRepository = {
 
     const result = await pool.query(
       `UPDATE measurement_paths SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-      values
+      values,
     );
     return result.rows[0] ? rowToPath(result.rows[0]) : null;
   },
@@ -312,7 +311,7 @@ export const measurementPathRepository = {
         input.depthAvailable ?? null,
         input.estimatedAccuracyMM ?? null,
         input.revisitCount ?? 0,
-      ]
+      ],
     );
     return rowToPoint(result.rows[0]);
   },
@@ -320,12 +319,15 @@ export const measurementPathRepository = {
   async getPointsByPathId(pathId: string): Promise<MeasurementPoint[]> {
     const result = await pool.query(
       `SELECT * FROM measurement_points WHERE path_id = $1 ORDER BY ordinal`,
-      [pathId]
+      [pathId],
     );
     return result.rows.map(rowToPoint);
   },
 
-  async updatePoint(id: string, updates: Partial<CreatePointInput>): Promise<MeasurementPoint | null> {
+  async updatePoint(
+    id: string,
+    updates: Partial<CreatePointInput>,
+  ): Promise<MeasurementPoint | null> {
     const fields: string[] = [];
     const values: unknown[] = [];
     let paramCount = 1;
@@ -351,8 +353,16 @@ export const measurementPathRepository = {
       values.push(updates.label);
     }
     if (updates.worldPosition !== undefined) {
-      fields.push(`world_x_mm = $${paramCount++}`, `world_y_mm = $${paramCount++}`, `world_z_mm = $${paramCount++}`);
-      values.push(updates.worldPosition?.x ?? null, updates.worldPosition?.y ?? null, updates.worldPosition?.z ?? null);
+      fields.push(
+        `world_x_mm = $${paramCount++}`,
+        `world_y_mm = $${paramCount++}`,
+        `world_z_mm = $${paramCount++}`,
+      );
+      values.push(
+        updates.worldPosition?.x ?? null,
+        updates.worldPosition?.y ?? null,
+        updates.worldPosition?.z ?? null,
+      );
     }
 
     if (fields.length === 0) {
@@ -363,7 +373,7 @@ export const measurementPathRepository = {
     values.push(id);
     const result = await pool.query(
       `UPDATE measurement_points SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-      values
+      values,
     );
     return result.rows[0] ? rowToPoint(result.rows[0]) : null;
   },
@@ -383,7 +393,7 @@ export const measurementPathRepository = {
     points.forEach((point, idx) => {
       const offset = idx * 10;
       placeholders.push(
-        `($${paramCount + offset}, $${paramCount + offset + 1}, $${paramCount + offset + 2}, $${paramCount + offset + 3}, $${paramCount + offset + 4}, $${paramCount + offset + 5}, $${paramCount + offset + 6}, $${paramCount + offset + 7}, $${paramCount + offset + 8}, $${paramCount + offset + 9})`
+        `($${paramCount + offset}, $${paramCount + offset + 1}, $${paramCount + offset + 2}, $${paramCount + offset + 3}, $${paramCount + offset + 4}, $${paramCount + offset + 5}, $${paramCount + offset + 6}, $${paramCount + offset + 7}, $${paramCount + offset + 8}, $${paramCount + offset + 9})`,
       );
       values.push(
         point.pathId,
@@ -395,7 +405,7 @@ export const measurementPathRepository = {
         point.accuracyM ?? null,
         point.label ?? null,
         point.recordedAt ?? new Date(),
-        JSON.stringify(point.metadata ?? {})
+        JSON.stringify(point.metadata ?? {}),
       );
     });
 
@@ -407,7 +417,7 @@ export const measurementPathRepository = {
         accuracy_m, label, recorded_at, metadata
       ) VALUES ${placeholders.join(', ')}
       RETURNING *`,
-      values
+      values,
     );
     return result.rows.map(rowToPoint);
   },
@@ -416,7 +426,7 @@ export const measurementPathRepository = {
   async getEdgesByPathId(pathId: string): Promise<MeasurementEdge[]> {
     const result = await pool.query(
       `SELECT * FROM measurement_edges WHERE path_id = $1 ORDER BY ordinal`,
-      [pathId]
+      [pathId],
     );
     return result.rows.map(rowToEdge);
   },

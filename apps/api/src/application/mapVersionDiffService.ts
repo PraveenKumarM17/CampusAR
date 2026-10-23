@@ -190,7 +190,11 @@ function geometryChangedBeyondEpsilon(
   return false;
 }
 
-function computeChangedFields(before: ProjectionRow, after: ProjectionRow, includeGeometry: boolean): string[] {
+function computeChangedFields(
+  before: ProjectionRow,
+  after: ProjectionRow,
+  includeGeometry: boolean,
+): string[] {
   const changed: string[] = [];
   const keys = new Set<string>([
     ...Object.keys(before.non_geom ?? {}),
@@ -292,4 +296,3 @@ export const mapVersionDiffService = {
     };
   },
 };
-

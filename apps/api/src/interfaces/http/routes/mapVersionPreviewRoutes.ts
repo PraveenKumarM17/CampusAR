@@ -5,7 +5,11 @@ import { indoorService, indoorRouteSchema } from '../../../application/indoorSer
 import { mapVersionService } from '../../../application/mapVersionService';
 import { resolveEditorPreviewScope } from '../../../application/mapVersionPreviewContext';
 import { navigationService } from '../../../application/navigationService';
-import { validateRouteEndpointsForVersion, toRoutePlaceSummary, isNamedPlace } from '../../../application/navigationValidation';
+import {
+  validateRouteEndpointsForVersion,
+  toRoutePlaceSummary,
+  isNamedPlace,
+} from '../../../application/navigationValidation';
 import { campusRepository } from '../../../infrastructure/repositories/campusRepository';
 import { AppError } from '../../../domain/errors';
 import { indoorRepository } from '../../../infrastructure/repositories/indoorRepository';
@@ -174,35 +178,45 @@ mapVersionPreviewRouter.get('/campus/search', async (req: AuthedRequest, res, ne
   }
 });
 
-mapVersionPreviewRouter.get('/campus/buildings/:buildingId/indoor-layout', async (req: AuthedRequest, res, next) => {
-  try {
-    const buildingId = String(req.params.buildingId);
-    const floorId = typeof req.query.floorId === 'string' ? req.query.floorId : undefined;
-    const scope = await previewScope(req);
-    const layout = await campusReadService.getIndoorLayout(buildingId, floorId, scope);
-    res.json({
-      building: layout.building,
-      floors: layout.floors,
-      rooms: layout.rooms,
-      corridors: layout.corridors,
-      pois: layout.pois,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+mapVersionPreviewRouter.get(
+  '/campus/buildings/:buildingId/indoor-layout',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const buildingId = String(req.params.buildingId);
+      const floorId = typeof req.query.floorId === 'string' ? req.query.floorId : undefined;
+      const scope = await previewScope(req);
+      const layout = await campusReadService.getIndoorLayout(buildingId, floorId, scope);
+      res.json({
+        building: layout.building,
+        floors: layout.floors,
+        rooms: layout.rooms,
+        corridors: layout.corridors,
+        pois: layout.pois,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-mapVersionPreviewRouter.get('/indoor/buildings/:buildingId/context', async (req: AuthedRequest, res, next) => {
-  try {
-    const buildingId = String(req.params.buildingId);
-    const scope = await previewScope(req);
-    res.json(
-      await indoorService.getBuildingContextForVersion(buildingId, scope.siteId, scope.mapVersionId),
-    );
-  } catch (err) {
-    next(err);
-  }
-});
+mapVersionPreviewRouter.get(
+  '/indoor/buildings/:buildingId/context',
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const buildingId = String(req.params.buildingId);
+      const scope = await previewScope(req);
+      res.json(
+        await indoorService.getBuildingContextForVersion(
+          buildingId,
+          scope.siteId,
+          scope.mapVersionId,
+        ),
+      );
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 mapVersionPreviewRouter.get('/indoor/places', async (req: AuthedRequest, res, next) => {
   try {
@@ -217,8 +231,7 @@ mapVersionPreviewRouter.get('/indoor/places', async (req: AuthedRequest, res, ne
 mapVersionPreviewRouter.get('/indoor/places/search', async (req: AuthedRequest, res, next) => {
   try {
     const q = z.string().min(1).parse(req.query.q);
-    const buildingId =
-      typeof req.query.buildingId === 'string' ? req.query.buildingId : undefined;
+    const buildingId = typeof req.query.buildingId === 'string' ? req.query.buildingId : undefined;
     const scope = await previewScope(req);
     res.json(
       await indoorService.searchPreviewPlaces(q, scope.siteId, scope.mapVersionId, buildingId),
@@ -231,8 +244,7 @@ mapVersionPreviewRouter.get('/indoor/places/search', async (req: AuthedRequest, 
 mapVersionPreviewRouter.get('/indoor/places/:id', async (req: AuthedRequest, res, next) => {
   try {
     const id = String(req.params.id);
-    const buildingId =
-      typeof req.query.buildingId === 'string' ? req.query.buildingId : undefined;
+    const buildingId = typeof req.query.buildingId === 'string' ? req.query.buildingId : undefined;
     const scope = await previewScope(req);
     res.json(await indoorService.getPreviewPlace(id, scope.mapVersionId, buildingId));
   } catch (err) {
@@ -243,8 +255,7 @@ mapVersionPreviewRouter.get('/indoor/places/:id', async (req: AuthedRequest, res
 mapVersionPreviewRouter.get('/indoor/anchors/:code', async (req: AuthedRequest, res, next) => {
   try {
     const code = String(req.params.code);
-    const buildingId =
-      typeof req.query.buildingId === 'string' ? req.query.buildingId : undefined;
+    const buildingId = typeof req.query.buildingId === 'string' ? req.query.buildingId : undefined;
     const scope = await previewScope(req);
     res.json(await indoorService.resolvePreviewAnchor(code, scope.mapVersionId, buildingId));
   } catch (err) {
@@ -280,7 +291,11 @@ const routeBodySchema = z.object({
   usePrediction: z.boolean().optional(),
 });
 
-async function handlePreviewRoute(req: AuthedRequest, res: import('express').Response, next: import('express').NextFunction) {
+async function handlePreviewRoute(
+  req: AuthedRequest,
+  res: import('express').Response,
+  next: import('express').NextFunction,
+) {
   try {
     const body = routeBodySchema.parse(req.body);
     const scope = await previewScope(req);

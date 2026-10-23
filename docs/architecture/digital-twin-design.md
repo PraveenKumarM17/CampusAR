@@ -54,15 +54,15 @@ flowchart TB
 
 ## 3D rendering
 
-| Layer                  | Content                                                                                                            |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Ground / basemap plane | Optional simple plane or terrain                                                                                   |
+| Layer                  | Content                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| Ground / basemap plane | Optional simple plane or terrain                                                                 |
 | Buildings              | Footprint extrusion, measured rectangle, or 28×22 m box. Optional GLB via `BUILDING_MODEL_URLS`. |
 | Path network           | Subtle polylines from existing `nodes`/`edges`. Active A* route is a separate prominent overlay. |
 | Entrances / POIs       | Point markers from real graph nodes and safety contacts — not invented.                          |
-| Hazards                | Translucent volumes / pins by type                                                                                 |
-| Camera                 | Perspective; damping controls                                                                                      |
-| Lighting               | Simple hemispheric + directional (readable, not cinematic excess)                                                  |
+| Hazards                | Translucent volumes / pins by type                                                               |
+| Camera                 | Perspective; damping controls                                                                    |
+| Lighting               | Simple hemispheric + directional (readable, not cinematic excess)                                |
 
 **Performance:** Target interactive FPS on mid laptop; LOD — hide labels until zoom; merge path geometries where possible; avoid per-frame full graph rebuild (update materials only on events).
 
@@ -143,18 +143,18 @@ All sensors enter through IoT ingest → stores → same WS types or new event t
 
 Independent Cesium `CustomDataSource` layers. Toggles set `.show` only — the Viewer is not recreated.
 
-| Layer | Data source | Real data today? |
-| ----- | ----------- | ---------------- |
-| Buildings | `GET /api/campus/buildings` (WGS84 point + `floorsCount`) | Yes — fallback boxes (no surveyed footprints in the DB) |
-| Walkways | `GET /api/campus/nodes` + `/edges` | Yes — same outdoor graph as Map/Navigate |
-| Active route | `POST /api/navigation/route` | Yes — overlays walkways; start / optional named waypoints / destination |
-| POIs | Named outdoor nodes without `buildingId`, plus emergency exits/contacts with coordinates | Yes — e.g. Main Gate, Entry Plaza, junctions, Campus Medical |
-| Entrances | Graph nodes `kind = entrance` | Yes — seed entrance nodes with `building_id` |
-| Parking | Building code `PARK` / name containing parking | Yes as a **point**. No lot polygon and no stall counts |
-| Open areas | Ground A/B and Basketball Court buildings | Yes as **markers**. No garden/field polygons |
-| Hazards | `GET /api/safety/zones` + WS | Yes — point + `radius_m` |
-| Live data | WS crowd + user GPS pin | Crowd is edge intensity 0–1, not occupancy % |
-| Campus boundary | `CAMPUS_BOUNDARY` in `buildingGeometry.ts` | **Prepared only** — no polygon in the repository |
+| Layer           | Data source                                                                              | Real data today?                                                        |
+| --------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Buildings       | `GET /api/campus/buildings` (WGS84 point + `floorsCount`)                                | Yes — fallback boxes (no surveyed footprints in the DB)                 |
+| Walkways        | `GET /api/campus/nodes` + `/edges`                                                       | Yes — same outdoor graph as Map/Navigate                                |
+| Active route    | `POST /api/navigation/route`                                                             | Yes — overlays walkways; start / optional named waypoints / destination |
+| POIs            | Named outdoor nodes without `buildingId`, plus emergency exits/contacts with coordinates | Yes — e.g. Main Gate, Entry Plaza, junctions, Campus Medical            |
+| Entrances       | Graph nodes `kind = entrance`                                                            | Yes — seed entrance nodes with `building_id`                            |
+| Parking         | Building code `PARK` / name containing parking                                           | Yes as a **point**. No lot polygon and no stall counts                  |
+| Open areas      | Ground A/B and Basketball Court buildings                                                | Yes as **markers**. No garden/field polygons                            |
+| Hazards         | `GET /api/safety/zones` + WS                                                             | Yes — point + `radius_m`                                                |
+| Live data       | WS crowd + user GPS pin                                                                  | Crowd is edge intensity 0–1, not occupancy %                            |
+| Campus boundary | `CAMPUS_BOUNDARY` in `buildingGeometry.ts`                                               | **Prepared only** — no polygon in the repository                        |
 
 ### Building geometry hierarchy (frontend adapter)
 
@@ -166,15 +166,15 @@ Do not change the backend schema until surveyed polygons exist. Buildings are ne
 
 ### How to add real geometry later
 
-| Feature | Where |
-| ------- | ----- |
-| Building footprint | `apps/web/src/features/digitalTwin/models/buildingGeometry.ts` → `BUILDING_FOOTPRINTS[buildingId] = [{latitude, longitude}, ...]` |
-| Building dimensions | same file → `BUILDING_DIMENSIONS[buildingId] = { width, depth }` (meters) |
-| Entrance | Insert a `nodes` row with `kind = 'entrance'`, WGS84 lat/lng, and `building_id`. Optional name tokens `side` / `accessible` set the role. |
-| POI | Named outdoor node (`building_id` null) or emergency contact/exit with coordinates |
-| Parking area | Parking building already exists. Add a ring to `PARKING_POLYGONS` for a lot outline. **Do not** invent `availableSpaces`. |
-| Campus boundary | `CAMPUS_BOUNDARY` ring in `buildingGeometry.ts` |
-| GLB model | `/models/buildings/<uuid>.glb` + `BUILDING_MODEL_URLS` in `buildingModels.ts` |
+| Feature             | Where                                                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Building footprint  | `apps/web/src/features/digitalTwin/models/buildingGeometry.ts` → `BUILDING_FOOTPRINTS[buildingId] = [{latitude, longitude}, ...]`         |
+| Building dimensions | same file → `BUILDING_DIMENSIONS[buildingId] = { width, depth }` (meters)                                                                 |
+| Entrance            | Insert a `nodes` row with `kind = 'entrance'`, WGS84 lat/lng, and `building_id`. Optional name tokens `side` / `accessible` set the role. |
+| POI                 | Named outdoor node (`building_id` null) or emergency contact/exit with coordinates                                                        |
+| Parking area        | Parking building already exists. Add a ring to `PARKING_POLYGONS` for a lot outline. **Do not** invent `availableSpaces`.                 |
+| Campus boundary     | `CAMPUS_BOUNDARY` ring in `buildingGeometry.ts`                                                                                           |
+| GLB model           | `/models/buildings/<uuid>.glb` + `BUILDING_MODEL_URLS` in `buildingModels.ts`                                                             |
 
 ### Coordinates
 

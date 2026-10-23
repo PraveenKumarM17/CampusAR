@@ -90,9 +90,7 @@ interface XRSession {
     profile: string;
   }): Promise<XRTransientInputHitTestSource | undefined>;
   requestReferenceSpace(type: string): Promise<XRReferenceSpace>;
-  updateRenderState(state: {
-    baseLayer?: XRWebGLLayer | null;
-  }): void;
+  updateRenderState(state: { baseLayer?: XRWebGLLayer | null }): void;
   requestAnimationFrame(callback: (time: number, frame: XRFrame) => void): number;
   cancelAnimationFrame?(handle: number): void;
   end(): Promise<void>;

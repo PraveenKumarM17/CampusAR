@@ -6,27 +6,27 @@ Standards for teams implementing against this architecture. No sample applicatio
 
 ## Folder naming
 
-| Area | Convention |
-|------|------------|
-| Apps | `apps/<name>` lowercase |
-| Packages | `packages/<name>` |
-| Features (FE) | `features/<featureName>/` camelCase folder OK; prefer kebab if team standardizes |
-| Backend layers | `domain`, `application`, `infrastructure`, `interfaces` |
-| Tests | Colocate `*.test.ts` next to unit under test |
+| Area           | Convention                                                                       |
+| -------------- | -------------------------------------------------------------------------------- |
+| Apps           | `apps/<name>` lowercase                                                          |
+| Packages       | `packages/<name>`                                                                |
+| Features (FE)  | `features/<featureName>/` camelCase folder OK; prefer kebab if team standardizes |
+| Backend layers | `domain`, `application`, `infrastructure`, `interfaces`                          |
+| Tests          | Colocate `*.test.ts` next to unit under test                                     |
 
 ---
 
 ## File naming
 
-| Kind | Pattern |
-|------|---------|
-| React components | `PascalCase.tsx` |
-| Hooks | `useSomething.ts` |
-| Stores | `somethingStore.ts` |
-| Services | `somethingService.ts` |
-| Repositories | `somethingRepository.ts` |
-| Types | `types.ts` or `something.types.ts` |
-| Docs | `kebab-case.md` |
+| Kind             | Pattern                            |
+| ---------------- | ---------------------------------- |
+| React components | `PascalCase.tsx`                   |
+| Hooks            | `useSomething.ts`                  |
+| Stores           | `somethingStore.ts`                |
+| Services         | `somethingService.ts`              |
+| Repositories     | `somethingRepository.ts`           |
+| Types            | `types.ts` or `something.types.ts` |
+| Docs             | `kebab-case.md`                    |
 
 ---
 
@@ -61,13 +61,13 @@ Standards for teams implementing against this architecture. No sample applicatio
 
 ## Testing strategy
 
-| Layer | Expectation |
-|-------|-------------|
-| Domain routing | Fixture graphs covering MoSCoW safety/crowd/access cases — **required** |
-| Application services | Fakes for repos/ports |
-| HTTP | Smoke/integration with test DB in CI when available |
-| Frontend unit | Geo/snap, nav state machine, permission flows |
-| E2E | Critical guest path on staging |
+| Layer                | Expectation                                                             |
+| -------------------- | ----------------------------------------------------------------------- |
+| Domain routing       | Fixture graphs covering MoSCoW safety/crowd/access cases — **required** |
+| Application services | Fakes for repos/ports                                                   |
+| HTTP                 | Smoke/integration with test DB in CI when available                     |
+| Frontend unit        | Geo/snap, nav state machine, permission flows                           |
+| E2E                  | Critical guest path on staging                                          |
 
 Coverage: prefer critical paths over vanity %.
 
@@ -75,14 +75,14 @@ Coverage: prefer critical paths over vanity %.
 
 ## Git workflow
 
-| Practice | Rule |
-|----------|------|
-| Branching | `feature/*`, `fix/*` from `main` |
-| Commits | Imperative, focused; why over noise |
-| PRs | Small; link product/architecture sections when relevant |
-| Reviews | Require CI green; architecture-impacting changes need lead ack |
-| Secrets | Never commit `.env` |
-| Hooks | Do not skip unless emergency + follow-up |
+| Practice  | Rule                                                           |
+| --------- | -------------------------------------------------------------- |
+| Branching | `feature/*`, `fix/*` from `main`                               |
+| Commits   | Imperative, focused; why over noise                            |
+| PRs       | Small; link product/architecture sections when relevant        |
+| Reviews   | Require CI green; architecture-impacting changes need lead ack |
+| Secrets   | Never commit `.env`                                            |
+| Hooks     | Do not skip unless emergency + follow-up                       |
 
 ---
 
@@ -132,8 +132,8 @@ Coverage: prefer critical paths over vanity %.
 
 ## Definition of done (implementation)
 
-1. Meets acceptance criteria in product feature specs  
-2. Fits layer/port boundaries in architecture  
-3. Tests for domain-critical behaviour  
-4. Docs updated if contracts changed  
-5. CI green  
+1. Meets acceptance criteria in product feature specs
+2. Fits layer/port boundaries in architecture
+3. Tests for domain-critical behaviour
+4. Docs updated if contracts changed
+5. CI green

@@ -31,9 +31,7 @@ export function BuildingSearch({
       />
       {query.trim() && (
         <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto border border-line bg-paper-raised shadow-lg">
-          {results.length === 0 && (
-            <li className="px-3 py-2 text-sm text-ink-mute">No matches</li>
-          )}
+          {results.length === 0 && <li className="px-3 py-2 text-sm text-ink-mute">No matches</li>}
           {results.map((hit) => (
             <li key={`${hit.type}-${hit.id}`}>
               <button

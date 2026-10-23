@@ -110,11 +110,13 @@ describe('API integration', () => {
 
   it.skipIf(!canUseDb)('rejects invalid accessibility payload', async () => {
     const places = await loadPlaces();
-    const res = await request(app).post('/api/navigation/route').send({
-      sourceNodeId: places[0].id,
-      destinationNodeId: places[1].id,
-      accessibility: { avoidStairs: 'yes' },
-    });
+    const res = await request(app)
+      .post('/api/navigation/route')
+      .send({
+        sourceNodeId: places[0].id,
+        destinationNodeId: places[1].id,
+        accessibility: { avoidStairs: 'yes' },
+      });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });

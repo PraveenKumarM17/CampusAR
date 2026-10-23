@@ -17,10 +17,10 @@ Responses include `{ user, tokens: { accessToken, refreshToken } }`.
 
 ## Sites
 
-| Method | Path            | Description |
-| ------ | --------------- | ----------- |
-| GET    | `/sites`        | Accessible sites for the caller (guest: default active site) |
-| GET    | `/sites/:id`    | Site metadata (center, timezone, organization) |
+| Method | Path         | Description                                                  |
+| ------ | ------------ | ------------------------------------------------------------ |
+| GET    | `/sites`     | Accessible sites for the caller (guest: default active site) |
+| GET    | `/sites/:id` | Site metadata (center, timezone, organization)               |
 
 Campus, navigation, safety, IoT crowd, and admin map reads/writes are scoped by:
 

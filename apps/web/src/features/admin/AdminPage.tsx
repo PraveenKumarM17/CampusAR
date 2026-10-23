@@ -124,7 +124,10 @@ export function AdminPage() {
       </div>
 
       {tab === 'weights' && (
-        <form className="panel rounded-md p-3 space-y-3 max-w-xl sm:p-4 sm:space-y-4" onSubmit={saveWeights}>
+        <form
+          className="panel rounded-md p-3 space-y-3 max-w-xl sm:p-4 sm:space-y-4"
+          onSubmit={saveWeights}
+        >
           <p className="text-xs text-ink-mute sm:text-sm">
             cost = w_d·dist + w_s·(1−safety) + w_c·crowd + w_a·(1−accessibility) + blocked penalty
           </p>
@@ -160,7 +163,10 @@ export function AdminPage() {
               onChange={(e) => setWeights({ ...weights, wBlockedPenalty: Number(e.target.value) })}
             />
           </label>
-          <button className="btn-primary w-full !py-2 !text-xs sm:w-auto sm:!py-2.5 sm:!text-sm" type="submit">
+          <button
+            className="btn-primary w-full !py-2 !text-xs sm:w-auto sm:!py-2.5 sm:!text-sm"
+            type="submit"
+          >
             Save weights
           </button>
         </form>
@@ -168,15 +174,25 @@ export function AdminPage() {
 
       {tab === 'buildings' && (
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
-          <form className="panel rounded-md p-3 space-y-2.5 sm:p-4 sm:space-y-3" onSubmit={addBuilding}>
+          <form
+            className="panel rounded-md p-3 space-y-2.5 sm:p-4 sm:space-y-3"
+            onSubmit={addBuilding}
+          >
             <p className="text-sm font-semibold sm:text-base">Create building</p>
             {['name', 'code', 'description', 'latitude', 'longitude', 'floorsCount'].map((f) => (
               <div key={f}>
                 <label className="label text-xs sm:text-sm">{f}</label>
-                <input className="input !py-2 !text-xs sm:!py-2.5 sm:!text-sm" name={f} required={f !== 'description'} />
+                <input
+                  className="input !py-2 !text-xs sm:!py-2.5 sm:!text-sm"
+                  name={f}
+                  required={f !== 'description'}
+                />
               </div>
             ))}
-            <button className="btn-primary w-full !py-2 !text-xs sm:!py-2.5 sm:!text-sm" type="submit">
+            <button
+              className="btn-primary w-full !py-2 !text-xs sm:!py-2.5 sm:!text-sm"
+              type="submit"
+            >
               Create
             </button>
           </form>
@@ -237,7 +253,11 @@ export function AdminPage() {
                       type="checkbox"
                       checked={edge.blocked}
                       onChange={async (e) => {
-                        await adminApi.adminEdges.update(edge.id, { blocked: e.target.checked }, token);
+                        await adminApi.adminEdges.update(
+                          edge.id,
+                          { blocked: e.target.checked },
+                          token,
+                        );
                         await refresh();
                         setMessage(e.target.checked ? 'Path blocked' : 'Path reopened');
                       }}

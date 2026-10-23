@@ -18,6 +18,11 @@ describe('mapBuilderUtils', () => {
       { latitude: 3, longitude: 4 },
     ];
     expect(ringsEqual(a, cloneGeoRing(a))).toBe(true);
-    expect(ringsEqual(a, [{ latitude: 1, longitude: 2 }, { latitude: 9, longitude: 4 }])).toBe(false);
+    expect(
+      ringsEqual(a, [
+        { latitude: 1, longitude: 2 },
+        { latitude: 9, longitude: 4 },
+      ]),
+    ).toBe(false);
   });
 });

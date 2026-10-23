@@ -138,7 +138,9 @@ export function MapBuilderCommandPalette({
                   }}
                 >
                   <span>{item.label}</span>
-                  {item.hint ? <span className="text-[11px] text-ink-faint">{item.hint}</span> : null}
+                  {item.hint ? (
+                    <span className="text-[11px] text-ink-faint">{item.hint}</span>
+                  ) : null}
                 </button>
               </li>
             ))

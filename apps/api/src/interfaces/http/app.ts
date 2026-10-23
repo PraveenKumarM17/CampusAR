@@ -20,7 +20,10 @@ import measurementRouter from './routes/measurementRoutes';
 export function createApp() {
   const app = express();
   app.use(helmet(buildHelmetOptions()));
-  const corsOrigins = env.corsOrigin.split(',').map((o) => o.trim()).filter(Boolean);
+  const corsOrigins = env.corsOrigin
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.use(
     cors({
       origin: (origin, callback) => {

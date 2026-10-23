@@ -10,14 +10,14 @@ The Map Builder is the first canonical outdoor map-authoring experience in Campu
 
 ## Canonical data
 
-| Feature | Storage | Notes |
-|---------|---------|-------|
-| Building footprint | `buildings.footprint_geom` (`GEOGRAPHY(POLYGON,4326)`) | Nullable; legacy point buildings remain valid |
-| Building center | `buildings.latitude/longitude` | Updated from footprint centroid when footprint saved |
-| Navigation graph | `nodes`, `edges` | Same A* graph as `/navigate` |
-| Entrances | `nodes.kind = 'entrance'` + `building_id` | Not a separate dataset |
-| POIs | Named outdoor `nodes` | Search and map treat named nodes as places |
-| Areas | `site_areas` | Parking, open, restricted, assembly polygons |
+| Feature            | Storage                                                | Notes                                                |
+| ------------------ | ------------------------------------------------------ | ---------------------------------------------------- |
+| Building footprint | `buildings.footprint_geom` (`GEOGRAPHY(POLYGON,4326)`) | Nullable; legacy point buildings remain valid        |
+| Building center    | `buildings.latitude/longitude`                         | Updated from footprint centroid when footprint saved |
+| Navigation graph   | `nodes`, `edges`                                       | Same A* graph as `/navigate`                         |
+| Entrances          | `nodes.kind = 'entrance'` + `building_id`              | Not a separate dataset                               |
+| POIs               | Named outdoor `nodes`                                  | Search and map treat named nodes as places           |
+| Areas              | `site_areas`                                           | Parking, open, restricted, assembly polygons         |
 
 There is **no draft/publish workflow** in this phase. Saves write directly to the active canonical map.
 
@@ -55,7 +55,6 @@ Existing RNSIT buildings keep their UUIDs and point coordinates. Footprints are 
 - Building `latitude`/`longitude` are derived server-side from `footprint_geom` via PostGIS `ST_Centroid` and cannot be edited independently when a footprint exists.
 - Optimistic concurrency uses `buildings.updated_at` (`expectedUpdatedAt` on PUT).
 - Legacy **Admin → Map pins** tab removed; use Map Builder only for outdoor authoring.
-
 
 - **2.5C** — Indoor floor editor (floors, room/corridor/POI geometry) — see [map-builder-indoor.md](./map-builder-indoor.md)
 - **2.5D** — Indoor navigation graph editor + room/routing linkage

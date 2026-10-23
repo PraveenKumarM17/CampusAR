@@ -1,4 +1,9 @@
-import type { Floor, IndoorBuildingContext, IndoorPlace, IndoorTransitionStatus } from '@campusar/shared';
+import type {
+  Floor,
+  IndoorBuildingContext,
+  IndoorPlace,
+  IndoorTransitionStatus,
+} from '@campusar/shared';
 
 export const BUILDING_CONTEXT_CACHE_MS = 5 * 60 * 1000;
 
@@ -140,7 +145,11 @@ export function placeFloorLabel(place: IndoorPlace, floors: Floor[]): string | n
   return floors.find((f) => f.id === place.floorId)?.name ?? null;
 }
 
-export function formatPlaceHierarchy(place: IndoorPlace, places: IndoorPlace[], floors: Floor[]): string {
+export function formatPlaceHierarchy(
+  place: IndoorPlace,
+  places: IndoorPlace[],
+  floors: Floor[],
+): string {
   const parts = [...placeAncestryLabels(place, places)];
   const floor = placeFloorLabel(place, floors);
   if (floor) parts.push(floor);

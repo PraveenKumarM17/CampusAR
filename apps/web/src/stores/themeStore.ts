@@ -2,10 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AccessibilityPrefs, IndoorTransitionStatus } from '@campusar/shared';
 import { DEFAULT_ACCESSIBILITY } from '@campusar/shared';
-import {
-  afterIndoorCompletePatch,
-  type BuildingNavPatch,
-} from '../lib/buildingNavigation';
+import { afterIndoorCompletePatch, type BuildingNavPatch } from '../lib/buildingNavigation';
 
 interface ThemeState {
   dark: boolean;
@@ -150,7 +147,8 @@ export const useNavStore = create<NavState>()(
       startIndoorNavigation: () => set({ transitionStatus: 'navigating_indoor' }),
       cancelIndoorScan: () => set({ transitionStatus: 'waiting_for_anchor' }),
       completeIndoorNavigation: () => set(afterIndoorCompletePatch()),
-      resetForSiteChange: () => set({ sourceNodeId: null, destinationNodeId: null, ...emptyBuilding }),
+      resetForSiteChange: () =>
+        set({ sourceNodeId: null, destinationNodeId: null, ...emptyBuilding }),
     }),
     {
       name: 'campusar-nav',

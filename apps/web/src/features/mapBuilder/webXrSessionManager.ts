@@ -136,7 +136,8 @@ export function classifyWebXrError(error: unknown): WebXrErrorClassification {
 
   if (name === 'SecurityError' || lower.includes('secure context')) {
     return {
-      message: 'WebXR requires HTTPS. Open this site with https:// and accept the certificate warning if prompted.',
+      message:
+        'WebXR requires HTTPS. Open this site with https:// and accept the certificate warning if prompted.',
       userWarning: null,
       logDetail: `[WebXR] Security error: ${raw}`,
       isArcoreLikely: false,
@@ -166,7 +167,8 @@ export async function checkWebXrArSupport(): Promise<WebXrPreflightResult> {
     return {
       ok: false,
       reason: 'unsupported',
-      message: 'WebXR is not available in this browser. Use Chrome or Edge on an ARCore-capable Android device.',
+      message:
+        'WebXR is not available in this browser. Use Chrome or Edge on an ARCore-capable Android device.',
     };
   }
 
@@ -345,7 +347,9 @@ export class WebXrSessionManager {
     }
     if (gl.isContextLost()) {
       this.glContext = null;
-      throw new Error('WebGL context is already lost. Close and reopen AR to create a fresh context.');
+      throw new Error(
+        'WebGL context is already lost. Close and reopen AR to create a fresh context.',
+      );
     }
     this.glContext = gl;
 
@@ -412,7 +416,10 @@ export class WebXrSessionManager {
               entityTypes: ['plane', 'point'],
             })) ?? null;
         } catch (entityTypeError) {
-          console.warn('[WebXR] Entity-specific hit-test request failed; retrying default source', entityTypeError);
+          console.warn(
+            '[WebXR] Entity-specific hit-test request failed; retrying default source',
+            entityTypeError,
+          );
           hitTestSource = (await session.requestHitTestSource({ space: viewerSpace })) ?? null;
         }
       }
@@ -426,7 +433,9 @@ export class WebXrSessionManager {
     try {
       if (session.requestHitTestSourceForTransientInput) {
         this.transientHitTestSource =
-          (await session.requestHitTestSourceForTransientInput({ profile: 'generic-touchscreen' })) ?? null;
+          (await session.requestHitTestSourceForTransientInput({
+            profile: 'generic-touchscreen',
+          })) ?? null;
         arDebugger.info('WebXR', 'Transient touch hit-test source created', {
           persistent: Boolean(hitTestSource),
         });

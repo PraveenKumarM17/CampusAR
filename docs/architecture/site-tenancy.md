@@ -22,21 +22,21 @@ Organization
       └── Live crowd / sensors (scoped by site)
 ```
 
-| Entity | Role |
-|--------|------|
-| **Organization** | Customer account (RNSIT, a hospital, a corporate campus). |
-| **Site** | One physical location. An organization may have several (main campus, north campus, HQ). |
-| **Membership** | Scopes users to an organization, optionally to one site. |
+| Entity           | Role                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| **Organization** | Customer account (RNSIT, a hospital, a corporate campus).                                |
+| **Site**         | One physical location. An organization may have several (main campus, north campus, HQ). |
+| **Membership**   | Scopes users to an organization, optionally to one site.                                 |
 
 Existing `users.role` remains `admin | user | guest`:
 
-| Actor | How it maps |
-|-------|-------------|
-| Platform admin | `users.role = admin` — can manage any site |
-| Organization admin | membership `org_admin` — map writes for that organization only |
-| Site admin / map editor | membership `site_admin` — assigned site |
-| Regular user | membership `member` or `users.role = user` — navigation |
-| Guest | public reads of the default/active site |
+| Actor                   | How it maps                                                    |
+| ----------------------- | -------------------------------------------------------------- |
+| Platform admin          | `users.role = admin` — can manage any site                     |
+| Organization admin      | membership `org_admin` — map writes for that organization only |
+| Site admin / map editor | membership `site_admin` — assigned site                        |
+| Regular user            | membership `member` or `users.role = user` — navigation        |
+| Guest                   | public reads of the default/active site                        |
 
 A hospital administrator must not modify another hospital’s map.
 
@@ -93,11 +93,11 @@ A new site may have no buildings, nodes, or edges. Clients must not crash. They 
 
 ## 7. RNSIT seed
 
-| Record | Stable id | Notes |
-|--------|-----------|--------|
-| Organization | slug `rnsit` | Demonstration university |
-| Site | slug `rnsit-main` | Center and timezone from site metadata |
-| Spatial rows | existing UUIDs | Backfilled with `site_id`; building UUIDs unchanged |
+| Record       | Stable id         | Notes                                               |
+| ------------ | ----------------- | --------------------------------------------------- |
+| Organization | slug `rnsit`      | Demonstration university                            |
+| Site         | slug `rnsit-main` | Center and timezone from site metadata              |
+| Spatial rows | existing UUIDs    | Backfilled with `site_id`; building UUIDs unchanged |
 
 The platform must function for an empty site without this seed.
 

@@ -7,12 +7,7 @@ import type {
   IndoorRouteStep,
 } from '@campusar/shared';
 import { DEFAULT_ROUTE_WEIGHTS, WALKING_SPEED_MPS } from '@campusar/shared';
-import {
-  aStar,
-  buildAdjacency,
-  type RoutingEdge,
-  type RoutingNode,
-} from '../routing/astar';
+import { aStar, buildAdjacency, type RoutingEdge, type RoutingNode } from '../routing/astar';
 import { euclideanMeters, indoorKindToRoutingKind, localBearingDegrees } from './geometry';
 import { turnInstruction } from '../routing/astar';
 

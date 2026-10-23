@@ -115,8 +115,11 @@ export function DigitalTwinPage() {
     [twinBuildings, pois, parking, query],
   );
   const selectedBuilding =
-    selection?.kind === 'building' ? (twinBuildings.find((b) => b.id === selection.id) ?? null) : null;
-  const selectedPoi = selection?.kind === 'poi' ? (pois.find((p) => p.id === selection.id) ?? null) : null;
+    selection?.kind === 'building'
+      ? (twinBuildings.find((b) => b.id === selection.id) ?? null)
+      : null;
+  const selectedPoi =
+    selection?.kind === 'poi' ? (pois.find((p) => p.id === selection.id) ?? null) : null;
   const selectedEntrance =
     selection?.kind === 'entrance' ? (entrances.find((e) => e.id === selection.id) ?? null) : null;
   const selectedParking =
@@ -261,11 +264,13 @@ export function DigitalTwinPage() {
           : 'Navigate here';
 
   const showError = error || viewerError;
-  const emptyCoords = !loading && !siteHasPublishedMap({
-    buildings: twinBuildings.length,
-    nodes: nodes.length,
-    edges: edges.length,
-  });
+  const emptyCoords =
+    !loading &&
+    !siteHasPublishedMap({
+      buildings: twinBuildings.length,
+      nodes: nodes.length,
+      edges: edges.length,
+    });
 
   return (
     <div className="flex min-h-[calc(100vh-8.5rem)] flex-col gap-3">
@@ -273,8 +278,8 @@ export function DigitalTwinPage() {
         <div>
           <h1 className="page-title">Digital Twin</h1>
           <p className="page-sub">
-            {label} — Cesium environment from this site’s buildings, walkways, and live crowd.
-            Same canonical map data as Map and Navigate.
+            {label} — Cesium environment from this site’s buildings, walkways, and live crowd. Same
+            canonical map data as Map and Navigate.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
@@ -332,9 +337,7 @@ export function DigitalTwinPage() {
         </div>
       )}
 
-      {emptyCoords && !showError && (
-        <p className="text-sm text-ink-mute">{EMPTY_SITE_MESSAGE}</p>
-      )}
+      {emptyCoords && !showError && <p className="text-sm text-ink-mute">{EMPTY_SITE_MESSAGE}</p>}
 
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-md border border-line bg-ink-950">
         {loading && !viewerReady && <TwinLoading />}

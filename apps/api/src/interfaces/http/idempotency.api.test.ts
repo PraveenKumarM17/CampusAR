@@ -63,7 +63,12 @@ describe('map-builder idempotency', () => {
     async () => {
       const token = await loginAdmin();
       const idempotencyKey = `test-key-${Date.now()}`;
-      const payload = { latitude: 13.01, longitude: 77.55, kind: 'outdoor', name: 'Idempotent Node' };
+      const payload = {
+        latitude: 13.01,
+        longitude: 77.55,
+        kind: 'outdoor',
+        name: 'Idempotent Node',
+      };
 
       const first = await request(app)
         .post('/api/admin/paths/nodes')
@@ -82,10 +87,10 @@ describe('map-builder idempotency', () => {
       expect(second.status).toBe(201);
       expect(second.body).toEqual(first.body);
 
-      const { rows } = await pool.query(
-        `SELECT id FROM nodes WHERE site_id = $1 AND name = $2`,
-        [SITE_I, 'Idempotent Node'],
-      );
+      const { rows } = await pool.query(`SELECT id FROM nodes WHERE site_id = $1 AND name = $2`, [
+        SITE_I,
+        'Idempotent Node',
+      ]);
       expect(rows).toHaveLength(1);
       expect(rows[0].id).toBe(first.body.id);
     },

@@ -66,7 +66,9 @@ function nodeFromRow(r: Record<string, unknown>): IndoorNode {
 function parseWaypoints(raw: unknown): LocalVec3[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((p): p is LocalVec3 => typeof p === 'object' && p != null && 'x' in p && 'y' in p && 'z' in p)
+    .filter(
+      (p): p is LocalVec3 => typeof p === 'object' && p != null && 'x' in p && 'y' in p && 'z' in p,
+    )
     .map((p) => ({ x: Number(p.x), y: Number(p.y), z: Number(p.z) }));
 }
 
@@ -132,7 +134,10 @@ export const indoorRepository = {
     return rows.map(mapFromRow);
   },
 
-  async getPublishedMapByBuilding(buildingId: string, mapVersionId: string): Promise<IndoorMap | null> {
+  async getPublishedMapByBuilding(
+    buildingId: string,
+    mapVersionId: string,
+  ): Promise<IndoorMap | null> {
     const { rows } = await query<MapRow>(
       `SELECT * FROM indoor_maps
        WHERE building_id = $1 AND map_version_id = $2 AND active = TRUE AND status = 'published'
@@ -256,7 +261,10 @@ export const indoorRepository = {
     return nodeFromRow(rows[0]);
   },
 
-  async updateNode(id: string, input: Partial<Omit<IndoorNode, 'id' | 'mapId' | 'buildingId'>>): Promise<IndoorNode | null> {
+  async updateNode(
+    id: string,
+    input: Partial<Omit<IndoorNode, 'id' | 'mapId' | 'buildingId'>>,
+  ): Promise<IndoorNode | null> {
     const { rows } = await query(
       `UPDATE indoor_nodes SET
          floor_id = COALESCE($2, floor_id),
@@ -292,7 +300,10 @@ export const indoorRepository = {
   async softDeleteNode(id: string): Promise<boolean> {
     const { rowCount } = await query(`UPDATE indoor_nodes SET active = FALSE WHERE id = $1`, [id]);
     if (rowCount) {
-      await query(`UPDATE indoor_edges SET active = FALSE WHERE from_node_id = $1 OR to_node_id = $1`, [id]);
+      await query(
+        `UPDATE indoor_edges SET active = FALSE WHERE from_node_id = $1 OR to_node_id = $1`,
+        [id],
+      );
     }
     return (rowCount ?? 0) > 0;
   },
@@ -335,7 +346,10 @@ export const indoorRepository = {
     return edgeFromRow(rows[0]);
   },
 
-  async updateEdge(id: string, input: Partial<Omit<IndoorEdge, 'id' | 'mapId' | 'buildingId'>>): Promise<IndoorEdge | null> {
+  async updateEdge(
+    id: string,
+    input: Partial<Omit<IndoorEdge, 'id' | 'mapId' | 'buildingId'>>,
+  ): Promise<IndoorEdge | null> {
     const { rows } = await query(
       `UPDATE indoor_edges SET
          from_floor_id = COALESCE($2, from_floor_id),
@@ -399,7 +413,10 @@ export const indoorRepository = {
     return rows.map(placeFromRow);
   },
 
-  async listPlacesByBuildingForVersion(buildingId: string, mapVersionId: string): Promise<IndoorPlace[]> {
+  async listPlacesByBuildingForVersion(
+    buildingId: string,
+    mapVersionId: string,
+  ): Promise<IndoorPlace[]> {
     const { rows } = await query(
       `SELECT p.* FROM indoor_places p
        JOIN indoor_maps m ON m.id = p.map_id
@@ -470,7 +487,10 @@ export const indoorRepository = {
     return placeFromRow(rows[0]);
   },
 
-  async updatePlace(id: string, input: Partial<Omit<IndoorPlace, 'id' | 'mapId' | 'buildingId'>>): Promise<IndoorPlace | null> {
+  async updatePlace(
+    id: string,
+    input: Partial<Omit<IndoorPlace, 'id' | 'mapId' | 'buildingId'>>,
+  ): Promise<IndoorPlace | null> {
     const { rows } = await query(
       `UPDATE indoor_places SET
          floor_id = COALESCE($2, floor_id),
@@ -627,7 +647,10 @@ export const indoorRepository = {
     return rows[0] ? placeFromRow(rows[0]) : null;
   },
 
-  async getAnchorByCodeForVersion(code: string, mapVersionId: string): Promise<IndoorAnchor | null> {
+  async getAnchorByCodeForVersion(
+    code: string,
+    mapVersionId: string,
+  ): Promise<IndoorAnchor | null> {
     const { rows } = await query(
       `SELECT a.* FROM indoor_anchors a
        JOIN indoor_maps m ON m.id = a.map_id
@@ -648,7 +671,14 @@ export const indoorRepository = {
          prompt = EXCLUDED.prompt,
          active = EXCLUDED.active
        RETURNING *`,
-      [input.outdoorNodeId, input.indoorNodeId, input.buildingId, input.mapId, input.prompt, input.active],
+      [
+        input.outdoorNodeId,
+        input.indoorNodeId,
+        input.buildingId,
+        input.mapId,
+        input.prompt,
+        input.active,
+      ],
     );
     const r = rows[0];
     return {
@@ -710,7 +740,9 @@ export const indoorRepository = {
   },
 
   async softDeleteHandoff(id: string): Promise<boolean> {
-    const { rowCount } = await query(`UPDATE indoor_handoffs SET active = FALSE WHERE id = $1`, [id]);
+    const { rowCount } = await query(`UPDATE indoor_handoffs SET active = FALSE WHERE id = $1`, [
+      id,
+    ]);
     return (rowCount ?? 0) > 0;
   },
 
@@ -724,7 +756,11 @@ export const indoorRepository = {
     return rows[0] ? placeFromRow(rows[0] as Record<string, unknown>) : null;
   },
 
-  async findEdgeBetween(mapId: string, fromNodeId: string, toNodeId: string): Promise<IndoorEdge | null> {
+  async findEdgeBetween(
+    mapId: string,
+    fromNodeId: string,
+    toNodeId: string,
+  ): Promise<IndoorEdge | null> {
     const { rows } = await query(
       `SELECT * FROM indoor_edges
        WHERE map_id = $1 AND active = TRUE

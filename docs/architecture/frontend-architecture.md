@@ -50,16 +50,16 @@ apps/web/
 
 ## Feature modules
 
-| Feature | Owns | Out of scope |
-|---------|------|--------------|
-| auth | Landing, login/register, guest CTA | Admin RBAC logic (server) |
-| map | MapLibre view, filters, pick OD, crowd colors | Pathfinding |
-| navigate | Turn list, recalc, TTS, arrival (map mode) | Camera AR scene |
-| ar | Camera, compass cue, doll, AR HUD | Route authority |
-| twin | Three scene, live heat | Mutating campus data |
-| safety | Hazards list UX, SOS, contacts | Dispatch SLA |
-| admin | Forms for weights/entities/sim | Domain cost math |
-| analytics | Charts/tables | Event ingestion |
+| Feature   | Owns                                          | Out of scope              |
+| --------- | --------------------------------------------- | ------------------------- |
+| auth      | Landing, login/register, guest CTA            | Admin RBAC logic (server) |
+| map       | MapLibre view, filters, pick OD, crowd colors | Pathfinding               |
+| navigate  | Turn list, recalc, TTS, arrival (map mode)    | Camera AR scene           |
+| ar        | Camera, compass cue, doll, AR HUD             | Route authority           |
+| twin      | Three scene, live heat                        | Mutating campus data      |
+| safety    | Hazards list UX, SOS, contacts                | Dispatch SLA              |
+| admin     | Forms for weights/entities/sim                | Domain cost math          |
+| analytics | Charts/tables                                 | Event ingestion           |
 
 ---
 
@@ -84,13 +84,13 @@ apps/web/
 
 ## State management
 
-| Store | Persistence | Contents |
-|-------|-------------|----------|
-| authStore | session/local per security decision | tokens, user, role, guest flag |
-| themeStore | local | theme preference |
-| prefsStore | local + server when logged in | accessibility, prediction toggle, doll gender, voice |
-| navSessionStore | memory | active route, step index, nav phase |
-| liveStore (or hook cache) | memory | last crowd/hazard snapshot |
+| Store                     | Persistence                         | Contents                                             |
+| ------------------------- | ----------------------------------- | ---------------------------------------------------- |
+| authStore                 | session/local per security decision | tokens, user, role, guest flag                       |
+| themeStore                | local                               | theme preference                                     |
+| prefsStore                | local + server when logged in       | accessibility, prediction toggle, doll gender, voice |
+| navSessionStore           | memory                              | active route, step index, nav phase                  |
+| liveStore (or hook cache) | memory                              | last crowd/hazard snapshot                           |
 
 **Principles:** Server is source of truth for routes/graph. Client stores are UX + session. Avoid duplicating graph in multiple stores — cache via React Query (optional) or module-level cache with TTL.
 
@@ -119,12 +119,12 @@ apps/web/
 
 ## Offline strategy (V1)
 
-| Capability | V1 behaviour |
-|------------|--------------|
-| App shell | Optional PWA cache for static assets |
-| Graph / routes | Online required for authoritative route |
+| Capability        | V1 behaviour                                        |
+| ----------------- | --------------------------------------------------- |
+| App shell         | Optional PWA cache for static assets                |
+| Graph / routes    | Online required for authoritative route             |
 | Active navigation | If reconnect fails mid-trip, keep last route + warn |
-| SOS | Fail clearly if offline (queue is Could Have) |
+| SOS               | Fail clearly if offline (queue is Could Have)       |
 
 Do not claim full offline campus packs in V1 (product Won’t Have).
 
@@ -148,13 +148,13 @@ Do not claim full offline campus packs in V1 (product Won’t Have).
 
 ## Performance
 
-| Budget | Guidance |
-|--------|----------|
-| TTI map | Avoid blocking on twin/AR bundles |
-| AR | Throttle orientation handlers; rAF for render |
-| Re-renders | Prefer local state for high-frequency GPS; don’t push every fix into global store |
-| Lists | Virtualize only if place lists grow huge |
-| Images/assets | Compress doll textures; Draco optional later |
+| Budget        | Guidance                                                                          |
+| ------------- | --------------------------------------------------------------------------------- |
+| TTI map       | Avoid blocking on twin/AR bundles                                                 |
+| AR            | Throttle orientation handlers; rAF for render                                     |
+| Re-renders    | Prefer local state for high-frequency GPS; don’t push every fix into global store |
+| Lists         | Virtualize only if place lists grow huge                                          |
+| Images/assets | Compress doll textures; Draco optional later                                      |
 
 ---
 

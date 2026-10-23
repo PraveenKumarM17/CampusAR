@@ -17,10 +17,10 @@ Every canonical authored spatial row carries `map_version_id` referencing `site_
 
 ### Versioned tables
 
-| Layer | Tables |
-|-------|--------|
-| Outdoor | `buildings`, `nodes`, `edges`, `site_areas` |
-| Indoor layout | `floors`, `rooms`, `floor_corridors`, `floor_pois` |
+| Layer             | Tables                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| Outdoor           | `buildings`, `nodes`, `edges`, `site_areas`                                                         |
+| Indoor layout     | `floors`, `rooms`, `floor_corridors`, `floor_pois`                                                  |
 | Indoor navigation | `indoor_maps`, `indoor_nodes`, `indoor_edges`, `indoor_places`, `indoor_anchors`, `indoor_handoffs` |
 
 ### Explicitly **not** versioned (live operational data)
@@ -79,11 +79,11 @@ Existing site guards remain (`requireMapEditor`, `resolveEditorSiteId`, `assertR
 
 Additional version guards (`mapVersionGuard.ts`):
 
-| Code | Meaning |
-|------|---------|
-| `VERSION_CONTEXT_REQUIRED` | Row missing `map_version_id` |
-| `CROSS_VERSION_REFERENCE` | Resource or edge endpoint not in active version |
-| `PUBLISHED_VERSION_READ_ONLY` | Map Builder attempted to mutate published rows |
+| Code                          | Meaning                                         |
+| ----------------------------- | ----------------------------------------------- |
+| `VERSION_CONTEXT_REQUIRED`    | Row missing `map_version_id`                    |
+| `CROSS_VERSION_REFERENCE`     | Resource or edge endpoint not in active version |
+| `PUBLISHED_VERSION_READ_ONLY` | Map Builder attempted to mutate published rows  |
 
 Outdoor edge creation validates both endpoints share the draft `map_version_id`.
 
@@ -122,14 +122,14 @@ Draft creation: `POST /api/admin/map-builder/draft` — idempotent, returns 201 
 
 ## Code map
 
-| Layer | File |
-|-------|------|
-| Spatial migration | `infrastructure/db/map-builder-versioning-spatial.sql` |
-| Clone service | `application/mapVersionCloneService.ts` |
-| Version guards | `application/mapVersionGuard.ts` |
+| Layer                | File                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| Spatial migration    | `infrastructure/db/map-builder-versioning-spatial.sql`                                    |
+| Clone service        | `application/mapVersionCloneService.ts`                                                   |
+| Version guards       | `application/mapVersionGuard.ts`                                                          |
 | Version service/repo | `application/mapVersionService.ts`, `infrastructure/repositories/mapVersionRepository.ts` |
-| Context helpers | `application/mapVersionContext.ts` |
-| Tests | `interfaces/http/mapVersionSpatial.api.test.ts` |
+| Context helpers      | `application/mapVersionContext.ts`                                                        |
+| Tests                | `interfaces/http/mapVersionSpatial.api.test.ts`                                           |
 
 ---
 

@@ -28,7 +28,9 @@ describe('webXrSessionManager', () => {
 
   describe('classifyWebXrError', () => {
     it('maps ARCore-related failures to Play Store guidance', () => {
-      const result = classifyWebXrError(new DOMException('ARCore not installed', 'NotSupportedError'));
+      const result = classifyWebXrError(
+        new DOMException('ARCore not installed', 'NotSupportedError'),
+      );
       expect(result.isArcoreLikely).toBe(true);
       expect(result.userWarning).toBe(ARCORE_UPDATE_MESSAGE);
     });
@@ -143,9 +145,9 @@ describe('webXrSessionManager', () => {
     });
 
     it('is idempotent when teardown is called twice', async () => {
-      const end = vi.fn().mockImplementation(
-        () => new Promise<void>((resolve) => setTimeout(resolve, 20)),
-      );
+      const end = vi
+        .fn()
+        .mockImplementation(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
 
       const session = {
         end,

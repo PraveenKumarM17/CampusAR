@@ -66,12 +66,7 @@ export function computeRouteProgress(
     };
   }
   if (path.length === 1) {
-    const d = haversineMeters(
-      pose.latitude,
-      pose.longitude,
-      path[0].latitude,
-      path[0].longitude,
-    );
+    const d = haversineMeters(pose.latitude, pose.longitude, path[0].latitude, path[0].longitude);
     return {
       stepIndex: 0,
       distanceRemainingM: d,
@@ -171,9 +166,7 @@ export function isNearDestination(
 ): boolean {
   if (path.length === 0) return false;
   const dest = path[path.length - 1]!;
-  return (
-    haversineMeters(pose.latitude, pose.longitude, dest.latitude, dest.longitude) <= radiusM
-  );
+  return haversineMeters(pose.latitude, pose.longitude, dest.latitude, dest.longitude) <= radiusM;
 }
 
 /** Debounced arrival: must stay near destination for holdMs. */

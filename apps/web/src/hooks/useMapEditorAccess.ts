@@ -35,7 +35,9 @@ export function useMapEditorAccess(): { canEdit: boolean; loading: boolean } {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setCanEdit(err instanceof ApiError && err.status === 422 && err.code === 'SITE_CONTEXT_REQUIRED');
+          setCanEdit(
+            err instanceof ApiError && err.status === 422 && err.code === 'SITE_CONTEXT_REQUIRED',
+          );
         }
       })
       .finally(() => {

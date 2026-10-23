@@ -45,12 +45,12 @@ Smoothing: low-pass heading; clamp spin rate for doll/arrow.
 
 ## Guide character
 
-| State | When | Motion intent |
-|-------|------|---------------|
-| Walk | Straight / following | Loop walk |
-| Wave | Approaching turn within threshold | Pre-turn nonverbal cue |
-| Celebrate | Arrival | Success pose |
-| Idle | Paused | Subtle idle |
+| State     | When                              | Motion intent          |
+| --------- | --------------------------------- | ---------------------- |
+| Walk      | Straight / following              | Loop walk              |
+| Wave      | Approaching turn within threshold | Pre-turn nonverbal cue |
+| Celebrate | Arrival                           | Success pose           |
+| Idle      | Paused                            | Subtle idle            |
 
 - User preference: male/female presentation (prefs store)
 - Respect `prefers-reduced-motion` → simplify or hide doll, keep HUD text
@@ -71,13 +71,13 @@ Doll is **not** the accessibility-critical channel; text/TTS remain available.
 
 ## Scene updates
 
-| Trigger | Update |
-|---------|--------|
-| New route / recalc | Reset step targets, exit celebrate |
-| Step advance | Update instruction + doll state machine |
-| Orientation event | Update arrow rotation |
-| Pose update | Progress, off-route check, arrival check |
-| Hazard WS | May trigger parent nav recalculate |
+| Trigger            | Update                                   |
+| ------------------ | ---------------------------------------- |
+| New route / recalc | Reset step targets, exit celebrate       |
+| Step advance       | Update instruction + doll state machine  |
+| Orientation event  | Update arrow rotation                    |
+| Pose update        | Progress, off-route check, arrival check |
+| Hazard WS          | May trigger parent nav recalculate       |
 
 Render loop via `requestAnimationFrame`; do not setState on every orientation event — mutate refs / imperative Three objects.
 
@@ -96,13 +96,13 @@ Render loop via `requestAnimationFrame`; do not setState on every orientation ev
 
 ## Failure matrix
 
-| Failure | Fallback |
-|---------|----------|
-| Camera deny | Map navigate |
-| Orientation deny | Non-compass AR or map |
-| WebGL fail | HUD-only or map |
-| TTS fail | Silent |
-| Mid-AR WS loss | Keep route; live chips stale |
+| Failure          | Fallback                     |
+| ---------------- | ---------------------------- |
+| Camera deny      | Map navigate                 |
+| Orientation deny | Non-compass AR or map        |
+| WebGL fail       | HUD-only or map              |
+| TTS fail         | Silent                       |
+| Mid-AR WS loss   | Keep route; live chips stale |
 
 ---
 
@@ -118,12 +118,12 @@ flowchart LR
   SHARED --> WEB
 ```
 
-| Concern | Approach |
-|---------|----------|
-| Contracts | Identical route/recalculate/SOS DTOs |
-| Pose | Unity XR providers implement same semantic `Pose` |
-| Guide avatar | Native animation controllers; state enum shared |
-| Feature flags | Server config which clients enabled |
+| Concern       | Approach                                          |
+| ------------- | ------------------------------------------------- |
+| Contracts     | Identical route/recalculate/SOS DTOs              |
+| Pose          | Unity XR providers implement same semantic `Pose` |
+| Guide avatar  | Native animation controllers; state enum shared   |
+| Feature flags | Server config which clients enabled               |
 
 Web remains the universal client; Unity is an additional guidance surface, not a fork of business logic.
 

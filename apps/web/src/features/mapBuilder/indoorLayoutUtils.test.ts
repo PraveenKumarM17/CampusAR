@@ -23,7 +23,13 @@ describe('indoorLayoutUtils', () => {
       { x: 5, y: 6 },
     ];
     expect(ringsEqual(ring, cloneRing(ring))).toBe(true);
-    expect(ringsEqual(ring, [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }])).toBe(false);
+    expect(
+      ringsEqual(ring, [
+        { x: 0, y: 0 },
+        { x: 1, y: 1 },
+        { x: 2, y: 2 },
+      ]),
+    ).toBe(false);
   });
 
   it('converts floor plan and AR local coordinates', () => {

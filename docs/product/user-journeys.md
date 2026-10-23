@@ -8,9 +8,11 @@ Each journey includes a step-by-step flow and a Mermaid diagram.
 ## 7.1 Student — class change navigation
 
 ### Goals
+
 Get from current location to a classroom before the hour, avoiding crowds if possible.
 
 ### Step-by-step
+
 1. Open CampusAR (PWA/web) on phone.
 2. Land on map or resume session (guest or logged-in student).
 3. Allow GPS when prompted (or pick nearest building if denied).
@@ -23,6 +25,7 @@ Get from current location to a classroom before the hour, avoiding crowds if pos
 10. Arrive → success state → dismiss → optional next search.
 
 ### Failure / recovery highlights
+
 - GPS deny → manual source.
 - No route → show reason; suggest alternate entrance or relax prefs.
 - Camera deny → switch to map turn-by-turn.
@@ -58,9 +61,11 @@ flowchart TD
 ## 7.2 Visitor — first-time campus visit
 
 ### Goals
+
 Find Admissions / Library with minimal account friction.
 
 ### Step-by-step
+
 1. Open shared link or campus Wi-Fi portal → CampusAR.
 2. Tap **Continue as guest**.
 3. Browse categories (Administration, Library) or search.
@@ -90,9 +95,11 @@ flowchart TD
 ## 7.3 Faculty — accessible path to lecture hall
 
 ### Goals
+
 Reach hall without stairs; reliable ETA between meetings.
 
 ### Step-by-step
+
 1. Login (preferences persist).
 2. Enable **wheelchair / avoid stairs**.
 3. Search lecture hall; route.
@@ -122,9 +129,11 @@ flowchart TD
 ## 7.4 Administrator — publish construction & verify routes
 
 ### Goals
+
 Close a walkway safely and confirm students are diverted.
 
 ### Step-by-step
+
 1. Login as admin.
 2. Open Admin → Hazards / Edges.
 3. Create construction hazard (polygon/radius, time window) or block edge.
@@ -155,9 +164,11 @@ flowchart TD
 ## 7.5 Emergency — fire / SOS
 
 ### Goals
+
 Move people away from danger; allow individual SOS.
 
 ### Step-by-step — campus emergency (operator-driven)
+
 1. Security/admin marks **fire** hazard or emergency mode on affected zone.
 2. System hard-avoids zone in routing; map/twin show emergency styling.
 3. Active navigators get recalculate prompt or auto-recalculate.
@@ -165,6 +176,7 @@ Move people away from danger; allow individual SOS.
 5. Admin monitors twin crowd shift away from zone.
 
 ### Step-by-step — individual SOS
+
 1. User taps **SOS** (nav or Safety).
 2. App captures location + timestamp (+ identity if logged in).
 3. Alert persisted; user sees confirmation + call contacts.

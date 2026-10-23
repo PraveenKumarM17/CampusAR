@@ -14,12 +14,7 @@ export const CAMPUS_PROXIMITY_M = 1200;
 /** Treat GPS fixes older than this as stale for navigation progress. */
 export const GPS_STALE_MS = 15_000;
 
-export function haversineMeters(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
+export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -30,12 +25,7 @@ export function haversineMeters(
 }
 
 /** Initial bearing from point 1 to point 2 in degrees (0 = north). */
-export function bearingDegrees(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
+export function bearingDegrees(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const φ1 = toRad(lat1);
   const φ2 = toRad(lat2);
@@ -169,12 +159,7 @@ export function nearestNode(
   let best: { node: GraphNode; distanceM: number } | null = null;
   for (const node of nodes) {
     if (excludeId && node.id === excludeId) continue;
-    const distanceM = haversineMeters(
-      pose.latitude,
-      pose.longitude,
-      node.latitude,
-      node.longitude,
-    );
+    const distanceM = haversineMeters(pose.latitude, pose.longitude, node.latitude, node.longitude);
     if (distanceM > maxDistanceM) continue;
     if (!best || distanceM < best.distanceM) best = { node, distanceM };
   }
@@ -190,12 +175,7 @@ export function closestNode(
   let best: { node: GraphNode; distanceM: number } | null = null;
   for (const node of nodes) {
     if (excludeId && node.id === excludeId) continue;
-    const distanceM = haversineMeters(
-      pose.latitude,
-      pose.longitude,
-      node.latitude,
-      node.longitude,
-    );
+    const distanceM = haversineMeters(pose.latitude, pose.longitude, node.latitude, node.longitude);
     if (!best || distanceM < best.distanceM) best = { node, distanceM };
   }
   return best;

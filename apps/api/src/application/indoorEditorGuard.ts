@@ -4,7 +4,10 @@ import { campusRepository } from '../infrastructure/repositories/campusRepositor
 import { indoorRepository } from '../infrastructure/repositories/indoorRepository';
 import type { AuthedRequest } from '../interfaces/http/middleware/auth';
 
-export async function assertIndoorBuildingEditable(req: AuthedRequest, buildingId: string): Promise<void> {
+export async function assertIndoorBuildingEditable(
+  req: AuthedRequest,
+  buildingId: string,
+): Promise<void> {
   if (req.user?.role === 'admin') return;
   const siteId = await resolveEditorSiteId(req);
   const building = await campusRepository.getBuildingById(buildingId);
@@ -30,7 +33,10 @@ export async function assertIndoorEdgeEditable(req: AuthedRequest, edgeId: strin
   await assertIndoorBuildingEditable(req, edge.buildingId);
 }
 
-export async function assertIndoorPlaceEditable(req: AuthedRequest, placeId: string): Promise<void> {
+export async function assertIndoorPlaceEditable(
+  req: AuthedRequest,
+  placeId: string,
+): Promise<void> {
   const place = await indoorRepository.getPlace(placeId);
   if (!place || !place.active) throw new AppError('NOT_FOUND', 'Indoor place not found', 404);
   await assertIndoorBuildingEditable(req, place.buildingId);

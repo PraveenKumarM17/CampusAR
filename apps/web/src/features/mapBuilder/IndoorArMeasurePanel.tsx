@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, Circle, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
 import type { LocalVec2, LocalVec3 } from '@campusar/shared';
@@ -118,7 +125,11 @@ function attachGpsMetadata(
   });
 }
 
-function spatialPointPayload(point: PlacedPoint, floorId?: string | null, buildingId?: string | null) {
+function spatialPointPayload(
+  point: PlacedPoint,
+  floorId?: string | null,
+  buildingId?: string | null,
+) {
   const world = point.world;
   const xr = point.xrPoint;
   const tracking = xr?.sourceData;
@@ -635,74 +646,74 @@ export function IndoorArMeasurePanel({
     [accessToken, siteId, buildingId, floorId, mapVersionId, floorLevel],
   );
 
-  const placeWebXrPoint = useCallback(async (tap?: {
-    hitResult: XRHitTestResult | null;
-    frame: XRFrame | null;
-  }) => {
-    if (placingRef.current || persistBusy) return;
+  const placeWebXrPoint = useCallback(
+    async (tap?: { hitResult: XRHitTestResult | null; frame: XRFrame | null }) => {
+      if (placingRef.current || persistBusy) return;
 
-    const hitResult = tap ? tap.hitResult : latestHitResultRef.current;
-    const frame = tap?.frame ?? latestFrameRef.current;
-    const ref = refSpaceRef.current;
-    const hitPose = tap
-      ? hitResult && ref
-        ? hitResult.getPose(ref) ?? null
-        : null
-      : latestHitPoseRef.current;
-    if (!hasPlaceableHit(hitPose, hitResult) || !frame || !ref) {
-      logArDiagnostic('NO_HIT_RESULT', 'placeWebXrPoint', 'No valid hit pose in refs');
-      arDebugger.warn('Placement', 'Placement rejected: no hit pose', {
-        platform: deviceInfoRef.current.platform,
-        hitTestSource: Boolean(hitTestSourceRef.current),
-        frame: Boolean(frame),
-      });
-      setError(
-        'No flat surface detected. Move the phone slowly over a well-lit floor or wall until the center dot turns green.',
-      );
-      return;
-    }
-
-    placingRef.current = true;
-    setError(null);
-    logArLifecycle('PLACE_BUTTON');
-
-    try {
-      const xrPoint = hitResult
-        ? await addMeasurePointFromHit(hitResult, frame, ref, null)
-        : hitPose
-          ? await addMeasurePointFromPose(hitPose, frame, ref, null, null)
-          : null;
-
-      if (!xrPoint) {
-        logArDiagnostic('PLACE_POINT_FAILED', 'placeWebXrPoint', 'addMeasurePoint returned null');
-        setError('Place points on the same surface as the first point.');
+      const hitResult = tap ? tap.hitResult : latestHitResultRef.current;
+      const frame = tap?.frame ?? latestFrameRef.current;
+      const ref = refSpaceRef.current;
+      const hitPose = tap
+        ? hitResult && ref
+          ? (hitResult.getPose(ref) ?? null)
+          : null
+        : latestHitPoseRef.current;
+      if (!hasPlaceableHit(hitPose, hitResult) || !frame || !ref) {
+        logArDiagnostic('NO_HIT_RESULT', 'placeWebXrPoint', 'No valid hit pose in refs');
+        arDebugger.warn('Placement', 'Placement rejected: no hit pose', {
+          platform: deviceInfoRef.current.platform,
+          hitTestSource: Boolean(hitTestSourceRef.current),
+          frame: Boolean(frame),
+        });
+        setError(
+          'No flat surface detected. Move the phone slowly over a well-lit floor or wall until the center dot turns green.',
+        );
         return;
       }
 
-      arDebugger.info('Placement', 'World-space point created', {
-        mode: 'webxr',
-        position: xrPoint.fallbackWorld,
-        anchor: Boolean(xrPoint.xrAnchor),
-      });
+      placingRef.current = true;
+      setError(null);
+      logArLifecycle('PLACE_BUTTON');
 
-      const xrPoints = [...getXrAnchorPoints(), xrPoint];
-      recomputeSessionLocals(xrPoints);
+      try {
+        const xrPoint = hitResult
+          ? await addMeasurePointFromHit(hitResult, frame, ref, null)
+          : hitPose
+            ? await addMeasurePointFromPose(hitPose, frame, ref, null, null)
+            : null;
 
-      const sessionLocal = xrPoint.sessionLocal ?? { x: 0, y: 0, z: 0 };
-      const entry: PlacedPoint = { world: sessionLocal, xrPoint, gps: null };
-      const next = [...placedRef.current, entry];
-      placedRef.current = next;
-      setPlaced(next);
-      syncWebXrOverlayNow(frame);
-      logArLifecycle('POINT_CREATED', `count=${next.length}`);
-      attachGpsMetadata(next.length - 1, placedRef, setPlaced, persistPoint);
-    } catch (err) {
-      logArDiagnostic('PLACE_POINT_FAILED', 'placeWebXrPoint', 'Unexpected error', err);
-      setError(err instanceof Error ? err.message : 'Could not place measurement point.');
-    } finally {
-      placingRef.current = false;
-    }
-  }, [persistBusy, persistPoint, getXrAnchorPoints, syncWebXrOverlayNow]);
+        if (!xrPoint) {
+          logArDiagnostic('PLACE_POINT_FAILED', 'placeWebXrPoint', 'addMeasurePoint returned null');
+          setError('Place points on the same surface as the first point.');
+          return;
+        }
+
+        arDebugger.info('Placement', 'World-space point created', {
+          mode: 'webxr',
+          position: xrPoint.fallbackWorld,
+          anchor: Boolean(xrPoint.xrAnchor),
+        });
+
+        const xrPoints = [...getXrAnchorPoints(), xrPoint];
+        recomputeSessionLocals(xrPoints);
+
+        const sessionLocal = xrPoint.sessionLocal ?? { x: 0, y: 0, z: 0 };
+        const entry: PlacedPoint = { world: sessionLocal, xrPoint, gps: null };
+        const next = [...placedRef.current, entry];
+        placedRef.current = next;
+        setPlaced(next);
+        syncWebXrOverlayNow(frame);
+        logArLifecycle('POINT_CREATED', `count=${next.length}`);
+        attachGpsMetadata(next.length - 1, placedRef, setPlaced, persistPoint);
+      } catch (err) {
+        logArDiagnostic('PLACE_POINT_FAILED', 'placeWebXrPoint', 'Unexpected error', err);
+        setError(err instanceof Error ? err.message : 'Could not place measurement point.');
+      } finally {
+        placingRef.current = false;
+      }
+    },
+    [persistBusy, persistPoint, getXrAnchorPoints, syncWebXrOverlayNow],
+  );
 
   const placeArPoint = useCallback(async () => {
     if (measureMode === 'camera') {
@@ -783,10 +794,7 @@ export function IndoorArMeasurePanel({
   const onDeviceMotion = useCallback((e: DeviceMotionEvent) => {
     const acc = e.acceleration;
     if (!acc || acc.x == null || acc.y == null || acc.z == null) return;
-    poseTrackerRef.current.updateMotion(
-      { x: acc.x, y: acc.y, z: acc.z },
-      performance.now(),
-    );
+    poseTrackerRef.current.updateMotion({ x: acc.x, y: acc.y, z: acc.z }, performance.now());
   }, []);
 
   const stopCameraMeasureLoop = useCallback(() => {
@@ -812,9 +820,7 @@ export function IndoorArMeasurePanel({
 
     if (tracker.isOrientationStale() && !trackingWarningRef.current) {
       trackingWarningRef.current = true;
-      setError(
-        'Motion tracking paused — move the phone slightly or reload if points drift.',
-      );
+      setError('Motion tracking paused — move the phone slightly or reload if points drift.');
     } else if (!tracker.isOrientationStale() && trackingWarningRef.current) {
       trackingWarningRef.current = false;
       setError(null);
@@ -835,42 +841,45 @@ export function IndoorArMeasurePanel({
     cameraLoopRef.current = requestAnimationFrame(tick);
   }, [onDeviceMotion, onDeviceOrientation, updateCameraModeHit]);
 
-  const startCameraSession = useCallback(async (sensors?: Awaited<ReturnType<typeof requestSensorPermissions>>) => {
-    const resolvedSensors = sensors ?? (await requestSensorPermissions());
+  const startCameraSession = useCallback(
+    async (sensors?: Awaited<ReturnType<typeof requestSensorPermissions>>) => {
+      const resolvedSensors = sensors ?? (await requestSensorPermissions());
 
-    sessionOriginRef.current = null;
-    trackingWarningRef.current = false;
+      sessionOriginRef.current = null;
+      trackingWarningRef.current = false;
 
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        window.removeEventListener('deviceorientation', onFirstOrientation);
-        poseTrackerRef.current.calibrate(orientationRef.current);
-        resolve();
-      };
-      const onFirstOrientation = (e: DeviceOrientationEvent) => {
-        if (e.beta == null || e.gamma == null) return;
-        const alpha = e.alpha ?? 0;
-        orientationRef.current = { alpha, beta: e.beta, gamma: e.gamma };
-        finish();
-      };
-      window.addEventListener('deviceorientation', onFirstOrientation, true);
-      window.setTimeout(finish, 600);
-    });
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('deviceorientation', onFirstOrientation);
+          poseTrackerRef.current.calibrate(orientationRef.current);
+          resolve();
+        };
+        const onFirstOrientation = (e: DeviceOrientationEvent) => {
+          if (e.beta == null || e.gamma == null) return;
+          const alpha = e.alpha ?? 0;
+          orientationRef.current = { alpha, beta: e.beta, gamma: e.gamma };
+          finish();
+        };
+        window.addEventListener('deviceorientation', onFirstOrientation, true);
+        window.setTimeout(finish, 600);
+      });
 
-    startCameraMeasureLoop();
-    updateCameraModeHit();
-    setArActive(true);
-    setStatus(
-      resolvedSensors.orientation
-        ? resolvedSensors.motion
-          ? 'Aim the center dot at the floor, then tap Place.'
-          : 'Motion access is limited. Keep the phone steady and tap Place on the detected surface.'
-        : 'Orientation access is limited. Keep the phone pointed at the floor and tap Place.',
-    );
-  }, [startCameraMeasureLoop, updateCameraModeHit]);
+      startCameraMeasureLoop();
+      updateCameraModeHit();
+      setArActive(true);
+      setStatus(
+        resolvedSensors.orientation
+          ? resolvedSensors.motion
+            ? 'Aim the center dot at the floor, then tap Place.'
+            : 'Motion access is limited. Keep the phone steady and tap Place on the detected surface.'
+          : 'Orientation access is limited. Keep the phone pointed at the floor and tap Place.',
+      );
+    },
+    [startCameraMeasureLoop, updateCameraModeHit],
+  );
 
   const handleWebXrSessionEnded = useCallback(async () => {
     hitTestSourceRef.current = null;
@@ -915,7 +924,7 @@ export function IndoorArMeasurePanel({
         if (transientHit) {
           latestHitResultRef.current = transientHit;
           latestHitPoseRef.current = refSpaceRef.current
-            ? transientHit.getPose(refSpaceRef.current) ?? null
+            ? (transientHit.getPose(refSpaceRef.current) ?? null)
             : null;
           latestFrameRef.current = selectFrame ?? latestFrameRef.current;
           latestHitRef.current = latestHitPoseRef.current
@@ -1272,275 +1281,300 @@ export function IndoorArMeasurePanel({
           className="relative flex flex-1 flex-col"
           style={{ zIndex: 10, background: 'transparent', pointerEvents: 'none' }}
         >
-        <div
-          className="flex items-center justify-between gap-2 border-b border-white/20 px-4 py-3"
-          style={{ background: 'rgba(0,0,0,0.55)', pointerEvents: 'auto' }}
-        >
-          <p className="text-base font-semibold sm:text-lg">AR Measure</p>
-          <button
-            type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 disabled:opacity-40"
-            disabled={isExiting}
-            onClick={() => {
-              void handleExitAR();
-            }}
-            aria-label="Close"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-
-        {isExiting && (
           <div
-            className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/70"
-            aria-live="polite"
+            className="flex items-center justify-between gap-2 border-b border-white/20 px-4 py-3"
+            style={{ background: 'rgba(0,0,0,0.55)', pointerEvents: 'auto' }}
           >
-            <p className="rounded-lg bg-black/80 px-4 py-3 text-sm font-medium text-white">
-              Releasing camera…
-            </p>
-          </div>
-        )}
-
-        <div
-          ref={stageRef}
-          className="relative min-h-0 flex-1"
-          style={{ background: 'transparent', pointerEvents: 'none', touchAction: 'none' }}
-        >
-          {!arActive && !cameraReady && !error && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
-              <p className="rounded-lg bg-black/70 px-4 py-2 text-sm text-white/90">Starting camera…</p>
-            </div>
-          )}
-
-          <div className="pointer-events-none absolute inset-0">
-            {arActive ? (
-              <>
-                <svg ref={overlaySvgRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />
-                <div ref={overlayMarkersRef} className="absolute inset-0" aria-hidden="true" />
-                <div ref={overlayPillsRef} className="absolute inset-0" aria-hidden="true" />
-              </>
-            ) : (
-              <>
-                {overlayLabels.length > 0 && (
-                  <svg className="absolute inset-0 h-full w-full">
-                    {overlayLabels.map((seg, i) => (
-                      <line
-                        key={`seg-${i}`}
-                        x1={seg.from.x}
-                        y1={seg.from.y}
-                        x2={seg.to.x}
-                        y2={seg.to.y}
-                        stroke="#10b981"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                      />
-                    ))}
-                  </svg>
-                )}
-                {overlayLabels.map((seg, i) => (
-                  <MeasureDistancePill key={`pill-${i}`} from={seg.from} to={seg.to} label={seg.label} />
-                ))}
-                {overlayHandles.map((p, i) => (
-                  <span
-                    key={`h-${i}`}
-                    className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-800 bg-white shadow"
-                    style={{ left: p.x, top: p.y }}
-                  />
-                ))}
-              </>
-            )}
-          </div>
-
-          {arActive && (
-            <>
-              {/* Center placement reticle */}
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div
-                  className={`flex h-14 w-14 items-center justify-center rounded-full border-2 ${
-                    surfaceDetected ? 'border-emerald-400' : 'border-white/90'
-                  }`}
-                  style={{ background: 'transparent' }}
-                >
-                  <div
-                    className={`h-2.5 w-2.5 rounded-full ${
-                      surfaceDetected ? 'bg-emerald-400' : 'bg-white'
-                    }`}
-                  />
-                </div>
-              </div>
-
-              {/* Place button — dom-overlay buttons use pointer-events: auto; screen taps use WebXR select */}
-              <div
-                className="absolute inset-x-0 bottom-6 flex flex-col items-center gap-2"
-                style={{ pointerEvents: 'none' }}
-              >
-                <p
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    surfaceDetected ? 'bg-emerald-600 text-white' : 'bg-black/60 text-white'
-                  }`}
-                >
-                  {surfaceDetected
-                    ? measureMode === 'webxr'
-                      ? 'Surface found — tap Place or tap the screen'
-                      : 'Surface found — tap Place'
-                    : 'Scan or move the phone, then tap Place'}
-                </p>
-                <button
-                  type="button"
-                  disabled={persistBusy || isExiting}
-                  className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-black shadow-xl ring-4 ring-white/25 active:scale-95 disabled:opacity-40"
-                  style={{ pointerEvents: 'auto' }}
-                  onClick={() => void placeArPoint()}
-                  aria-label="Place point at center reticle"
-                >
-                  <span className="text-xs font-bold">Place</span>
-                </button>
-              </div>
-            </>
-          )}
-
-          <div
-            className="absolute inset-x-0 top-3 flex items-center justify-between px-4"
-            style={{ pointerEvents: 'none' }}
-          >
-            <div className="flex gap-2" style={{ pointerEvents: 'auto' }}>
-              <button
-                type="button"
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg active:scale-95 disabled:opacity-40"
-                onClick={undoPoint}
-                disabled={!canUndo}
-                aria-label="Undo last point"
-              >
-                <Undo2 className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg active:scale-95 disabled:opacity-40"
-                onClick={clearPoints}
-                disabled={!canUndo}
-                aria-label="Clear measurement"
-              >
-                <Trash2 className="h-5 w-5" />
-              </button>
-            </div>
+            <p className="text-base font-semibold sm:text-lg">AR Measure</p>
             <button
               type="button"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-black shadow-lg active:scale-95 disabled:opacity-40"
-              style={{ pointerEvents: 'auto' }}
-              onClick={capture}
-              disabled={overlayHandles.length < 2}
-              aria-label="Capture screenshot"
+              className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 disabled:opacity-40"
+              disabled={isExiting}
+              onClick={() => {
+                void handleExitAR();
+              }}
+              aria-label="Close"
             >
-              <Circle className="h-5 w-5" />
+              <X className="h-6 w-6" />
             </button>
           </div>
-        </div>
 
-        <div
-          className="space-y-3 border-t border-white/20 p-4"
-          style={{ background: 'rgba(0,0,0,0.55)', pointerEvents: 'auto' }}
-        >
-          {arcoreWarning && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-950/60 p-3 text-sm text-amber-50">
-              <p className="font-semibold">ARCore update required</p>
-              <p className="mt-1">{arcoreWarning}</p>
-              <a
-                href={ARCORE_PLAY_STORE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-block font-semibold text-amber-200 underline"
-              >
-                Open Google Play Services for AR in Play Store
-              </a>
-            </div>
-          )}
-
-          {error && (
-            <div className="rounded-lg bg-red-900/50 p-3 text-sm text-red-100">
-              <p className="font-semibold">Error</p>
-              <p className="mt-1">{error}</p>
-            </div>
-          )}
-
-          {arDebugEnabled && arDiagnostics && (
-            <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/40 p-3 font-mono text-[10px] leading-relaxed text-cyan-100">
-              <p className="mb-1 font-sans text-xs font-semibold text-cyan-200">AR Diagnostics (?ar_debug=1)</p>
-              <p>Mode: {arDiagnostics.measureMode ?? '—'} · Lifecycle: {arDiagnostics.lifecycleState} · Owner: {arDiagnostics.cameraOwner}</p>
-              <p>Secure: {arDiagnostics.secureContext ? 'yes' : 'no'} · XR active: {arDiagnostics.xrSessionActive ? 'yes' : 'no'}</p>
-              <p>Hit-test: {arDiagnostics.hitTestReady ? 'ready' : 'missing'} · Valid hit: {arDiagnostics.hasValidHitPose ? 'yes' : 'no'}</p>
-              <p>Points: {arDiagnostics.anchorPointCount} · Camera tracks: {arDiagnostics.cameraTrackCount}</p>
-              {arDiagnostics.lastError && <p className="text-amber-200">Last error: {arDiagnostics.lastError}</p>}
-            </div>
-          )}
-
-          {!arActive && (
-            <p className="text-sm text-white/90">{status}</p>
-          )}
-
-          {worldPoints.length > 0 && (
-            <div className="rounded-lg bg-emerald-900/30 p-3">
-              <p className="text-sm font-medium text-emerald-200">
-                {worldPoints.length} point{worldPoints.length !== 1 ? 's' : ''} placed
-                {persistBusy ? ' · saving…' : ''}
+          {isExiting && (
+            <div
+              className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/70"
+              aria-live="polite"
+            >
+              <p className="rounded-lg bg-black/80 px-4 py-3 text-sm font-medium text-white">
+                Releasing camera…
               </p>
-              {worldPoints.length > 1 && (
-                <p className="mt-1 text-xs text-emerald-100">
-                  Path: {formatMeasureDistance(polylineLength3D(worldPoints))}
-                  {verticalSpan >= 0.5 ? ` · height ${formatMeasureDistance(verticalSpan)}` : ''}
+            </div>
+          )}
+
+          <div
+            ref={stageRef}
+            className="relative min-h-0 flex-1"
+            style={{ background: 'transparent', pointerEvents: 'none', touchAction: 'none' }}
+          >
+            {!arActive && !cameraReady && !error && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
+                <p className="rounded-lg bg-black/70 px-4 py-2 text-sm text-white/90">
+                  Starting camera…
                 </p>
+              </div>
+            )}
+
+            <div className="pointer-events-none absolute inset-0">
+              {arActive ? (
+                <>
+                  <svg
+                    ref={overlaySvgRef}
+                    className="absolute inset-0 h-full w-full"
+                    aria-hidden="true"
+                  />
+                  <div ref={overlayMarkersRef} className="absolute inset-0" aria-hidden="true" />
+                  <div ref={overlayPillsRef} className="absolute inset-0" aria-hidden="true" />
+                </>
+              ) : (
+                <>
+                  {overlayLabels.length > 0 && (
+                    <svg className="absolute inset-0 h-full w-full">
+                      {overlayLabels.map((seg, i) => (
+                        <line
+                          key={`seg-${i}`}
+                          x1={seg.from.x}
+                          y1={seg.from.y}
+                          x2={seg.to.x}
+                          y2={seg.to.y}
+                          stroke="#10b981"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                        />
+                      ))}
+                    </svg>
+                  )}
+                  {overlayLabels.map((seg, i) => (
+                    <MeasureDistancePill
+                      key={`pill-${i}`}
+                      from={seg.from}
+                      to={seg.to}
+                      label={seg.label}
+                    />
+                  ))}
+                  {overlayHandles.map((p, i) => (
+                    <span
+                      key={`h-${i}`}
+                      className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-800 bg-white shadow"
+                      style={{ left: p.x, top: p.y }}
+                    />
+                  ))}
+                </>
               )}
             </div>
-          )}
 
-          <div className="grid grid-cols-2 gap-2">
-            {!arActive ? (
+            {arActive && (
+              <>
+                {/* Center placement reticle */}
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div
+                    className={`flex h-14 w-14 items-center justify-center rounded-full border-2 ${
+                      surfaceDetected ? 'border-emerald-400' : 'border-white/90'
+                    }`}
+                    style={{ background: 'transparent' }}
+                  >
+                    <div
+                      className={`h-2.5 w-2.5 rounded-full ${
+                        surfaceDetected ? 'bg-emerald-400' : 'bg-white'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Place button — dom-overlay buttons use pointer-events: auto; screen taps use WebXR select */}
+                <div
+                  className="absolute inset-x-0 bottom-6 flex flex-col items-center gap-2"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  <p
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      surfaceDetected ? 'bg-emerald-600 text-white' : 'bg-black/60 text-white'
+                    }`}
+                  >
+                    {surfaceDetected
+                      ? measureMode === 'webxr'
+                        ? 'Surface found — tap Place or tap the screen'
+                        : 'Surface found — tap Place'
+                      : 'Scan or move the phone, then tap Place'}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={persistBusy || isExiting}
+                    className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-black shadow-xl ring-4 ring-white/25 active:scale-95 disabled:opacity-40"
+                    style={{ pointerEvents: 'auto' }}
+                    onClick={() => void placeArPoint()}
+                    aria-label="Place point at center reticle"
+                  >
+                    <span className="text-xs font-bold">Place</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            <div
+              className="absolute inset-x-0 top-3 flex items-center justify-between px-4"
+              style={{ pointerEvents: 'none' }}
+            >
+              <div className="flex gap-2" style={{ pointerEvents: 'auto' }}>
+                <button
+                  type="button"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg active:scale-95 disabled:opacity-40"
+                  onClick={undoPoint}
+                  disabled={!canUndo}
+                  aria-label="Undo last point"
+                >
+                  <Undo2 className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg active:scale-95 disabled:opacity-40"
+                  onClick={clearPoints}
+                  disabled={!canUndo}
+                  aria-label="Clear measurement"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </button>
+              </div>
               <button
                 type="button"
-                className={BTN_PRIMARY}
-                disabled={!canStartAr}
-                onClick={() => void startAr()}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-black shadow-lg active:scale-95 disabled:opacity-40"
+                style={{ pointerEvents: 'auto' }}
+                onClick={capture}
+                disabled={overlayHandles.length < 2}
+                aria-label="Capture screenshot"
               >
-                <Camera className="h-5 w-5" /> {arStarting ? 'Starting…' : 'Start AR'}
+                <Circle className="h-5 w-5" />
               </button>
-            ) : (
+            </div>
+          </div>
+
+          <div
+            className="space-y-3 border-t border-white/20 p-4"
+            style={{ background: 'rgba(0,0,0,0.55)', pointerEvents: 'auto' }}
+          >
+            {arcoreWarning && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-950/60 p-3 text-sm text-amber-50">
+                <p className="font-semibold">ARCore update required</p>
+                <p className="mt-1">{arcoreWarning}</p>
+                <a
+                  href={ARCORE_PLAY_STORE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block font-semibold text-amber-200 underline"
+                >
+                  Open Google Play Services for AR in Play Store
+                </a>
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-lg bg-red-900/50 p-3 text-sm text-red-100">
+                <p className="font-semibold">Error</p>
+                <p className="mt-1">{error}</p>
+              </div>
+            )}
+
+            {arDebugEnabled && arDiagnostics && (
+              <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/40 p-3 font-mono text-[10px] leading-relaxed text-cyan-100">
+                <p className="mb-1 font-sans text-xs font-semibold text-cyan-200">
+                  AR Diagnostics (?ar_debug=1)
+                </p>
+                <p>
+                  Mode: {arDiagnostics.measureMode ?? '—'} · Lifecycle:{' '}
+                  {arDiagnostics.lifecycleState} · Owner: {arDiagnostics.cameraOwner}
+                </p>
+                <p>
+                  Secure: {arDiagnostics.secureContext ? 'yes' : 'no'} · XR active:{' '}
+                  {arDiagnostics.xrSessionActive ? 'yes' : 'no'}
+                </p>
+                <p>
+                  Hit-test: {arDiagnostics.hitTestReady ? 'ready' : 'missing'} · Valid hit:{' '}
+                  {arDiagnostics.hasValidHitPose ? 'yes' : 'no'}
+                </p>
+                <p>
+                  Points: {arDiagnostics.anchorPointCount} · Camera tracks:{' '}
+                  {arDiagnostics.cameraTrackCount}
+                </p>
+                {arDiagnostics.lastError && (
+                  <p className="text-amber-200">Last error: {arDiagnostics.lastError}</p>
+                )}
+              </div>
+            )}
+
+            {!arActive && <p className="text-sm text-white/90">{status}</p>}
+
+            {worldPoints.length > 0 && (
+              <div className="rounded-lg bg-emerald-900/30 p-3">
+                <p className="text-sm font-medium text-emerald-200">
+                  {worldPoints.length} point{worldPoints.length !== 1 ? 's' : ''} placed
+                  {persistBusy ? ' · saving…' : ''}
+                </p>
+                {worldPoints.length > 1 && (
+                  <p className="mt-1 text-xs text-emerald-100">
+                    Path: {formatMeasureDistance(polylineLength3D(worldPoints))}
+                    {verticalSpan >= 0.5 ? ` · height ${formatMeasureDistance(verticalSpan)}` : ''}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              {!arActive ? (
+                <button
+                  type="button"
+                  className={BTN_PRIMARY}
+                  disabled={!canStartAr}
+                  onClick={() => void startAr()}
+                >
+                  <Camera className="h-5 w-5" /> {arStarting ? 'Starting…' : 'Start AR'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={BTN_SECONDARY}
+                  disabled={isExiting}
+                  onClick={() => void stopAr()}
+                >
+                  Stop AR
+                </button>
+              )}
               <button
                 type="button"
                 className={BTN_SECONDARY}
-                disabled={isExiting}
-                onClick={() => void stopAr()}
+                onClick={clearPoints}
+                disabled={!canUndo}
               >
-                Stop AR
+                <RotateCcw className="h-5 w-5" /> Clear
               </button>
-            )}
-            <button
-              type="button"
-              className={BTN_SECONDARY}
-              onClick={clearPoints}
-              disabled={!canUndo}
-            >
-              <RotateCcw className="h-5 w-5" /> Clear
-            </button>
-            {onApplyPlanPoints && (
-              <button
-                type="button"
-                className={`${BTN_PRIMARY} col-span-2`}
-                disabled={worldPoints.length < 2}
-                onClick={applyToPlan}
-              >
-                Save floor plane
-              </button>
-            )}
-            {verticalSpan >= 2 && onSuggestFloorHeight && (
-              <button
-                type="button"
-                className={`${BTN_SECONDARY} col-span-2`}
-                onClick={() => onSuggestFloorHeight(Number(verticalSpan.toFixed(2)))}
-              >
-                Use {formatMeasureDistance(verticalSpan)} as floor height
-              </button>
-            )}
+              {onApplyPlanPoints && (
+                <button
+                  type="button"
+                  className={`${BTN_PRIMARY} col-span-2`}
+                  disabled={worldPoints.length < 2}
+                  onClick={applyToPlan}
+                >
+                  Save floor plane
+                </button>
+              )}
+              {verticalSpan >= 2 && onSuggestFloorHeight && (
+                <button
+                  type="button"
+                  className={`${BTN_SECONDARY} col-span-2`}
+                  onClick={() => onSuggestFloorHeight(Number(verticalSpan.toFixed(2)))}
+                >
+                  Use {formatMeasureDistance(verticalSpan)} as floor height
+                </button>
+              )}
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </div>

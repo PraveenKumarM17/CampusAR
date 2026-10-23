@@ -224,7 +224,7 @@ flowchart TB
 
 ## Wireframe notes for engineers
 
-- Landing = brand-first composition  
-- Map/Navigate/AR/Twin = immersive canvas + overlays  
-- Admin/Analytics/Settings = AppShell + content width  
-- Always design **loading / empty / error** companions (see dedicated docs)  
+- Landing = brand-first composition
+- Map/Navigate/AR/Twin = immersive canvas + overlays
+- Admin/Analytics/Settings = AppShell + content width
+- Always design **loading / empty / error** companions (see dedicated docs)

@@ -138,7 +138,10 @@ export function IndoorDestinationPicker({
         className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-md border border-line bg-paper-raised p-4 shadow-lg"
         data-indoor-map-id={indoorMapId ?? undefined}
       >
-        <p id="indoor-arrive-title" className="inline-flex items-center gap-2 text-lg font-semibold">
+        <p
+          id="indoor-arrive-title"
+          className="inline-flex items-center gap-2 text-lg font-semibold"
+        >
           <Building2 size={20} className="text-accent" />
           You have arrived at {buildingName}
         </p>
@@ -164,7 +167,9 @@ export function IndoorDestinationPicker({
 
         {!loading && !error && query.trim() === '' && quick.length > 0 && (
           <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-mute">Quick places</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-mute">
+              Quick places
+            </p>
             <ul className="mt-2 space-y-1">
               {quick.map((p) => (
                 <li key={p.id}>
@@ -187,7 +192,7 @@ export function IndoorDestinationPicker({
             className={`btn-ghost inline-flex items-center gap-1 !py-1.5 text-xs ${
               browseFloorId ? '!border-accent !text-accent' : ''
             }`}
-            onClick={() => setBrowseFloorId((id) => (id ? null : floors[0]?.id ?? null))}
+            onClick={() => setBrowseFloorId((id) => (id ? null : (floors[0]?.id ?? null)))}
           >
             <Layers size={14} /> Browse floors
           </button>

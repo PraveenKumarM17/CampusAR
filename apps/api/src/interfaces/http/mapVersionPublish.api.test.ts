@@ -4,9 +4,7 @@ import { createApp } from '../../interfaces/http/app';
 import { pool } from '../../infrastructure/db/pool';
 import { mapVersionService } from '../../application/mapVersionService';
 import { mapVersionRepository } from '../../infrastructure/repositories/mapVersionRepository';
-import {
-  setPublishTestFailureAfter,
-} from '../../application/mapVersionPublishService';
+import { setPublishTestFailureAfter } from '../../application/mapVersionPublishService';
 
 const app = createApp();
 
@@ -104,20 +102,17 @@ async function wireValidOutdoorGraph(token: string, siteId: string) {
     .send({ latitude: 13.011, longitude: 77.551, kind: 'outdoor', name: 'Pub Plaza' });
   expect(n1.status).toBe(201);
   expect(n2.status).toBe(201);
-  await request(app)
-    .post('/api/admin/paths/edges')
-    .set(headers)
-    .send({
-      fromNodeId: n1.body.id,
-      toNodeId: n2.body.id,
-      distanceM: 100,
-      kind: 'walkway',
-      bidirectional: true,
-      blocked: false,
-      safetyScore: 0.9,
-      crowdScore: 0.2,
-      accessibilityScore: 0.9,
-    });
+  await request(app).post('/api/admin/paths/edges').set(headers).send({
+    fromNodeId: n1.body.id,
+    toNodeId: n2.body.id,
+    distanceM: 100,
+    kind: 'walkway',
+    bidirectional: true,
+    blocked: false,
+    safetyScore: 0.9,
+    crowdScore: 0.2,
+    accessibilityScore: 0.9,
+  });
   return { n1: n1.body.id as string, n2: n2.body.id as string };
 }
 
@@ -176,10 +171,9 @@ describe('atomic draft publish workflow (Step 3C)', () => {
     expect(res.body.previousVersion?.id).toBe(publishedBefore.id);
     expect(res.body.previousVersion?.status).toBe('archived');
 
-    const pointer = await pool.query(
-      `SELECT published_map_version_id FROM sites WHERE id = $1`,
-      [SITE_PUB],
-    );
+    const pointer = await pool.query(`SELECT published_map_version_id FROM sites WHERE id = $1`, [
+      SITE_PUB,
+    ]);
     expect(pointer.rows[0].published_map_version_id).toBe(draftId);
   });
 
@@ -303,69 +297,82 @@ describe('atomic draft publish workflow (Step 3C)', () => {
     expect([403, 401]).toContain(res.status);
   });
 
-  it.skipIf(!canUseDb)('failed publish transaction preserves published pointer and draft status', async () => {
-    const token = await loginAdmin();
-    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_PUB_OTHER };
-    const beforePointer = (
-      await pool.query(`SELECT published_map_version_id FROM sites WHERE id = $1`, [SITE_PUB_OTHER])
-    ).rows[0].published_map_version_id;
-    const draftId = await createPublishableDraft(SITE_PUB_OTHER, token);
+  it.skipIf(!canUseDb)(
+    'failed publish transaction preserves published pointer and draft status',
+    async () => {
+      const token = await loginAdmin();
+      const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_PUB_OTHER };
+      const beforePointer = (
+        await pool.query(`SELECT published_map_version_id FROM sites WHERE id = $1`, [
+          SITE_PUB_OTHER,
+        ])
+      ).rows[0].published_map_version_id;
+      const draftId = await createPublishableDraft(SITE_PUB_OTHER, token);
 
-    setPublishTestFailureAfter('before-pointer-update');
-    const res = await request(app).post(publishPath(draftId)).set(headers);
-    expect(res.status).toBe(500);
-    setPublishTestFailureAfter(null);
+      setPublishTestFailureAfter('before-pointer-update');
+      const res = await request(app).post(publishPath(draftId)).set(headers);
+      expect(res.status).toBe(500);
+      setPublishTestFailureAfter(null);
 
-    const afterPointer = (
-      await pool.query(`SELECT published_map_version_id FROM sites WHERE id = $1`, [SITE_PUB_OTHER])
-    ).rows[0].published_map_version_id;
-    expect(afterPointer).toBe(beforePointer);
+      const afterPointer = (
+        await pool.query(`SELECT published_map_version_id FROM sites WHERE id = $1`, [
+          SITE_PUB_OTHER,
+        ])
+      ).rows[0].published_map_version_id;
+      expect(afterPointer).toBe(beforePointer);
 
-    const draft = await mapVersionRepository.getById(draftId);
-    expect(draft?.status).toBe('draft');
+      const draft = await mapVersionRepository.getById(draftId);
+      expect(draft?.status).toBe('draft');
 
-    const publishedCount = await pool.query(
-      `SELECT count(*)::int AS c FROM site_map_versions WHERE site_id = $1 AND status = 'published'`,
-      [SITE_PUB_OTHER],
-    );
-    expect(publishedCount.rows[0].c).toBe(1);
-  });
+      const publishedCount = await pool.query(
+        `SELECT count(*)::int AS c FROM site_map_versions WHERE site_id = $1 AND status = 'published'`,
+        [SITE_PUB_OTHER],
+      );
+      expect(publishedCount.rows[0].c).toBe(1);
+    },
+  );
 
-  it.skipIf(!canUseDb)('concurrent publish attempts cannot create two published versions', async () => {
-    const token = await loginAdmin();
-    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_PUB };
-    const draftId = await createPublishableDraft(SITE_PUB, token);
+  it.skipIf(!canUseDb)(
+    'concurrent publish attempts cannot create two published versions',
+    async () => {
+      const token = await loginAdmin();
+      const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_PUB };
+      const draftId = await createPublishableDraft(SITE_PUB, token);
 
-    const [a, b] = await Promise.all([
-      request(app).post(publishPath(draftId)).set(headers),
-      request(app).post(publishPath(draftId)).set(headers),
-    ]);
+      const [a, b] = await Promise.all([
+        request(app).post(publishPath(draftId)).set(headers),
+        request(app).post(publishPath(draftId)).set(headers),
+      ]);
 
-    const statuses = [a.status, b.status].sort();
-    expect(statuses).toContain(200);
-    expect(statuses.some((s) => s === 409 || s === 422 || s === 200)).toBe(true);
+      const statuses = [a.status, b.status].sort();
+      expect(statuses).toContain(200);
+      expect(statuses.some((s) => s === 409 || s === 422 || s === 200)).toBe(true);
 
-    const publishedCount = await pool.query(
-      `SELECT count(*)::int AS c FROM site_map_versions WHERE site_id = $1 AND status = 'published'`,
-      [SITE_PUB],
-    );
-    expect(publishedCount.rows[0].c).toBe(1);
-  });
+      const publishedCount = await pool.query(
+        `SELECT count(*)::int AS c FROM site_map_versions WHERE site_id = $1 AND status = 'published'`,
+        [SITE_PUB],
+      );
+      expect(publishedCount.rows[0].c).toBe(1);
+    },
+  );
 
-  it.skipIf(!canUseDb)('after publish, next draft create clones from new published version', async () => {
-    const token = await loginAdmin();
-    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_PUB_OTHER };
-    const draftId = await createPublishableDraft(SITE_PUB_OTHER, token);
-    const pubRes = await request(app).post(publishPath(draftId)).set(headers);
-    expect(pubRes.status).toBe(200);
-    const publishedId = pubRes.body.version.id as string;
+  it.skipIf(!canUseDb)(
+    'after publish, next draft create clones from new published version',
+    async () => {
+      const token = await loginAdmin();
+      const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_PUB_OTHER };
+      const draftId = await createPublishableDraft(SITE_PUB_OTHER, token);
+      const pubRes = await request(app).post(publishPath(draftId)).set(headers);
+      expect(pubRes.status).toBe(200);
+      const publishedId = pubRes.body.version.id as string;
 
-    const nextDraft = await request(app).post('/api/admin/map-builder/draft').set(headers);
-    expect([200, 201]).toContain(nextDraft.status);
-    expect(nextDraft.body.status).toBe('draft');
-    expect(nextDraft.body.versionNumber).toBeGreaterThan(pubRes.body.version.versionNumber);
-    expect(nextDraft.body.basedOnVersionId).toBe(publishedId);
-  });
+      const nextDraft = await request(app).post('/api/admin/map-builder/draft').set(headers);
+      expect([200, 201]).toContain(nextDraft.status);
+      expect(nextDraft.body.status).toBe('draft');
+      expect(nextDraft.body.versionNumber).toBeGreaterThan(pubRes.body.version.versionNumber);
+      expect(nextDraft.body.basedOnVersionId).toBe(publishedId);
+    },
+  );
 
   it.skipIf(!canUseDb)('newly published version cannot be previewed', async () => {
     const token = await loginAdmin();
@@ -387,17 +394,14 @@ describe('atomic draft publish workflow (Step 3C)', () => {
     const draftId = await ensureDraft(SITE_PUB_OTHER, token);
     await wireValidOutdoorGraph(token, SITE_PUB_OTHER);
 
-    const buildingRes = await request(app)
-      .post('/api/admin/buildings')
-      .set(headers)
-      .send({
-        name: 'Indoor Pub',
-        code: 'IPUB',
-        description: null,
-        latitude: 13.02,
-        longitude: 77.56,
-        floorsCount: 1,
-      });
+    const buildingRes = await request(app).post('/api/admin/buildings').set(headers).send({
+      name: 'Indoor Pub',
+      code: 'IPUB',
+      description: null,
+      latitude: 13.02,
+      longitude: 77.56,
+      floorsCount: 1,
+    });
     const buildingId = buildingRes.body.id as string;
     await request(app)
       .post('/api/admin/map-builder/indoor/floors')
@@ -417,10 +421,9 @@ describe('atomic draft publish workflow (Step 3C)', () => {
 
     await request(app).post(publishPath(draftId)).set(headers);
 
-    const { rows } = await pool.query(
-      `SELECT status FROM indoor_maps WHERE map_version_id = $1`,
-      [draftId],
-    );
+    const { rows } = await pool.query(`SELECT status FROM indoor_maps WHERE map_version_id = $1`, [
+      draftId,
+    ]);
     expect(rows.every((r: { status: string }) => r.status === 'published')).toBe(true);
   });
 
@@ -430,57 +433,62 @@ describe('atomic draft publish workflow (Step 3C)', () => {
     expect(buildings.body.length).toBeGreaterThan(0);
   });
 
-  it.skipIf(!canUseDb)('publish exposes diff, stores publish log, and supports rollback draft creation', async () => {
-    const token = await loginAdmin();
-    const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_PUB };
-    const draftId = await createPublishableDraft(SITE_PUB, token);
+  it.skipIf(!canUseDb)(
+    'publish exposes diff, stores publish log, and supports rollback draft creation',
+    async () => {
+      const token = await loginAdmin();
+      const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_PUB };
+      const draftId = await createPublishableDraft(SITE_PUB, token);
 
-    const renamed = `Diff Rename ${Date.now()}`;
-    const snap = await request(app).get('/api/admin/map-builder/snapshot').set(headers);
-    const firstBuilding = snap.body.buildings[0];
-    if (firstBuilding) {
-      const upd = await request(app)
-        .put(`/api/admin/buildings/${firstBuilding.id}`)
+      const renamed = `Diff Rename ${Date.now()}`;
+      const snap = await request(app).get('/api/admin/map-builder/snapshot').set(headers);
+      const firstBuilding = snap.body.buildings[0];
+      if (firstBuilding) {
+        const upd = await request(app)
+          .put(`/api/admin/buildings/${firstBuilding.id}`)
+          .set(headers)
+          .send({ name: renamed });
+        expect(upd.status).toBe(200);
+      }
+      const created = await request(app)
+        .post('/api/admin/buildings')
         .set(headers)
-        .send({ name: renamed });
-      expect(upd.status).toBe(200);
-    }
-    const created = await request(app)
-      .post('/api/admin/buildings')
-      .set(headers)
-      .send({
-        name: `Diff New ${Date.now()}`,
-        code: `D${Date.now().toString().slice(-5)}`,
-        description: null,
-        latitude: 13.02,
-        longitude: 77.56,
-        floorsCount: 1,
-      });
-    expect(created.status).toBe(201);
+        .send({
+          name: `Diff New ${Date.now()}`,
+          code: `D${Date.now().toString().slice(-5)}`,
+          description: null,
+          latitude: 13.02,
+          longitude: 77.56,
+          floorsCount: 1,
+        });
+      expect(created.status).toBe(201);
 
-    const diff = await request(app).get(diffPath(draftId)).set(headers);
-    expect(diff.status).toBe(200);
-    expect(diff.body.versionId).toBe(draftId);
-    expect(diff.body.summary.added).toBeGreaterThanOrEqual(1);
+      const diff = await request(app).get(diffPath(draftId)).set(headers);
+      expect(diff.status).toBe(200);
+      expect(diff.body.versionId).toBe(draftId);
+      expect(diff.body.summary.added).toBeGreaterThanOrEqual(1);
 
-    const publish = await request(app).post(publishPath(draftId)).set(headers);
-    expect(publish.status).toBe(200);
-    expect(publish.body.published).toBe(true);
+      const publish = await request(app).post(publishPath(draftId)).set(headers);
+      expect(publish.status).toBe(200);
+      expect(publish.body.published).toBe(true);
 
-    const logs = await pool.query(
-      `SELECT published_version_id, diff_summary FROM map_version_publish_log WHERE published_version_id = $1`,
-      [draftId],
-    );
-    expect(logs.rows.length).toBe(1);
-    expect(Number(logs.rows[0].diff_summary?.added?.count ?? 0)).toBeGreaterThanOrEqual(1);
+      const logs = await pool.query(
+        `SELECT published_version_id, diff_summary FROM map_version_publish_log WHERE published_version_id = $1`,
+        [draftId],
+      );
+      expect(logs.rows.length).toBe(1);
+      expect(Number(logs.rows[0].diff_summary?.added?.count ?? 0)).toBeGreaterThanOrEqual(1);
 
-    const history = await request(app).get('/api/admin/map-builder/history').set(headers);
-    expect(history.status).toBe(200);
-    expect(history.body.some((x: { publishedVersionId: string }) => x.publishedVersionId === draftId)).toBe(true);
+      const history = await request(app).get('/api/admin/map-builder/history').set(headers);
+      expect(history.status).toBe(200);
+      expect(
+        history.body.some((x: { publishedVersionId: string }) => x.publishedVersionId === draftId),
+      ).toBe(true);
 
-    const rollback = await request(app).post(rollbackPath(draftId)).set(headers);
-    expect(rollback.status).toBe(201);
-    expect(rollback.body.status).toBe('draft');
-    expect(rollback.body.basedOnVersionId).toBe(draftId);
-  });
+      const rollback = await request(app).post(rollbackPath(draftId)).set(headers);
+      expect(rollback.status).toBe(201);
+      expect(rollback.body.status).toBe('draft');
+      expect(rollback.body.basedOnVersionId).toBe(draftId);
+    },
+  );
 });

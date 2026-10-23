@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  classifyTurn,
-  dampRelativeBearing,
-  relativeBearingDeg,
-} from './navigationHeading';
+import { classifyTurn, dampRelativeBearing, relativeBearingDeg } from './navigationHeading';
 
 describe('relativeBearingDeg', () => {
   it('normalizes 350° heading to 10° target as small right turn', () => {

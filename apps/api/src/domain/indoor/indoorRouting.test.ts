@@ -57,21 +57,20 @@ function edge(
 
 describe('indoor geometry', () => {
   it('sums curved corridor waypoints', () => {
-    const d = edgeDistanceM(
-      { x: 0, y: 0, z: 0 },
-      { x: 10, y: 0, z: 0 },
-      [
-        { x: 4, y: 0, z: 3 },
-        { x: 8, y: 0, z: 3 },
-      ],
-    );
-    expect(d).toBeGreaterThan(10);
-    expect(d).toBeCloseTo(polylineDistanceM([
-      { x: 0, y: 0, z: 0 },
+    const d = edgeDistanceM({ x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 0 }, [
       { x: 4, y: 0, z: 3 },
       { x: 8, y: 0, z: 3 },
-      { x: 10, y: 0, z: 0 },
-    ]), 5);
+    ]);
+    expect(d).toBeGreaterThan(10);
+    expect(d).toBeCloseTo(
+      polylineDistanceM([
+        { x: 0, y: 0, z: 0 },
+        { x: 4, y: 0, z: 3 },
+        { x: 8, y: 0, z: 3 },
+        { x: 10, y: 0, z: 0 },
+      ]),
+      5,
+    );
   });
 
   it('snaps to a nearby existing node', () => {
@@ -84,9 +83,7 @@ describe('indoor geometry', () => {
   });
 
   it('does not snap beyond threshold', () => {
-    expect(
-      snapCandidate({ x: 3, y: 0, z: 0 }, [node('n1', 1, 0, 'gf')], 0.45),
-    ).toBeNull();
+    expect(snapCandidate({ x: 3, y: 0, z: 0 }, [node('n1', 1, 0, 'gf')], 0.45)).toBeNull();
   });
 });
 
@@ -150,10 +147,7 @@ describe('indoor multi-floor A*', () => {
   });
 
   it('supports loops / alternative corridors', () => {
-    const loopEdges = [
-      ...edges,
-      edge('alt', 'n1', 'elev_gf', 3),
-    ];
+    const loopEdges = [...edges, edge('alt', 'n1', 'elev_gf', 3)];
     const result = routeIndoorGraph('ent', 'elev_gf', nodes, loopEdges, DEFAULT_INDOOR_PREFERENCES);
     expect(result).not.toBeNull();
     expect(result!.nodeIds.at(-1)).toBe('elev_gf');

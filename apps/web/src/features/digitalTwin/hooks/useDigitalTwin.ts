@@ -71,4 +71,3 @@ export function useDigitalTwinSnapshot(token: string | null, siteId?: string | n
     reload,
   };
 }
-

@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUp, MapPin, Volume2, AlertTriangle, Users, CheckCircle2, LocateFixed } from 'lucide-react';
+import {
+  ArrowUp,
+  MapPin,
+  Volume2,
+  AlertTriangle,
+  Users,
+  CheckCircle2,
+  LocateFixed,
+} from 'lucide-react';
 import type { CampusPlace, GraphNode, RouteResponse } from '@campusar/shared';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -13,11 +21,7 @@ import {
   isReliableGpsFix,
   snapGpsForRouting,
 } from '../../lib/geo';
-import {
-  classifyTurn,
-  dampRelativeBearing,
-  relativeBearingDeg,
-} from '../../lib/navigationHeading';
+import { classifyTurn, dampRelativeBearing, relativeBearingDeg } from '../../lib/navigationHeading';
 import {
   computeRouteProgress,
   distanceToNextWaypointM,
@@ -128,7 +132,10 @@ export function ArPage() {
   const placeNodes = useMemo(() => campusPlacesToGraphNodes(places), [places]);
 
   useEffect(() => {
-    api.places(token).then(setPlaces).catch(() => setPlaces([]));
+    api
+      .places(token)
+      .then(setPlaces)
+      .catch(() => setPlaces([]));
   }, [token, activeSiteId]);
 
   useEffect(() => {
@@ -194,7 +201,12 @@ export function ArPage() {
       setLoadingRoute(true);
       try {
         const r = await api.recalculate(
-          { sourceNodeId: source, destinationNodeId: destination, accessibility, usePrediction: true },
+          {
+            sourceNodeId: source,
+            destinationNodeId: destination,
+            accessibility,
+            usePrediction: true,
+          },
           token,
         );
         if (reqId !== routeReqId.current) return;
@@ -339,46 +351,23 @@ export function ArPage() {
     return step?.bearing ?? 0;
   }, [gpsReady, pose, nextWaypoint, step?.bearing]);
 
- const rawArrowRel =
-  compassHeading != null
-    ? relativeBearingDeg(
-        targetBearing,
-        compassHeading,
-      )
-    : null;
+  const rawArrowRel =
+    compassHeading != null ? relativeBearingDeg(targetBearing, compassHeading) : null;
 
-const rawDollYaw =
-  compassHeading != null
-    ? relativeBearingDeg(
-        targetBearing,
-        compassHeading,
-      )
-    : targetBearing;
+  const rawDollYaw =
+    compassHeading != null ? relativeBearingDeg(targetBearing, compassHeading) : targetBearing;
 
-useEffect(() => {
-  if (rawArrowRel == null) return;
+  useEffect(() => {
+    if (rawArrowRel == null) return;
 
-  setArrowRotation((prev) =>
-    dampRelativeBearing(
-      prev,
-      rawArrowRel,
-      ARROW_DAMP_DEG,
-    ),
-  );
-}, [rawArrowRel]);
+    setArrowRotation((prev) => dampRelativeBearing(prev, rawArrowRel, ARROW_DAMP_DEG));
+  }, [rawArrowRel]);
 
-useEffect(() => {
-  setDollYawDeg((prev) =>
-    dampRelativeBearing(
-      prev,
-      rawDollYaw,
-      DOLL_YAW_DAMP_DEG,
-    ),
-  );
-}, [rawDollYaw]);
+  useEffect(() => {
+    setDollYawDeg((prev) => dampRelativeBearing(prev, rawDollYaw, DOLL_YAW_DAMP_DEG));
+  }, [rawDollYaw]);
 
-  const turnClass =
-    rawArrowRel != null ? classifyTurn(rawArrowRel) : null;
+  const turnClass = rawArrowRel != null ? classifyTurn(rawArrowRel) : null;
 
   const navPhase: ArNavPhase = useMemo(() => {
     if (arrived) return 'arrived';
@@ -516,9 +505,7 @@ useEffect(() => {
   }
 
   const destLabel =
-    route?.destination?.name ??
-    places.find((p) => p.id === destinationNodeId)?.name ??
-    null;
+    route?.destination?.name ?? places.find((p) => p.id === destinationNodeId)?.name ?? null;
 
   const phaseLabel: Record<ArNavPhase, string> = {
     initializing: 'Loading…',
@@ -603,7 +590,12 @@ useEffect(() => {
       )}
 
       <div className="relative overflow-hidden rounded-md border border-line bg-ink-950">
-        <video ref={videoRef} className="h-[min(78vh,720px)] w-full object-cover" playsInline muted />
+        <video
+          ref={videoRef}
+          className="h-[min(78vh,720px)] w-full object-cover"
+          playsInline
+          muted
+        />
         {!videoRef.current?.srcObject && cameraError && (
           <div className="absolute inset-0 bg-[linear-gradient(160deg,#2a353e,#12171c)]" />
         )}
@@ -679,13 +671,7 @@ useEffect(() => {
 
         <GuideDollViewport
           gender={avatarGender}
-          pose={
-            navPhase === 'arrived'
-              ? 'celebrate'
-              : !routeReady
-                ? 'idle'
-                : poseAnim
-          }
+          pose={navPhase === 'arrived' ? 'celebrate' : !routeReady ? 'idle' : poseAnim}
           pathYawDeg={dollYawDeg}
           className="pointer-events-none absolute bottom-36 left-1/2 z-10 h-72 w-52 -translate-x-1/2 sm:bottom-40 sm:h-[22rem] sm:w-64"
         />
@@ -728,8 +714,8 @@ useEffect(() => {
                   ? navPhase === 'waiting_gps' && !initTimedOut
                     ? '📍 Getting your current location…'
                     : phaseLabel[navPhase]
-                  : step?.instruction ??
-                    (navPhase === 'recalculating' ? 'Calculating route…' : phaseLabel[navPhase])}
+                  : (step?.instruction ??
+                    (navPhase === 'recalculating' ? 'Calculating route…' : phaseLabel[navPhase]))}
               </p>
             </div>
           )}
@@ -772,9 +758,7 @@ useEffect(() => {
       </div>
 
       {(error || cameraError || gpsError || gpsNote) && (
-        <p className="text-sm text-accent-warn">
-          {error ?? gpsError ?? gpsNote ?? cameraError}
-        </p>
+        <p className="text-sm text-accent-warn">{error ?? gpsError ?? gpsNote ?? cameraError}</p>
       )}
 
       {arrived && hasIndoorMap && selectedBuildingId && selectedBuildingName && (
@@ -790,7 +774,6 @@ useEffect(() => {
           onDismiss={() => undefined}
         />
       )}
-
     </div>
   );
 }

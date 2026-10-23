@@ -125,7 +125,11 @@ export function AppShell() {
             <div className="hidden text-right md:block">
               <p className="text-xs font-semibold sm:text-sm">{user?.name}</p>
               <p className="text-[10px] text-ink-faint sm:text-xs">{roleLabel}</p>
-              {site && <p className="max-w-[8rem] truncate text-[10px] text-ink-faint sm:max-w-[10rem] sm:text-xs">{label}</p>}
+              {site && (
+                <p className="max-w-[8rem] truncate text-[10px] text-ink-faint sm:max-w-[10rem] sm:text-xs">
+                  {label}
+                </p>
+              )}
             </div>
             <button
               type="button"

@@ -14,10 +14,7 @@ export function hazardColor(type: DangerZone['type']): string {
   return '#d97706';
 }
 
-export function buildCrowdByEdge(
-  crowd: CrowdLevel[],
-  edges: GraphEdge[],
-): Map<string, number> {
+export function buildCrowdByEdge(crowd: CrowdLevel[], edges: GraphEdge[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const c of crowd) {
     if (c.edgeId) m.set(c.edgeId, c.intensity);

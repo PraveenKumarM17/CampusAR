@@ -20,9 +20,7 @@ import { analyticsRepository } from '../infrastructure/repositories/analyticsRep
 import { campusRepository } from '../infrastructure/repositories/campusRepository';
 import { mapVersionService } from './mapVersionService';
 
-function normalizeAccessibility(
-  input?: Partial<AccessibilityPrefs>,
-): AccessibilityPrefs {
+function normalizeAccessibility(input?: Partial<AccessibilityPrefs>): AccessibilityPrefs {
   return {
     wheelchairMode: input?.wheelchairMode ?? DEFAULT_ACCESSIBILITY.wheelchairMode,
     preferLift: input?.preferLift ?? DEFAULT_ACCESSIBILITY.preferLift,

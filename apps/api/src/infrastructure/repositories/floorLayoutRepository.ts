@@ -49,8 +49,7 @@ function mapRoomRow(r: Record<string, unknown>): Room {
     measuredLengthM: (r.measured_length_m as number | null) ?? null,
     measuredWidthM: (r.measured_width_m as number | null) ?? null,
     measuredHeightM: (r.measured_height_m as number | null) ?? null,
-    measurementSource:
-      (r.measurement_source as Room['measurementSource']) ?? null,
+    measurementSource: (r.measurement_source as Room['measurementSource']) ?? null,
     measuredAt:
       r.measured_at instanceof Date
         ? r.measured_at.toISOString()
@@ -124,11 +123,19 @@ export const floorLayoutRepository = {
     const building = await campusRepository.getBuildingById(buildingId);
     if (!building) throw new AppError('NOT_FOUND', 'Building not found', 404);
     if (building.siteId !== siteId) {
-      throw new AppError('CROSS_SITE_REFERENCE', 'Building does not belong to the active site', 422);
+      throw new AppError(
+        'CROSS_SITE_REFERENCE',
+        'Building does not belong to the active site',
+        422,
+      );
     }
     const buildingVersion = await campusRepository.getBuildingMapVersionId(buildingId);
     if (buildingVersion !== mapVersionId) {
-      throw new AppError('CROSS_VERSION_REFERENCE', 'Building does not belong to the active map version', 422);
+      throw new AppError(
+        'CROSS_VERSION_REFERENCE',
+        'Building does not belong to the active map version',
+        422,
+      );
     }
     const [floors, rooms, corridors, pois] = await Promise.all([
       this.listFloors(buildingId, mapVersionId),
@@ -158,7 +165,12 @@ export const floorLayoutRepository = {
     return mapFloorRow(rows[0] as Record<string, unknown>);
   },
 
-  async createFloor(input: { buildingId: string; level: number; name: string; mapVersionId: string }) {
+  async createFloor(input: {
+    buildingId: string;
+    level: number;
+    name: string;
+    mapVersionId: string;
+  }) {
     const { rows } = await query(
       `INSERT INTO floors (building_id, level, name, updated_at, map_version_id)
        VALUES ($1, $2, $3, NOW(), $4)
@@ -186,7 +198,11 @@ export const floorLayoutRepository = {
     if (!rows[0]) {
       const still = await this.getFloorById(id);
       if (still && input.expectedUpdatedAt) {
-        throw new AppError('STALE_EDIT', 'This floor was modified elsewhere. Reload and try again.', 409);
+        throw new AppError(
+          'STALE_EDIT',
+          'This floor was modified elsewhere. Reload and try again.',
+          409,
+        );
       }
       return null;
     }
@@ -227,8 +243,7 @@ export const floorLayoutRepository = {
 
   async deleteFloor(id: string): Promise<void> {
     const deps = await this.countFloorDependencies(id);
-    const total =
-      deps.rooms + deps.corridors + deps.pois + deps.indoorNodes + deps.outdoorNodes;
+    const total = deps.rooms + deps.corridors + deps.pois + deps.indoorNodes + deps.outdoorNodes;
     if (total > 0) {
       throw new AppError(
         'FLOOR_HAS_DEPENDENCIES',
@@ -366,7 +381,11 @@ export const floorLayoutRepository = {
     if (!rows[0]) {
       const still = await this.getRoomById(id);
       if (still && input.expectedUpdatedAt) {
-        throw new AppError('STALE_EDIT', 'This room was modified elsewhere. Reload and try again.', 409);
+        throw new AppError(
+          'STALE_EDIT',
+          'This room was modified elsewhere. Reload and try again.',
+          409,
+        );
       }
       return null;
     }
@@ -374,7 +393,10 @@ export const floorLayoutRepository = {
     if (input.name) {
       const buildingVersion = await campusRepository.getBuildingMapVersionId(updated.buildingId);
       if (buildingVersion) {
-        const draft = await indoorRepository.getDraftMapByBuilding(updated.buildingId, buildingVersion);
+        const draft = await indoorRepository.getDraftMapByBuilding(
+          updated.buildingId,
+          buildingVersion,
+        );
         const published = await indoorRepository.getPublishedMapByBuilding(
           updated.buildingId,
           buildingVersion,
@@ -411,7 +433,11 @@ export const floorLayoutRepository = {
     await query(`DELETE FROM rooms WHERE id = $1`, [id]);
   },
 
-  async listCorridors(buildingId: string, floorId?: string, mapVersionId?: string): Promise<FloorCorridor[]> {
+  async listCorridors(
+    buildingId: string,
+    floorId?: string,
+    mapVersionId?: string,
+  ): Promise<FloorCorridor[]> {
     const params: unknown[] = [buildingId];
     let sql = `SELECT * FROM floor_corridors WHERE building_id = $1`;
     if (mapVersionId) {
@@ -497,7 +523,11 @@ export const floorLayoutRepository = {
     if (!rows[0]) {
       const still = await this.getCorridorById(id);
       if (still && input.expectedUpdatedAt) {
-        throw new AppError('STALE_EDIT', 'This corridor was modified elsewhere. Reload and try again.', 409);
+        throw new AppError(
+          'STALE_EDIT',
+          'This corridor was modified elsewhere. Reload and try again.',
+          409,
+        );
       }
       return null;
     }
@@ -544,7 +574,15 @@ export const floorLayoutRepository = {
       `INSERT INTO floor_pois (floor_id, building_id, name, category, local_x, local_y, updated_at, map_version_id)
        VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
        RETURNING *`,
-      [input.floorId, input.buildingId, input.name, input.category, input.localX, input.localY, input.mapVersionId],
+      [
+        input.floorId,
+        input.buildingId,
+        input.name,
+        input.category,
+        input.localX,
+        input.localY,
+        input.mapVersionId,
+      ],
     );
     return mapPoiRow(rows[0] as Record<string, unknown>);
   },
@@ -592,7 +630,11 @@ export const floorLayoutRepository = {
     if (!rows[0]) {
       const still = await this.getPoiById(id);
       if (still && input.expectedUpdatedAt) {
-        throw new AppError('STALE_EDIT', 'This POI was modified elsewhere. Reload and try again.', 409);
+        throw new AppError(
+          'STALE_EDIT',
+          'This POI was modified elsewhere. Reload and try again.',
+          409,
+        );
       }
       return null;
     }

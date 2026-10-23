@@ -59,85 +59,125 @@ indoorRouter.get('/maps/:id', optionalAuth, async (req: AuthedRequest, res, next
   }
 });
 
-indoorRouter.put('/maps/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    const body = updateMapSchema.parse(req.body);
-    await assertIndoorMapEditable(req, String(req.params.id));
-    res.json(await indoorService.updateMap(String(req.params.id), body));
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.put(
+  '/maps/:id',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const body = updateMapSchema.parse(req.body);
+      await assertIndoorMapEditable(req, String(req.params.id));
+      res.json(await indoorService.updateMap(String(req.params.id), body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-indoorRouter.post('/nodes', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    const body = createNodeSchema.parse(req.body);
-    await assertIndoorMapEditable(req, body.mapId);
-    res.status(201).json(await indoorService.createNode(body));
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.post(
+  '/nodes',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const body = createNodeSchema.parse(req.body);
+      await assertIndoorMapEditable(req, body.mapId);
+      res.status(201).json(await indoorService.createNode(body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-indoorRouter.put('/nodes/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    const body = updateNodeSchema.parse(req.body);
-    await assertIndoorNodeEditable(req, String(req.params.id));
-    res.json(await indoorService.updateNode(String(req.params.id), body));
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.put(
+  '/nodes/:id',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const body = updateNodeSchema.parse(req.body);
+      await assertIndoorNodeEditable(req, String(req.params.id));
+      res.json(await indoorService.updateNode(String(req.params.id), body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-indoorRouter.delete('/nodes/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    await assertIndoorNodeEditable(req, String(req.params.id));
-    await indoorService.deleteNode(String(req.params.id));
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.delete(
+  '/nodes/:id',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      await assertIndoorNodeEditable(req, String(req.params.id));
+      await indoorService.deleteNode(String(req.params.id));
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-indoorRouter.post('/edges', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    const body = createEdgeSchema.parse(req.body);
-    await assertIndoorMapEditable(req, body.mapId);
-    res.status(201).json(await indoorService.createEdge(body));
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.post(
+  '/edges',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const body = createEdgeSchema.parse(req.body);
+      await assertIndoorMapEditable(req, body.mapId);
+      res.status(201).json(await indoorService.createEdge(body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-indoorRouter.put('/edges/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    const body = updateEdgeSchema.parse(req.body);
-    await assertIndoorEdgeEditable(req, String(req.params.id));
-    res.json(await indoorService.updateEdge(String(req.params.id), body));
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.put(
+  '/edges/:id',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const body = updateEdgeSchema.parse(req.body);
+      await assertIndoorEdgeEditable(req, String(req.params.id));
+      res.json(await indoorService.updateEdge(String(req.params.id), body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-indoorRouter.delete('/edges/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    await assertIndoorEdgeEditable(req, String(req.params.id));
-    await indoorService.deleteEdge(String(req.params.id));
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.delete(
+  '/edges/:id',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      await assertIndoorEdgeEditable(req, String(req.params.id));
+      await indoorService.deleteEdge(String(req.params.id));
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-indoorRouter.post('/places', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    const body = createPlaceSchema.parse(req.body);
-    await assertIndoorMapEditable(req, body.mapId);
-    res.status(201).json(await indoorService.createPlace(body));
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.post(
+  '/places',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const body = createPlaceSchema.parse(req.body);
+      await assertIndoorMapEditable(req, body.mapId);
+      res.status(201).json(await indoorService.createPlace(body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 indoorRouter.get('/buildings/:buildingId/context', optionalAuth, async (req, res, next) => {
   try {
@@ -173,53 +213,72 @@ indoorRouter.get('/places/:id', optionalAuth, async (req, res, next) => {
   try {
     const id = z.string().uuid().parse(req.params.id);
     const expectedBuildingId =
-      typeof req.query.buildingId === 'string' ? z.string().uuid().parse(req.query.buildingId) : undefined;
+      typeof req.query.buildingId === 'string'
+        ? z.string().uuid().parse(req.query.buildingId)
+        : undefined;
     res.json(await indoorService.getPublicPlace(id, expectedBuildingId));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.put('/places/:id', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    const body = updatePlaceSchema.parse(req.body);
-    await assertIndoorPlaceEditable(req, String(req.params.id));
-    res.json(await indoorService.updatePlace(String(req.params.id), body));
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.put(
+  '/places/:id',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const body = updatePlaceSchema.parse(req.body);
+      await assertIndoorPlaceEditable(req, String(req.params.id));
+      res.json(await indoorService.updatePlace(String(req.params.id), body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-indoorRouter.post('/anchors', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    const body = createAnchorSchema.parse(req.body);
-    await assertIndoorMapEditable(req, body.mapId);
-    res.status(201).json(await indoorService.createAnchor(body));
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.post(
+  '/anchors',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const body = createAnchorSchema.parse(req.body);
+      await assertIndoorMapEditable(req, body.mapId);
+      res.status(201).json(await indoorService.createAnchor(body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 indoorRouter.get('/anchors/:code', optionalAuth, async (req, res, next) => {
   try {
     const expectedBuildingId =
-      typeof req.query.buildingId === 'string' ? z.string().uuid().parse(req.query.buildingId) : undefined;
+      typeof req.query.buildingId === 'string'
+        ? z.string().uuid().parse(req.query.buildingId)
+        : undefined;
     res.json(await indoorService.resolveAnchor(String(req.params.code), expectedBuildingId));
   } catch (err) {
     next(err);
   }
 });
 
-indoorRouter.post('/handoffs', requireAuth, requireMapEditor, async (req: AuthedRequest, res, next) => {
-  try {
-    const body = createHandoffSchema.parse(req.body);
-    const indoor = await indoorRepository.getNode(body.indoorNodeId);
-    if (indoor) await assertIndoorBuildingEditable(req, indoor.buildingId);
-    res.status(201).json(await indoorService.createHandoff(body));
-  } catch (err) {
-    next(err);
-  }
-});
+indoorRouter.post(
+  '/handoffs',
+  requireAuth,
+  requireMapEditor,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const body = createHandoffSchema.parse(req.body);
+      const indoor = await indoorRepository.getNode(body.indoorNodeId);
+      if (indoor) await assertIndoorBuildingEditable(req, indoor.buildingId);
+      res.status(201).json(await indoorService.createHandoff(body));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 indoorRouter.get('/handoffs', optionalAuth, async (req, res, next) => {
   try {

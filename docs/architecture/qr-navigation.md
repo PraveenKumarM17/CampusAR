@@ -44,12 +44,12 @@ After locate, route starts automatically or with one confirm.
 
 ## 3. URL & payload design
 
-| Form | Example | Notes |
-|------|---------|-------|
-| Path slug | `/rnsit` | Canonical public entry |
-| Nested app | `/rnsit/map`, `/rnsit/navigate` | After bootstrap |
-| Opaque QR id | `/q/{qrToken}` | Resolves to slug + campaign metadata |
-| Query | `?utm_source=reception&qr=gate-a` | Analytics |
+| Form         | Example                           | Notes                                |
+| ------------ | --------------------------------- | ------------------------------------ |
+| Path slug    | `/rnsit`                          | Canonical public entry               |
+| Nested app   | `/rnsit/map`, `/rnsit/navigate`   | After bootstrap                      |
+| Opaque QR id | `/q/{qrToken}`                    | Resolves to slug + campaign metadata |
+| Query        | `?utm_source=reception&qr=gate-a` | Analytics                            |
 
 **Assumption:** Prefer opaque `/q/{token}` on printed materials so campaigns can be rotated without reprinting if token remapped; slug URLs remain shareable.
 
@@ -64,13 +64,13 @@ Deep link contract (conceptual):
 
 ## 4. Guest session
 
-| Property | Behaviour |
-|----------|-----------|
-| Account | Not required |
-| Session | Anonymous guest bound to `organizationId` |
-| Scope | Cannot access other orgs’ APIs |
-| Persistence | Local storage for last dest; no PII required |
-| Upgrade | Not required; optional future “save trips” is separate from admin login |
+| Property    | Behaviour                                                               |
+| ----------- | ----------------------------------------------------------------------- |
+| Account     | Not required                                                            |
+| Session     | Anonymous guest bound to `organizationId`                               |
+| Scope       | Cannot access other orgs’ APIs                                          |
+| Persistence | Local storage for last dest; no PII required                            |
+| Upgrade     | Not required; optional future “save trips” is separate from admin login |
 
 Guest mode is the **default** for public org routes. Guests cannot access Admin Dashboard or graph editing.
 
@@ -78,43 +78,43 @@ Guest mode is the **default** for public org routes. Guests cannot access Admin 
 
 ## 5. Backend responsibilities
 
-| Component | Duty |
-|-----------|------|
-| `QrService.issue` | Create token, campaign, optional dest, print metadata |
-| `QrService.resolve` | Token → org + payload; increment scan counter |
-| `OrganizationResolver` | Slug → active org; reject suspended |
-| Public graph API | Org-filtered public nodes only |
-| Analytics | `qr_scan`, `guest_session_start`, `nav_start` |
+| Component              | Duty                                                  |
+| ---------------------- | ----------------------------------------------------- |
+| `QrService.issue`      | Create token, campaign, optional dest, print metadata |
+| `QrService.resolve`    | Token → org + payload; increment scan counter         |
+| `OrganizationResolver` | Slug → active org; reject suspended                   |
+| Public graph API       | Org-filtered public nodes only                        |
+| Analytics              | `qr_scan`, `guest_session_start`, `nav_start`         |
 
 ---
 
 ## 6. Admin capabilities
 
-- Generate org root QR (PNG/SVG download).  
-- Generate per-location / per-campaign QRs.  
-- Rotate or revoke tokens without deleting org.  
+- Generate org root QR (PNG/SVG download).
+- Generate per-location / per-campaign QRs.
+- Rotate or revoke tokens without deleting org.
 - View scan counts and conversion to navigation starts.
 
 ---
 
 ## 7. Security & abuse
 
-- Rate-limit resolve endpoints.  
-- Tokens unguessable (sufficient entropy).  
-- Suspended org → friendly “unavailable” page, not data leak.  
-- Destination ids in QR validated against same org.  
+- Rate-limit resolve endpoints.
+- Tokens unguessable (sufficient entropy).
+- Suspended org → friendly “unavailable” page, not data leak.
+- Destination ids in QR validated against same org.
 - No open redirects off-platform.
 
 ---
 
 ## 8. Physical deployment guidance (product)
 
-| Placement | Suggested QR type |
-|-----------|-------------------|
-| Main gate / reception | Org root |
-| Parking | Org root + parking category bias |
-| Building lobby | Building-biased or dest QR |
-| Event desk | Campaign + dest |
+| Placement             | Suggested QR type                |
+| --------------------- | -------------------------------- |
+| Main gate / reception | Org root                         |
+| Parking               | Org root + parking category bias |
+| Building lobby        | Building-biased or dest QR       |
+| Event desk            | Campaign + dest                  |
 
 Printed materials should include short slug as fallback text.
 
@@ -132,6 +132,6 @@ See [`gps-abstraction.md`](./gps-abstraction.md).
 
 ## 10. Related
 
-- [`multi-tenant-architecture.md`](./multi-tenant-architecture.md)  
-- [`branding-system.md`](./branding-system.md)  
-- Product: [`../product/multi-tenancy.md`](../product/multi-tenancy.md)  
+- [`multi-tenant-architecture.md`](./multi-tenant-architecture.md)
+- [`branding-system.md`](./branding-system.md)
+- Product: [`../product/multi-tenancy.md`](../product/multi-tenancy.md)

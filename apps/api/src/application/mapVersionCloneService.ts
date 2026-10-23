@@ -260,7 +260,16 @@ export async function clonePublishedMapToDraft(
     await client.query(
       `INSERT INTO site_areas (id, stable_id, site_id, name, type, footprint_geom, created_at, updated_at, map_version_id, geometry_hash)
        VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW(),$7,$8)`,
-      [randomUUID(), a.stable_id, a.site_id, a.name, a.type, a.footprint_geom, draftVersionId, a.geometry_hash],
+      [
+        randomUUID(),
+        a.stable_id,
+        a.site_id,
+        a.name,
+        a.type,
+        a.footprint_geom,
+        draftVersionId,
+        a.geometry_hash,
+      ],
     );
   }
 

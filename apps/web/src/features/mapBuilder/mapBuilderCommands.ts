@@ -1,11 +1,5 @@
 export type BuilderCommandKind =
-  | 'create'
-  | 'update'
-  | 'delete'
-  | 'bulk-delete'
-  | 'bulk-update'
-  | 'geometry'
-  | 'edge-split';
+  'create' | 'update' | 'delete' | 'bulk-delete' | 'bulk-update' | 'geometry' | 'edge-split';
 
 export type BuilderCommand = {
   id: string;

@@ -60,13 +60,14 @@ import { useSiteStore } from '../../stores/siteStore';
 import { usePreviewStore } from '../../stores/previewStore';
 import { useNavStore } from '../../stores/themeStore';
 import { clearBuildingContextCache } from '../../lib/buildingNavigation';
-import {
-  publishBlockedByValidation,
-  publishConfirmMessage,
-} from './mapBuilderPublish';
+import { publishBlockedByValidation, publishConfirmMessage } from './mapBuilderPublish';
 import { CAMPUS_DEFAULT_ZOOM, CAMPUS_MAX_ZOOM, siteMapCenter } from '../../lib/campus';
 import { haversineMeters } from '../../lib/geo';
-import { BasemapModeSwitcher, RealBasemapTiles, type BasemapMode } from '../../components/maps/RealBasemap';
+import {
+  BasemapModeSwitcher,
+  RealBasemapTiles,
+  type BasemapMode,
+} from '../../components/maps/RealBasemap';
 import { InvalidateMapSize } from '../../components/maps/InvalidateMapSize';
 import { RecenterOnSite } from '../../components/maps/GpsTracker';
 import { Navigate } from 'react-router-dom';
@@ -174,13 +175,7 @@ function GeomanDrawLayer({
   return null;
 }
 
-function FitSiteData({
-  center,
-  points,
-}: {
-  center: [number, number];
-  points: [number, number][];
-}) {
+function FitSiteData({ center, points }: { center: [number, number]; points: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
     if (points.length > 1) {
@@ -353,8 +348,7 @@ function MapLibreCanvas({
 
   const buildingsGeo = useMemo<GeoJSON.FeatureCollection>(() => {
     const features: GeoJSON.Feature[] = [];
-    const editingId =
-      selection?.kind === 'building' && tool === 'select' ? selection.id : null;
+    const editingId = selection?.kind === 'building' && tool === 'select' ? selection.id : null;
     for (const b of buildings) {
       // Hide static footprint while Terra Draw owns the editable overlay
       if (editingId && b.id === editingId && b.footprint && b.footprint.length >= 3) continue;
@@ -526,18 +520,8 @@ function MapLibreCanvas({
         source: 'mapbuilder-buildings',
         filter: ['==', ['get', 'point'], 0],
         paint: {
-          'line-color': [
-            'case',
-            ['==', ['get', 'conflict'], 1],
-            '#dc2626',
-            '#0F6B63',
-          ],
-          'line-width': [
-            'case',
-            ['==', ['get', 'conflict'], 1],
-            4,
-            2,
-          ],
+          'line-color': ['case', ['==', ['get', 'conflict'], 1], '#dc2626', '#0F6B63'],
+          'line-width': ['case', ['==', ['get', 'conflict'], 1], 4, 2],
         },
       });
       map.addLayer({
@@ -557,12 +541,7 @@ function MapLibreCanvas({
         type: 'line',
         source: 'mapbuilder-edges',
         paint: {
-          'line-color': [
-            'case',
-            ['==', ['get', 'blocked'], 1],
-            '#dc2626',
-            '#64748b',
-          ],
+          'line-color': ['case', ['==', ['get', 'blocked'], 1], '#dc2626', '#64748b'],
           'line-width': 3,
         },
       });
@@ -664,13 +643,7 @@ function MapLibreCanvas({
         source: 'mapbuilder-issue-badges',
         paint: {
           'circle-radius': 7,
-          'circle-color': [
-            'match',
-            ['get', 'level'],
-            'error',
-            '#dc2626',
-            '#f59e0b',
-          ],
+          'circle-color': ['match', ['get', 'level'], 'error', '#dc2626', '#f59e0b'],
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 2,
           'circle-opacity': 0.95,
@@ -730,7 +703,8 @@ function MapLibreCanvas({
         map.setFilter('mapbuilder-snap-edge-highlight', none);
       };
       const clearWalkPreview = () => {
-        const src = map.getSource('mapbuilder-walk-preview') as maplibregl.GeoJSONSource | undefined;
+        const src = map.getSource('mapbuilder-walk-preview') as
+          maplibregl.GeoJSONSource | undefined;
         src?.setData(emptyFeatureCollection());
       };
 
@@ -828,8 +802,7 @@ function MapLibreCanvas({
           if (from) {
             const snapped = projectAngleSnap(from.latitude, from.longitude, lat, lng);
             const src = map.getSource('mapbuilder-walk-preview') as
-              | maplibregl.GeoJSONSource
-              | undefined;
+              maplibregl.GeoJSONSource | undefined;
             src?.setData({
               type: 'FeatureCollection',
               features: [
@@ -979,8 +952,7 @@ function MapLibreCanvas({
         const props = (feature.properties ?? {}) as Record<string, unknown>;
         const campusarKind = props.campusarKind;
         const campusarId = props.campusarId;
-        const isCampusFeature =
-          typeof campusarKind === 'string' && typeof campusarId === 'string';
+        const isCampusFeature = typeof campusarKind === 'string' && typeof campusarId === 'string';
 
         if (!isCampusFeature && context.mode === 'polygon') {
           const ring = ringFromFeature(feature as GeoJSON.Feature);
@@ -1230,7 +1202,11 @@ function MapLibreCanvas({
     if (selection.kind === 'node') {
       const n = nodes.find((x) => x.id === selection.id);
       if (!n) return;
-      map.flyTo({ center: [n.longitude, n.latitude], zoom: Math.max(map.getZoom(), 18), duration: 500 });
+      map.flyTo({
+        center: [n.longitude, n.latitude],
+        zoom: Math.max(map.getZoom(), 18),
+        duration: 500,
+      });
       return;
     }
     if (selection.kind === 'building') {
@@ -1419,9 +1395,7 @@ export function MapBuilderPage() {
   }, [buildings, nodes, edges, areas, draftVersion?.id, loading, scheduleServerValidation]);
 
   const mapIssueBadges = useMemo(() => {
-    const source = validationPending
-      ? clientIssues
-      : (validation?.issues ?? clientIssues);
+    const source = validationPending ? clientIssues : (validation?.issues ?? clientIssues);
     return issueBadgePoints(source, buildings, nodes, edges);
   }, [validationPending, clientIssues, validation, buildings, nodes, edges]);
 
@@ -1449,27 +1423,30 @@ export function MapBuilderPage() {
     };
   }, [validationPending, clientIssues, validation]);
 
-  const handleValidationIssue = useCallback((issue: MapValidationIssue, opts?: { openInspector?: boolean }) => {
-    if (!issue.resourceId || !issue.resourceType) return;
-    switch (issue.resourceType) {
-      case 'building':
-        setSelection({ kind: 'building', id: issue.resourceId });
-        break;
-      case 'node':
-      case 'entrance':
-        setSelection({ kind: 'node', id: issue.resourceId });
-        break;
-      case 'edge':
-        setSelection({ kind: 'edge', id: issue.resourceId });
-        break;
-      case 'area':
-        setSelection({ kind: 'area', id: issue.resourceId });
-        break;
-      default:
-        break;
-    }
-    if (opts?.openInspector) setRightPanelMode('inspector');
-  }, []);
+  const handleValidationIssue = useCallback(
+    (issue: MapValidationIssue, opts?: { openInspector?: boolean }) => {
+      if (!issue.resourceId || !issue.resourceType) return;
+      switch (issue.resourceType) {
+        case 'building':
+          setSelection({ kind: 'building', id: issue.resourceId });
+          break;
+        case 'node':
+        case 'entrance':
+          setSelection({ kind: 'node', id: issue.resourceId });
+          break;
+        case 'edge':
+          setSelection({ kind: 'edge', id: issue.resourceId });
+          break;
+        case 'area':
+          setSelection({ kind: 'area', id: issue.resourceId });
+          break;
+        default:
+          break;
+      }
+      if (opts?.openInspector) setRightPanelMode('inspector');
+    },
+    [],
+  );
 
   const handleValidateDraft = useCallback(async () => {
     if (!token || !draftVersion) return;
@@ -1531,7 +1508,9 @@ export function MapBuilderPage() {
     let removed: GraphNode | null = null;
     w.__mapBuilderDebug = {
       simulateDanglingEdge: () => {
-        const connected = edges.find((e) => nodes.some((n) => n.id === e.fromNodeId || n.id === e.toNodeId));
+        const connected = edges.find((e) =>
+          nodes.some((n) => n.id === e.fromNodeId || n.id === e.toNodeId),
+        );
         if (!connected) return null;
         const dropId = nodes.some((n) => n.id === connected.fromNodeId)
           ? connected.fromNodeId
@@ -1784,7 +1763,9 @@ export function MapBuilderPage() {
                       token,
                       { idempotencyKey: newIdempotencyKey() },
                     );
-                    setBuildings((prev) => prev.map((b) => (b.id === reapplied.id ? reapplied : b)));
+                    setBuildings((prev) =>
+                      prev.map((b) => (b.id === reapplied.id ? reapplied : b)),
+                    );
                   },
                 });
               }
@@ -1853,9 +1834,14 @@ export function MapBuilderPage() {
                   },
                   redo: async () => {
                     if (!token) return;
-                    const reapplied = await api.mapBuilder.updateNode(commit.id, nextLatLon, token, {
-                      idempotencyKey: newIdempotencyKey(),
-                    });
+                    const reapplied = await api.mapBuilder.updateNode(
+                      commit.id,
+                      nextLatLon,
+                      token,
+                      {
+                        idempotencyKey: newIdempotencyKey(),
+                      },
+                    );
                     setNodes((prev) => prev.map((n) => (n.id === reapplied.id ? reapplied : n)));
                   },
                 });
@@ -2245,7 +2231,12 @@ export function MapBuilderPage() {
       ...commonAttrs,
       fromNodeId: original.fromNodeId,
       toNodeId: newNode.id,
-      distanceM: haversineMeters(from.latitude, from.longitude, newNode.latitude, newNode.longitude),
+      distanceM: haversineMeters(
+        from.latitude,
+        from.longitude,
+        newNode.latitude,
+        newNode.longitude,
+      ),
     };
     const bodyB = {
       ...commonAttrs,
@@ -2257,8 +2248,12 @@ export function MapBuilderPage() {
     let edgeA: GraphEdge;
     let edgeB: GraphEdge;
     try {
-      edgeA = await api.mapBuilder.createEdge(bodyA, token, { idempotencyKey: newIdempotencyKey() });
-      edgeB = await api.mapBuilder.createEdge(bodyB, token, { idempotencyKey: newIdempotencyKey() });
+      edgeA = await api.mapBuilder.createEdge(bodyA, token, {
+        idempotencyKey: newIdempotencyKey(),
+      });
+      edgeB = await api.mapBuilder.createEdge(bodyB, token, {
+        idempotencyKey: newIdempotencyKey(),
+      });
     } catch (err) {
       setError(
         (err instanceof ApiError ? err.message : 'Could not create split walkway segments') +
@@ -2307,8 +2302,12 @@ export function MapBuilderPage() {
           token,
           { idempotencyKey: newIdempotencyKey() },
         );
-        await api.mapBuilder.deleteEdge(currentEdgeA.id, token, { idempotencyKey: newIdempotencyKey() });
-        await api.mapBuilder.deleteEdge(currentEdgeB.id, token, { idempotencyKey: newIdempotencyKey() });
+        await api.mapBuilder.deleteEdge(currentEdgeA.id, token, {
+          idempotencyKey: newIdempotencyKey(),
+        });
+        await api.mapBuilder.deleteEdge(currentEdgeB.id, token, {
+          idempotencyKey: newIdempotencyKey(),
+        });
         await api.mapBuilder.deleteNode(currentNode.id, false, token, {
           idempotencyKey: newIdempotencyKey(),
         });
@@ -2343,11 +2342,7 @@ export function MapBuilderPage() {
         currentEdgeA = redoneA;
         currentEdgeB = redoneB;
         setNodes((prev) => [...prev, splitNode]);
-        setEdges((prev) => [
-          ...prev.filter((e) => e.id !== currentOriginal.id),
-          redoneA,
-          redoneB,
-        ]);
+        setEdges((prev) => [...prev.filter((e) => e.id !== currentOriginal.id), redoneA, redoneB]);
         setSelection({ kind: 'node', id: splitNode.id });
         setMultiSelection([{ kind: 'node', id: splitNode.id }]);
       },
@@ -2412,7 +2407,9 @@ export function MapBuilderPage() {
         const placeLat = snap ? snap.latitude : lat;
         const placeLon = snap ? snap.longitude : lon;
         const buildingId =
-          entranceBuildingId || (snap?.kind === 'building-boundary' ? snap.buildingId : null) || null;
+          entranceBuildingId ||
+          (snap?.kind === 'building-boundary' ? snap.buildingId : null) ||
+          null;
         const name = window.prompt('Entrance name', 'Main entrance') ?? 'Main entrance';
         const idempotencyKey = newIdempotencyKey();
         const created = await api.mapBuilder.createNode(
@@ -2621,7 +2618,8 @@ export function MapBuilderPage() {
   };
 
   /** Delete ordering that avoids server-side 409s from dangling edges: edges, then nodes/buildings/areas. */
-  const bulkDeleteOrderWeight = (kind: FeatureKind) => (kind === 'edge' ? 0 : kind === 'node' ? 1 : 2);
+  const bulkDeleteOrderWeight = (kind: FeatureKind) =>
+    kind === 'edge' ? 0 : kind === 'node' ? 1 : 2;
 
   const handleBulkDelete = async () => {
     if (!token || multiSelection.length < 2) return;
@@ -2703,8 +2701,10 @@ export function MapBuilderPage() {
     if (succeeded.length) {
       // Undo recreates each item via POST — the server assigns a brand-new id/stable_id,
       // so we track the "live" ids in this closure to support repeated undo/redo cycles.
-      let currentItems: Array<{ kind: FeatureKind; data: Building | GraphNode | GraphEdge | SiteArea }> =
-        succeeded.map((s) => ({ kind: s.item.kind, data: s.data }));
+      let currentItems: Array<{
+        kind: FeatureKind;
+        data: Building | GraphNode | GraphEdge | SiteArea;
+      }> = succeeded.map((s) => ({ kind: s.item.kind, data: s.data }));
 
       const recreateAll = async () => {
         if (!token) return;
@@ -2791,15 +2791,21 @@ export function MapBuilderPage() {
         for (const c of orderedNow) {
           const key = newIdempotencyKey();
           if (c.kind === 'building') {
-            await api.mapBuilder.deleteBuilding((c.data as Building).id, token, { idempotencyKey: key });
+            await api.mapBuilder.deleteBuilding((c.data as Building).id, token, {
+              idempotencyKey: key,
+            });
           } else if (c.kind === 'node') {
             await api.mapBuilder.deleteNode((c.data as GraphNode).id, true, token, {
               idempotencyKey: key,
             });
           } else if (c.kind === 'edge') {
-            await api.mapBuilder.deleteEdge((c.data as GraphEdge).id, token, { idempotencyKey: key });
+            await api.mapBuilder.deleteEdge((c.data as GraphEdge).id, token, {
+              idempotencyKey: key,
+            });
           } else {
-            await api.mapBuilder.deleteArea((c.data as SiteArea).id, token, { idempotencyKey: key });
+            await api.mapBuilder.deleteArea((c.data as SiteArea).id, token, {
+              idempotencyKey: key,
+            });
           }
         }
         const ids = new Set(currentItems.map((c) => `${c.kind}:${(c.data as { id: string }).id}`));
@@ -2850,12 +2856,9 @@ export function MapBuilderPage() {
           if (!token) return;
           const restored = await Promise.all(
             targets.map((t, i) =>
-              api.mapBuilder.updateNode(
-                t.id,
-                { kind: prevKinds[i] },
-                token,
-                { idempotencyKey: newIdempotencyKey() },
-              ),
+              api.mapBuilder.updateNode(t.id, { kind: prevKinds[i] }, token, {
+                idempotencyKey: newIdempotencyKey(),
+              }),
             ),
           );
           setNodes((prev) => prev.map((n) => restored.find((u) => u.id === n.id) ?? n));
@@ -2864,7 +2867,9 @@ export function MapBuilderPage() {
           if (!token) return;
           const reapplied = await Promise.all(
             targets.map((t) =>
-              api.mapBuilder.updateNode(t.id, { kind }, token, { idempotencyKey: newIdempotencyKey() }),
+              api.mapBuilder.updateNode(t.id, { kind }, token, {
+                idempotencyKey: newIdempotencyKey(),
+              }),
             ),
           );
           setNodes((prev) => prev.map((n) => reapplied.find((u) => u.id === n.id) ?? n));
@@ -3210,57 +3215,65 @@ export function MapBuilderPage() {
 
         <div className="relative min-w-0 flex-1">
           {loading ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted">Loading map…</div>
+            <div className="flex h-full items-center justify-center text-sm text-muted">
+              Loading map…
+            </div>
           ) : loadError ? (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-danger">{loadError}</div>
+            <div className="flex h-full items-center justify-center p-6 text-sm text-danger">
+              {loadError}
+            </div>
+          ) : MAP_ENGINE === 'maplibre' ? (
+            <>
+              <BasemapModeSwitcher mode={basemap} onChange={setBasemap} />
+              <MapLibreCanvas
+                center={center}
+                buildings={buildings}
+                nodes={nodes}
+                edges={edges}
+                areas={areas}
+                tool={tool}
+                walkFromId={walkFrom}
+                selection={selection}
+                multiSelection={multiSelection}
+                angleSnap={angleSnap}
+                layerVisibility={layerVisibility}
+                issueBadges={mapIssueBadges}
+                conflictFeatureId={conflict?.id ?? null}
+                geometryEditLocked={Boolean(conflict)}
+                basemapMode={basemap}
+                onSelect={handleCanvasSelect}
+                onBoxSelect={handleBoxSelect}
+                onNodeWalkwayClick={handleWalkwayClick}
+                onWalkwayEmptyClick={(lat, lon) => void handleWalkwayEmptyClick(lat, lon)}
+                onPointDrawn={(lat, lon) => void handleMapClick(lat, lon)}
+                onPolygonDrawn={(ring) => void onPolygonDrawn(ring)}
+                onGeometryCommit={scheduleGeometrySave}
+              />
+              <MapBuilderBulkBar
+                count={multiSelection.length}
+                canChangeKind={
+                  multiSelection.length >= 2 && multiSelection.every((m) => m.kind === 'node')
+                }
+                busy={bulkBusy}
+                onDelete={() => void handleBulkDelete()}
+                onChangeKind={(kind) => void handleBulkChangeKind(kind)}
+              />
+            </>
           ) : (
-            MAP_ENGINE === 'maplibre' ? (
-              <>
-                <BasemapModeSwitcher mode={basemap} onChange={setBasemap} />
-                <MapLibreCanvas
-                  center={center}
-                  buildings={buildings}
-                  nodes={nodes}
-                  edges={edges}
-                  areas={areas}
-                  tool={tool}
-                  walkFromId={walkFrom}
-                  selection={selection}
-                  multiSelection={multiSelection}
-                  angleSnap={angleSnap}
-                  layerVisibility={layerVisibility}
-                  issueBadges={mapIssueBadges}
-                  conflictFeatureId={conflict?.id ?? null}
-                  geometryEditLocked={Boolean(conflict)}
-                  basemapMode={basemap}
-                  onSelect={handleCanvasSelect}
-                  onBoxSelect={handleBoxSelect}
-                  onNodeWalkwayClick={handleWalkwayClick}
-                  onWalkwayEmptyClick={(lat, lon) => void handleWalkwayEmptyClick(lat, lon)}
-                  onPointDrawn={(lat, lon) => void handleMapClick(lat, lon)}
-                  onPolygonDrawn={(ring) => void onPolygonDrawn(ring)}
-                  onGeometryCommit={scheduleGeometrySave}
-                />
-                <MapBuilderBulkBar
-                  count={multiSelection.length}
-                  canChangeKind={
-                    multiSelection.length >= 2 && multiSelection.every((m) => m.kind === 'node')
-                  }
-                  busy={bulkBusy}
-                  onDelete={() => void handleBulkDelete()}
-                  onChangeKind={(kind) => void handleBulkChangeKind(kind)}
-                />
-              </>
-            ) : (
-              <MapContainer center={center} zoom={CAMPUS_DEFAULT_ZOOM} maxZoom={CAMPUS_MAX_ZOOM} className="h-full w-full">
-                <InvalidateMapSize />
-                <RealBasemapTiles mode={basemap} />
-                <BasemapModeSwitcher mode={basemap} onChange={setBasemap} />
-                <RecenterOnSite center={center} />
-                <FitSiteData center={center} points={fitPoints} />
-                <GeomanDrawLayer tool={tool} onPolygon={onPolygonDrawn} />
-                {selection?.kind === 'building' && !conflict ? (
-                  (() => {
+            <MapContainer
+              center={center}
+              zoom={CAMPUS_DEFAULT_ZOOM}
+              maxZoom={CAMPUS_MAX_ZOOM}
+              className="h-full w-full"
+            >
+              <InvalidateMapSize />
+              <RealBasemapTiles mode={basemap} />
+              <BasemapModeSwitcher mode={basemap} onChange={setBasemap} />
+              <RecenterOnSite center={center} />
+              <FitSiteData center={center} points={fitPoints} />
+              <GeomanDrawLayer tool={tool} onPolygon={onPolygonDrawn} />
+              {selection?.kind === 'building' && !conflict
+                ? (() => {
                     const b = buildings.find((x) => x.id === selection.id);
                     if (!b?.footprint?.length) return null;
                     return (
@@ -3273,146 +3286,147 @@ export function MapBuilderPage() {
                       />
                     );
                   })()
-                ) : null}
-                <MapClickLayer
-                  enabled={tool === 'node' || tool === 'poi' || tool === 'entrance'}
-                  onClick={handleMapClick}
-                />
+                : null}
+              <MapClickLayer
+                enabled={tool === 'node' || tool === 'poi' || tool === 'entrance'}
+                onClick={handleMapClick}
+              />
 
-                {areas.map((a) => (
-                  <Polygon
-                    key={a.id}
-                    positions={ringToLatLngsLocal(a.footprint)}
-                    pathOptions={{
-                      color:
-                        conflict?.id === a.id
+              {areas.map((a) => (
+                <Polygon
+                  key={a.id}
+                  positions={ringToLatLngsLocal(a.footprint)}
+                  pathOptions={{
+                    color:
+                      conflict?.id === a.id
+                        ? '#dc2626'
+                        : a.type === 'restricted'
                           ? '#dc2626'
-                          : a.type === 'restricted'
-                            ? '#dc2626'
-                            : '#2563eb',
-                      fillOpacity: 0.15,
+                          : '#2563eb',
+                    fillOpacity: 0.15,
+                    weight:
+                      conflict?.id === a.id || (selection?.kind === 'area' && selection.id === a.id)
+                        ? 3
+                        : 1,
+                  }}
+                  eventHandlers={{ click: () => selectResource({ kind: 'area', id: a.id }) }}
+                />
+              ))}
+
+              {buildings.map((b) => {
+                if (selection?.kind === 'building' && selection.id === b.id && b.footprint?.length)
+                  return null;
+                return b.footprint && b.footprint.length >= 3 ? (
+                  <Polygon
+                    key={b.id}
+                    positions={ringToLatLngsLocal(b.footprint)}
+                    pathOptions={{
+                      color: conflict?.id === b.id ? '#dc2626' : '#0F6B63',
+                      fillOpacity: 0.25,
                       weight:
-                        conflict?.id === a.id || (selection?.kind === 'area' && selection.id === a.id)
+                        conflict?.id === b.id ||
+                        (selection?.kind === 'building' && selection.id === b.id)
                           ? 3
                           : 1,
                     }}
-                    eventHandlers={{ click: () => selectResource({ kind: 'area', id: a.id }) }}
-                  />
-                ))}
-
-                {buildings.map((b) => {
-                  if (selection?.kind === 'building' && selection.id === b.id && b.footprint?.length)
-                    return null;
-                  return b.footprint && b.footprint.length >= 3 ? (
-                    <Polygon
-                      key={b.id}
-                      positions={ringToLatLngsLocal(b.footprint)}
-                      pathOptions={{
-                        color: conflict?.id === b.id ? '#dc2626' : '#0F6B63',
-                        fillOpacity: 0.25,
-                        weight:
-                          conflict?.id === b.id ||
-                          (selection?.kind === 'building' && selection.id === b.id)
-                            ? 3
-                            : 1,
-                      }}
-                      eventHandlers={{
-                        click: () => selectResource({ kind: 'building', id: b.id }),
-                      }}
-                    >
-                      <Tooltip permanent direction="center" className="building-label">
-                        {b.code}
-                      </Tooltip>
-                    </Polygon>
-                  ) : (
-                    <CircleMarker
-                      key={b.id}
-                      center={[b.latitude, b.longitude]}
-                      radius={8}
-                      pathOptions={{
-                        color: conflict?.id === b.id ? '#dc2626' : '#0F6B63',
-                        fillColor: conflict?.id === b.id ? '#dc2626' : '#0F6B63',
-                        fillOpacity: 0.8,
-                      }}
-                      eventHandlers={{
-                        click: () => selectResource({ kind: 'building', id: b.id }),
-                      }}
-                    >
-                      <Tooltip>{b.name}</Tooltip>
-                    </CircleMarker>
-                  );
-                })}
-
-                {selection?.kind === 'draft-building' ? (
-                  <Polygon
-                    positions={ringToLatLngsLocal(selection.footprint)}
-                    pathOptions={{ color: '#f97316', dashArray: '4' }}
-                  />
-                ) : null}
-                {selection?.kind === 'draft-area' ? (
-                  <Polygon
-                    positions={ringToLatLngsLocal(selection.footprint)}
-                    pathOptions={{ color: '#7c3aed', dashArray: '4' }}
-                  />
-                ) : null}
-
-                {edges.map((e) => {
-                  const from = nodes.find((n) => n.id === e.fromNodeId);
-                  const to = nodes.find((n) => n.id === e.toNodeId);
-                  if (!from || !to) return null;
-                  return (
-                    <Polyline
-                      key={e.id}
-                      positions={[
-                        [from.latitude, from.longitude],
-                        [to.latitude, to.longitude],
-                      ]}
-                      pathOptions={{
-                        color: e.blocked ? '#dc2626' : '#64748b',
-                        weight: selection?.kind === 'edge' && selection.id === e.id ? 5 : 3,
-                      }}
-                      eventHandlers={{ click: () => void selectResource({ kind: 'edge', id: e.id }) }}
-                    />
-                  );
-                })}
-
-                {nodes.map((n) => (
-                  <Marker
-                    key={n.id}
-                    position={[n.latitude, n.longitude]}
-                    draggable={tool === 'select' && selection?.kind === 'node' && selection.id === n.id}
                     eventHandlers={{
-                      click: () => {
-                        if (tool === 'walkway') handleWalkwayClick(n.id);
-                        else void selectResource({ kind: 'node', id: n.id });
-                      },
-                      dragend: async (e) => {
-                        if (!token || tool !== 'select') return;
-                        const ll = e.target.getLatLng();
-                        setSaveStatus('saving');
-                        try {
-                          const updated = await api.mapBuilder.updateNode(
-                            n.id,
-                            { latitude: ll.lat, longitude: ll.lng },
-                            token,
-                          );
-                          setNodes((prev) => prev.map((node) => (node.id === n.id ? updated : node)));
-                          const snap = await api.mapBuilder.snapshot(token);
-                          setEdges(snap.edges);
-                          setSaveStatus('saved');
-                          void refreshValidation();
-                        } catch (err) {
-                          setError(err instanceof ApiError ? err.message : 'Could not move node');
-                          setSaveStatus('error');
-                        }
-                      },
+                      click: () => selectResource({ kind: 'building', id: b.id }),
                     }}
                   >
-                    <Tooltip>{n.name ?? n.kind}</Tooltip>
-                  </Marker>
-                ))}
-              </MapContainer>
-            )
+                    <Tooltip permanent direction="center" className="building-label">
+                      {b.code}
+                    </Tooltip>
+                  </Polygon>
+                ) : (
+                  <CircleMarker
+                    key={b.id}
+                    center={[b.latitude, b.longitude]}
+                    radius={8}
+                    pathOptions={{
+                      color: conflict?.id === b.id ? '#dc2626' : '#0F6B63',
+                      fillColor: conflict?.id === b.id ? '#dc2626' : '#0F6B63',
+                      fillOpacity: 0.8,
+                    }}
+                    eventHandlers={{
+                      click: () => selectResource({ kind: 'building', id: b.id }),
+                    }}
+                  >
+                    <Tooltip>{b.name}</Tooltip>
+                  </CircleMarker>
+                );
+              })}
+
+              {selection?.kind === 'draft-building' ? (
+                <Polygon
+                  positions={ringToLatLngsLocal(selection.footprint)}
+                  pathOptions={{ color: '#f97316', dashArray: '4' }}
+                />
+              ) : null}
+              {selection?.kind === 'draft-area' ? (
+                <Polygon
+                  positions={ringToLatLngsLocal(selection.footprint)}
+                  pathOptions={{ color: '#7c3aed', dashArray: '4' }}
+                />
+              ) : null}
+
+              {edges.map((e) => {
+                const from = nodes.find((n) => n.id === e.fromNodeId);
+                const to = nodes.find((n) => n.id === e.toNodeId);
+                if (!from || !to) return null;
+                return (
+                  <Polyline
+                    key={e.id}
+                    positions={[
+                      [from.latitude, from.longitude],
+                      [to.latitude, to.longitude],
+                    ]}
+                    pathOptions={{
+                      color: e.blocked ? '#dc2626' : '#64748b',
+                      weight: selection?.kind === 'edge' && selection.id === e.id ? 5 : 3,
+                    }}
+                    eventHandlers={{ click: () => void selectResource({ kind: 'edge', id: e.id }) }}
+                  />
+                );
+              })}
+
+              {nodes.map((n) => (
+                <Marker
+                  key={n.id}
+                  position={[n.latitude, n.longitude]}
+                  draggable={
+                    tool === 'select' && selection?.kind === 'node' && selection.id === n.id
+                  }
+                  eventHandlers={{
+                    click: () => {
+                      if (tool === 'walkway') handleWalkwayClick(n.id);
+                      else void selectResource({ kind: 'node', id: n.id });
+                    },
+                    dragend: async (e) => {
+                      if (!token || tool !== 'select') return;
+                      const ll = e.target.getLatLng();
+                      setSaveStatus('saving');
+                      try {
+                        const updated = await api.mapBuilder.updateNode(
+                          n.id,
+                          { latitude: ll.lat, longitude: ll.lng },
+                          token,
+                        );
+                        setNodes((prev) => prev.map((node) => (node.id === n.id ? updated : node)));
+                        const snap = await api.mapBuilder.snapshot(token);
+                        setEdges(snap.edges);
+                        setSaveStatus('saved');
+                        void refreshValidation();
+                      } catch (err) {
+                        setError(err instanceof ApiError ? err.message : 'Could not move node');
+                        setSaveStatus('error');
+                      }
+                    },
+                  }}
+                >
+                  <Tooltip>{n.name ?? n.kind}</Tooltip>
+                </Marker>
+              ))}
+            </MapContainer>
           )}
           {emptySite && !loading ? (
             <div className="pointer-events-none absolute inset-x-0 top-4 z-[1000] mx-auto max-w-lg px-4">
@@ -3456,71 +3470,132 @@ export function MapBuilderPage() {
             </div>
           ) : null}
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {conflict ? (
-            <div className="mb-4">
-              <MapBuilderConflictDialog
-                open
-                featureLabel={`${conflict.kind} · ${conflict.id.slice(0, 8)}…`}
-                message={conflict.message}
-                busy={conflictBusy}
-                onReloadRemote={() => void handleConflictReloadRemote()}
-                onRetryLocal={() => void handleConflictRetryLocal()}
-                onDuplicate={() => void handleConflictDuplicate()}
+            {conflict ? (
+              <div className="mb-4">
+                <MapBuilderConflictDialog
+                  open
+                  featureLabel={`${conflict.kind} · ${conflict.id.slice(0, 8)}…`}
+                  message={conflict.message}
+                  busy={conflictBusy}
+                  onReloadRemote={() => void handleConflictReloadRemote()}
+                  onRetryLocal={() => void handleConflictRetryLocal()}
+                  onDuplicate={() => void handleConflictDuplicate()}
+                />
+              </div>
+            ) : null}
+            {MAP_ENGINE === 'maplibre' && rightPanelMode === 'issues' ? (
+              <MapBuilderIssuesPanel
+                validation={validation}
+                clientIssues={clientIssues}
+                pending={validationPending}
+                validateBusy={validateBusy}
+                onReCheck={() => void handleValidateDraft()}
+                onSelectIssue={handleValidationIssue}
               />
-            </div>
-          ) : null}
-          {MAP_ENGINE === 'maplibre' && rightPanelMode === 'issues' ? (
-            <MapBuilderIssuesPanel
-              validation={validation}
-              clientIssues={clientIssues}
-              pending={validationPending}
-              validateBusy={validateBusy}
-              onReCheck={() => void handleValidateDraft()}
-              onSelectIssue={handleValidationIssue}
-            />
-          ) : MAP_ENGINE === 'maplibre' &&
-          (!selection ||
-            selection.kind === 'building' ||
-            selection.kind === 'node' ||
-            selection.kind === 'edge' ||
-            selection.kind === 'area') ? (
-            <div className="space-y-4">
-              {multiSelection.length > 1 ? (
-                <p className="rounded-md border border-line bg-paper-raised/60 px-3 py-2 text-xs text-muted">
-                  {multiSelection.length} features selected — use the bulk action bar below the
-                  map to delete or change category.
-                </p>
-              ) : null}
-              <MapBuilderInspectorPanel
-                selection={
-                  multiSelection.length <= 1 &&
-                  selection &&
-                  (selection.kind === 'building' ||
-                    selection.kind === 'node' ||
-                    selection.kind === 'edge' ||
-                    selection.kind === 'area')
-                    ? selection
-                    : null
-                }
+            ) : MAP_ENGINE === 'maplibre' &&
+              (!selection ||
+                selection.kind === 'building' ||
+                selection.kind === 'node' ||
+                selection.kind === 'edge' ||
+                selection.kind === 'area') ? (
+              <div className="space-y-4">
+                {multiSelection.length > 1 ? (
+                  <p className="rounded-md border border-line bg-paper-raised/60 px-3 py-2 text-xs text-muted">
+                    {multiSelection.length} features selected — use the bulk action bar below the
+                    map to delete or change category.
+                  </p>
+                ) : null}
+                <MapBuilderInspectorPanel
+                  selection={
+                    multiSelection.length <= 1 &&
+                    selection &&
+                    (selection.kind === 'building' ||
+                      selection.kind === 'node' ||
+                      selection.kind === 'edge' ||
+                      selection.kind === 'area')
+                      ? selection
+                      : null
+                  }
+                  buildings={buildings}
+                  nodes={nodes}
+                  edges={edges}
+                  areas={areas}
+                  conflictFeatureId={conflict?.id ?? null}
+                  onAutosaveStatusChange={setInspectorAutosave}
+                  onConflict={(c) => {
+                    setConflict(c);
+                    setRightPanelMode('inspector');
+                  }}
+                  onSavedBuilding={(b) =>
+                    setBuildings((prev) => prev.map((x) => (x.id === b.id ? b : x)))
+                  }
+                  onSavedNode={(n) => setNodes((prev) => prev.map((x) => (x.id === n.id ? n : x)))}
+                  onSavedEdge={(e) => setEdges((prev) => prev.map((x) => (x.id === e.id ? e : x)))}
+                  onSavedArea={(a) => setAreas((prev) => prev.map((x) => (x.id === a.id ? a : x)))}
+                  onDelete={deleteSelected}
+                  save={async ({ kind, id, patch }) => {
+                    if (!token) throw new Error('Not signed in');
+                    setSaveStatus('saving');
+                    try {
+                      if (kind === 'building') {
+                        const updated = await api.mapBuilder.updateBuilding(
+                          id,
+                          patch as Partial<Building> & { expectedUpdatedAt?: string },
+                          token,
+                        );
+                        setSaveStatus('saved');
+                        return updated;
+                      }
+                      if (kind === 'node') {
+                        const updated = await api.mapBuilder.updateNode(id, patch, token);
+                        setSaveStatus('saved');
+                        return updated;
+                      }
+                      if (kind === 'edge') {
+                        const updated = await api.mapBuilder.updateEdge(
+                          id,
+                          patch as Partial<GraphEdge>,
+                          token,
+                        );
+                        setSaveStatus('saved');
+                        return updated;
+                      }
+                      const updated = await api.mapBuilder.updateArea(
+                        id,
+                        patch as Partial<SiteArea>,
+                        token,
+                      );
+                      setSaveStatus('saved');
+                      return updated;
+                    } catch (err) {
+                      setSaveStatus('error');
+                      throw err;
+                    }
+                  }}
+                />
+                {multiSelection.length <= 1 && selection?.kind === 'building' ? (
+                  <BuildingGeometryControls
+                    building={buildings.find((b) => b.id === selection.id)}
+                    onAttachFootprint={(buildingId) => {
+                      setAttachFootprintBuildingId(buildingId);
+                      setTool('building');
+                    }}
+                  />
+                ) : null}
+              </div>
+            ) : (
+              <PropertiesPanel
+                selection={selection}
                 buildings={buildings}
                 nodes={nodes}
-                edges={edges}
-                areas={areas}
-                conflictFeatureId={conflict?.id ?? null}
-                onAutosaveStatusChange={setInspectorAutosave}
-                onConflict={(c) => {
-                  setConflict(c);
-                  setRightPanelMode('inspector');
+                onAttachFootprint={(buildingId) => {
+                  setAttachFootprintBuildingId(buildingId);
+                  setTool('building');
                 }}
-                onSavedBuilding={(b) =>
-                  setBuildings((prev) => prev.map((x) => (x.id === b.id ? b : x)))
-                }
-                onSavedNode={(n) => setNodes((prev) => prev.map((x) => (x.id === n.id ? n : x)))}
-                onSavedEdge={(e) => setEdges((prev) => prev.map((x) => (x.id === e.id ? e : x)))}
-                onSavedArea={(a) => setAreas((prev) => prev.map((x) => (x.id === a.id ? a : x)))}
-                onDelete={deleteSelected}
-                save={async ({ kind, id, patch }) => {
-                  if (!token) throw new Error('Not signed in');
+                onSaveBuilding={saveDraftBuilding}
+                onSaveArea={saveDraftArea}
+                onUpdate={async (kind, id, patch) => {
+                  if (!token) return;
                   setSaveStatus('saving');
                   try {
                     if (kind === 'building') {
@@ -3529,159 +3604,112 @@ export function MapBuilderPage() {
                         patch as Partial<Building> & { expectedUpdatedAt?: string },
                         token,
                       );
-                      setSaveStatus('saved');
-                      return updated;
-                    }
-                    if (kind === 'node') {
+                      setBuildings((prev) => prev.map((b) => (b.id === id ? updated : b)));
+                    } else if (kind === 'node') {
                       const updated = await api.mapBuilder.updateNode(id, patch, token);
-                      setSaveStatus('saved');
-                      return updated;
+                      setNodes((prev) => prev.map((n) => (n.id === id ? updated : n)));
                     }
-                    if (kind === 'edge') {
-                      const updated = await api.mapBuilder.updateEdge(
-                        id,
-                        patch as Partial<GraphEdge>,
-                        token,
-                      );
-                      setSaveStatus('saved');
-                      return updated;
-                    }
-                    const updated = await api.mapBuilder.updateArea(
-                      id,
-                      patch as Partial<SiteArea>,
-                      token,
-                    );
                     setSaveStatus('saved');
-                    return updated;
+                    void refreshValidation();
                   } catch (err) {
+                    if (
+                      err instanceof ApiError &&
+                      err.status === 409 &&
+                      err.code === 'STALE_EDIT'
+                    ) {
+                      setConflict({
+                        kind,
+                        id,
+                        localPatch: patch,
+                        message: err.message,
+                      });
+                    } else {
+                      setError(err instanceof ApiError ? err.message : 'Update failed');
+                    }
                     setSaveStatus('error');
-                    throw err;
                   }
                 }}
+                onDelete={deleteSelected}
               />
-              {multiSelection.length <= 1 && selection?.kind === 'building' ? (
-                <BuildingGeometryControls
-                  building={buildings.find((b) => b.id === selection.id)}
-                  onAttachFootprint={(buildingId) => {
-                    setAttachFootprintBuildingId(buildingId);
-                    setTool('building');
+            )}
+            {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+            {publishSuccess ? (
+              <p className="mt-3 text-sm font-semibold text-accent">{publishSuccess}</p>
+            ) : null}
+            {MAP_ENGINE !== 'maplibre' ? (
+              <div className="mt-6 space-y-3 border-t border-line pt-4">
+                <button
+                  type="button"
+                  className="btn-secondary inline-flex w-full items-center justify-center gap-2"
+                  disabled={!draftVersion || validateBusy}
+                  onClick={() => void handleValidateDraft()}
+                >
+                  {validateBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4" />
+                  )}
+                  {validateBusy ? 'Validating…' : 'Validate Draft'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary inline-flex w-full items-center justify-center gap-2"
+                  disabled={!draftVersion || previewBusy}
+                  onClick={() => {
+                    if (!token || !draftVersion || !activeSiteId) return;
+                    setPreviewBusy(true);
+                    setPreviewNote(null);
+                    void (async () => {
+                      try {
+                        const val = await api.mapBuilder.validateVersion(draftVersion.id, token);
+                        setValidation(val);
+                        if (val.summary.errors > 0) {
+                          setPreviewNote(
+                            `Draft has ${val.summary.errors} validation error(s). Preview shows incomplete data — fix before publishing.`,
+                          );
+                        } else if (val.summary.warnings > 0) {
+                          setPreviewNote(
+                            `Draft has ${val.summary.warnings} warning(s). Preview is available.`,
+                          );
+                        }
+                        enterPreview({
+                          versionId: draftVersion.id,
+                          versionNumber: draftVersion.versionNumber,
+                          siteId: activeSiteId,
+                          validation: val,
+                        });
+                      } catch (err) {
+                        setPreviewNote(
+                          err instanceof ApiError ? err.message : 'Could not start preview',
+                        );
+                      } finally {
+                        setPreviewBusy(false);
+                      }
+                    })();
                   }}
-                />
-              ) : null}
-            </div>
-          ) : (
-            <PropertiesPanel
-              selection={selection}
-              buildings={buildings}
-              nodes={nodes}
-              onAttachFootprint={(buildingId) => {
-                setAttachFootprintBuildingId(buildingId);
-                setTool('building');
-              }}
-              onSaveBuilding={saveDraftBuilding}
-              onSaveArea={saveDraftArea}
-              onUpdate={async (kind, id, patch) => {
-                if (!token) return;
-                setSaveStatus('saving');
-                try {
-                  if (kind === 'building') {
-                    const updated = await api.mapBuilder.updateBuilding(
-                      id,
-                      patch as Partial<Building> & { expectedUpdatedAt?: string },
-                      token,
-                    );
-                    setBuildings((prev) => prev.map((b) => (b.id === id ? updated : b)));
-                  } else if (kind === 'node') {
-                    const updated = await api.mapBuilder.updateNode(id, patch, token);
-                    setNodes((prev) => prev.map((n) => (n.id === id ? updated : n)));
-                  }
-                  setSaveStatus('saved');
-                  void refreshValidation();
-                } catch (err) {
-                  if (err instanceof ApiError && err.status === 409 && err.code === 'STALE_EDIT') {
-                    setConflict({
-                      kind,
-                      id,
-                      localPatch: patch,
-                      message: err.message,
-                    });
-                  } else {
-                    setError(err instanceof ApiError ? err.message : 'Update failed');
-                  }
-                  setSaveStatus('error');
-                }
-              }}
-              onDelete={deleteSelected}
-            />
-          )}
-          {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-          {publishSuccess ? <p className="mt-3 text-sm font-semibold text-accent">{publishSuccess}</p> : null}
-          {MAP_ENGINE !== 'maplibre' ? (
-          <div className="mt-6 space-y-3 border-t border-line pt-4">
-            <button
-              type="button"
-              className="btn-secondary inline-flex w-full items-center justify-center gap-2"
-              disabled={!draftVersion || validateBusy}
-              onClick={() => void handleValidateDraft()}
-            >
-              {validateBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-              {validateBusy ? 'Validating…' : 'Validate Draft'}
-            </button>
-            <button
-              type="button"
-              className="btn-primary inline-flex w-full items-center justify-center gap-2"
-              disabled={!draftVersion || previewBusy}
-              onClick={() => {
-                if (!token || !draftVersion || !activeSiteId) return;
-                setPreviewBusy(true);
-                setPreviewNote(null);
-                void (async () => {
-                  try {
-                    const val = await api.mapBuilder.validateVersion(draftVersion.id, token);
-                    setValidation(val);
-                    if (val.summary.errors > 0) {
-                      setPreviewNote(
-                        `Draft has ${val.summary.errors} validation error(s). Preview shows incomplete data — fix before publishing.`,
-                      );
-                    } else if (val.summary.warnings > 0) {
-                      setPreviewNote(
-                        `Draft has ${val.summary.warnings} warning(s). Preview is available.`,
-                      );
-                    }
-                    enterPreview({
-                      versionId: draftVersion.id,
-                      versionNumber: draftVersion.versionNumber,
-                      siteId: activeSiteId,
-                      validation: val,
-                    });
-                  } catch (err) {
-                    setPreviewNote(
-                      err instanceof ApiError ? err.message : 'Could not start preview',
-                    );
-                  } finally {
-                    setPreviewBusy(false);
-                  }
-                })();
-              }}
-            >
-              <Eye className="h-4 w-4" />
-              {previewBusy ? 'Starting preview…' : 'Preview Draft'}
-            </button>
-            {previewNote ? <p className="text-xs text-muted">{previewNote}</p> : null}
-            <button
-              type="button"
-              className="btn-primary inline-flex w-full items-center justify-center gap-2 bg-accent-success hover:opacity-90"
-              disabled={!draftVersion || publishBusy || publishBlockedByValidation(validation)}
-              onClick={() => setPublishDialogOpen(true)}
-            >
-              {publishBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {publishBusy ? 'Publishing…' : 'Publish Map'}
-            </button>
-          </div>
-          ) : null}
-          {MAP_ENGINE !== 'maplibre' ? (
-            <ValidationPanel validation={validation} onSelectIssue={handleValidationIssue} />
-          ) : null}
+                >
+                  <Eye className="h-4 w-4" />
+                  {previewBusy ? 'Starting preview…' : 'Preview Draft'}
+                </button>
+                {previewNote ? <p className="text-xs text-muted">{previewNote}</p> : null}
+                <button
+                  type="button"
+                  className="btn-primary inline-flex w-full items-center justify-center gap-2 bg-accent-success hover:opacity-90"
+                  disabled={!draftVersion || publishBusy || publishBlockedByValidation(validation)}
+                  onClick={() => setPublishDialogOpen(true)}
+                >
+                  {publishBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  {publishBusy ? 'Publishing…' : 'Publish Map'}
+                </button>
+              </div>
+            ) : null}
+            {MAP_ENGINE !== 'maplibre' ? (
+              <ValidationPanel validation={validation} onSelectIssue={handleValidationIssue} />
+            ) : null}
           </div>
         </aside>
       </div>
@@ -3703,9 +3731,7 @@ export function MapBuilderPage() {
           errorCount={displayIssueCounts.errors}
           warningCount={displayIssueCounts.warnings}
           onOpenIssues={() => setRightPanelMode('issues')}
-          publishDisabled={
-            !draftVersion || publishBusy || displayIssueCounts.errors > 0
-          }
+          publishDisabled={!draftVersion || publishBusy || displayIssueCounts.errors > 0}
           publishBusy={publishBusy}
           publishBlockers={displayIssueCounts.blockers}
           onPublish={() => setPublishDialogOpen(true)}
@@ -3720,13 +3746,14 @@ export function MapBuilderPage() {
           >
             <h2 className="text-lg font-semibold text-ink">Publish this map version?</h2>
             <p className="mt-2 whitespace-pre-line text-sm text-muted">
-              {publishConfirmMessage(
-                draftVersion.versionNumber,
-                validation?.summary.warnings ?? 0,
-              )}
+              {publishConfirmMessage(draftVersion.versionNumber, validation?.summary.warnings ?? 0)}
             </p>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button type="button" className="btn-secondary" onClick={() => setPublishDialogOpen(false)}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setPublishDialogOpen(false)}
+              >
                 Cancel
               </button>
               <button
@@ -3855,11 +3882,7 @@ function PropertiesPanel({
     description?: string | null;
   }) => void;
   onSaveArea: (meta: { name: string; type: SiteArea['type'] }) => void;
-  onUpdate: (
-    kind: 'building' | 'node',
-    id: string,
-    patch: Record<string, unknown>,
-  ) => void;
+  onUpdate: (kind: 'building' | 'node', id: string, patch: Record<string, unknown>) => void;
   onDelete: () => void;
 }) {
   if (!selection) {
@@ -3867,12 +3890,7 @@ function PropertiesPanel({
   }
 
   if (selection.kind === 'draft-building') {
-    return (
-      <DraftBuildingForm
-        onSave={onSaveBuilding}
-        onCancel={() => window.location.reload()}
-      />
-    );
+    return <DraftBuildingForm onSave={onSaveBuilding} onCancel={() => window.location.reload()} />;
   }
   if (selection.kind === 'draft-area') {
     return <DraftAreaForm onSave={onSaveArea} />;
@@ -3906,7 +3924,9 @@ function PropertiesPanel({
           }
         />
         {b.footprint?.length ? (
-          <p className="text-xs text-muted">Drag footprint vertices on the map — changes autosave after you release.</p>
+          <p className="text-xs text-muted">
+            Drag footprint vertices on the map — changes autosave after you release.
+          </p>
         ) : (
           <button
             type="button"
@@ -3947,8 +3967,14 @@ function PropertiesPanel({
     return (
       <div>
         <p className="font-semibold text-ink">Walkway</p>
-        <p className="mt-1 text-sm text-muted">Select endpoints on the map. Use delete to remove.</p>
-        <button type="button" className="btn-danger mt-4 inline-flex items-center gap-2" onClick={onDelete}>
+        <p className="mt-1 text-sm text-muted">
+          Select endpoints on the map. Use delete to remove.
+        </p>
+        <button
+          type="button"
+          className="btn-danger mt-4 inline-flex items-center gap-2"
+          onClick={onDelete}
+        >
           <Trash2 className="h-4 w-4" /> Delete walkway
         </button>
       </div>
@@ -3959,7 +3985,11 @@ function PropertiesPanel({
     return (
       <div>
         <p className="font-semibold text-ink">Area polygon</p>
-        <button type="button" className="btn-danger mt-4 inline-flex items-center gap-2" onClick={onDelete}>
+        <button
+          type="button"
+          className="btn-danger mt-4 inline-flex items-center gap-2"
+          onClick={onDelete}
+        >
           <Trash2 className="h-4 w-4" /> Delete area
         </button>
       </div>
@@ -3981,8 +4011,18 @@ function DraftBuildingForm({
   return (
     <div className="space-y-3">
       <p className="font-semibold text-ink">New building footprint</p>
-      <input className="input w-full" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-      <input className="input w-full" placeholder="Code" value={code} onChange={(e) => setCode(e.target.value)} />
+      <input
+        className="input w-full"
+        placeholder="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <input
+        className="input w-full"
+        placeholder="Code"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+      />
       <input
         className="input w-full"
         type="number"
@@ -4012,8 +4052,17 @@ function DraftAreaForm({
   return (
     <div className="space-y-3">
       <p className="font-semibold text-ink">New area</p>
-      <input className="input w-full" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-      <select className="input w-full" value={type} onChange={(e) => setType(e.target.value as SiteArea['type'])}>
+      <input
+        className="input w-full"
+        placeholder="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <select
+        className="input w-full"
+        value={type}
+        onChange={(e) => setType(e.target.value as SiteArea['type'])}
+      >
         <option value="parking">Parking</option>
         <option value="open_area">Open area</option>
         <option value="restricted">Restricted</option>
@@ -4069,7 +4118,11 @@ function EntityForm({
       >
         <Save className="h-4 w-4" /> Save changes
       </button>
-      <button type="button" className="btn-danger inline-flex w-full items-center justify-center gap-2" onClick={onDelete}>
+      <button
+        type="button"
+        className="btn-danger inline-flex w-full items-center justify-center gap-2"
+        onClick={onDelete}
+      >
         <Trash2 className="h-4 w-4" /> Delete
       </button>
     </div>

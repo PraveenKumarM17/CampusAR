@@ -51,7 +51,11 @@ function purgeExpired(now: number): void {
   }
 }
 
-function takeToken(bucketKey: string, max: number, now: number): {
+function takeToken(
+  bucketKey: string,
+  max: number,
+  now: number,
+): {
   limited: boolean;
   remaining: number;
   resetAt: number;
@@ -71,12 +75,7 @@ function takeToken(bucketKey: string, max: number, now: number): {
   };
 }
 
-function setRateLimitHeaders(
-  res: Response,
-  max: number,
-  remaining: number,
-  resetAt: number,
-): void {
+function setRateLimitHeaders(res: Response, max: number, remaining: number, resetAt: number): void {
   res.setHeader('RateLimit-Limit', String(max));
   res.setHeader('RateLimit-Remaining', String(remaining));
   res.setHeader('RateLimit-Reset', String(Math.ceil(resetAt / 1000)));

@@ -71,18 +71,22 @@ async function cleanup() {
     `DELETE FROM indoor_maps WHERE building_id IN (SELECT id FROM buildings WHERE site_id = ANY($1::uuid[]))`,
     [[SITE_G, SITE_OTHER]],
   );
-  await pool.query(`DELETE FROM floor_pois WHERE building_id IN (SELECT id FROM buildings WHERE site_id = ANY($1::uuid[]))`, [
-    [SITE_G, SITE_OTHER],
-  ]);
-  await pool.query(`DELETE FROM floor_corridors WHERE building_id IN (SELECT id FROM buildings WHERE site_id = ANY($1::uuid[]))`, [
-    [SITE_G, SITE_OTHER],
-  ]);
-  await pool.query(`DELETE FROM rooms WHERE building_id IN (SELECT id FROM buildings WHERE site_id = ANY($1::uuid[]))`, [
-    [SITE_G, SITE_OTHER],
-  ]);
-  await pool.query(`DELETE FROM floors WHERE building_id IN (SELECT id FROM buildings WHERE site_id = ANY($1::uuid[]))`, [
-    [SITE_G, SITE_OTHER],
-  ]);
+  await pool.query(
+    `DELETE FROM floor_pois WHERE building_id IN (SELECT id FROM buildings WHERE site_id = ANY($1::uuid[]))`,
+    [[SITE_G, SITE_OTHER]],
+  );
+  await pool.query(
+    `DELETE FROM floor_corridors WHERE building_id IN (SELECT id FROM buildings WHERE site_id = ANY($1::uuid[]))`,
+    [[SITE_G, SITE_OTHER]],
+  );
+  await pool.query(
+    `DELETE FROM rooms WHERE building_id IN (SELECT id FROM buildings WHERE site_id = ANY($1::uuid[]))`,
+    [[SITE_G, SITE_OTHER]],
+  );
+  await pool.query(
+    `DELETE FROM floors WHERE building_id IN (SELECT id FROM buildings WHERE site_id = ANY($1::uuid[]))`,
+    [[SITE_G, SITE_OTHER]],
+  );
   await pool.query(`DELETE FROM nodes WHERE site_id = ANY($1::uuid[])`, [[SITE_G, SITE_OTHER]]);
   await pool.query(`DELETE FROM buildings WHERE site_id = ANY($1::uuid[])`, [[SITE_G, SITE_OTHER]]);
   await pool.query(`DELETE FROM sites WHERE id = ANY($1::uuid[])`, [[SITE_G, SITE_OTHER]]);
@@ -102,17 +106,14 @@ describe('indoor graph map builder', () => {
     const token = await loginAdmin();
     const headers = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_G };
 
-    const buildingRes = await request(app)
-      .post('/api/admin/buildings')
-      .set(headers)
-      .send({
-        name: 'Tower',
-        code: 'TWR',
-        description: null,
-        latitude: 13.01,
-        longitude: 77.55,
-        floorsCount: 2,
-      });
+    const buildingRes = await request(app).post('/api/admin/buildings').set(headers).send({
+      name: 'Tower',
+      code: 'TWR',
+      description: null,
+      latitude: 13.01,
+      longitude: 77.55,
+      floorsCount: 2,
+    });
     expect(buildingRes.status).toBe(201);
     const buildingId = buildingRes.body.id as string;
 
@@ -204,8 +205,9 @@ describe('indoor graph map builder', () => {
 
     await request(app).put(`/api/indoor/maps/${mapId}`).set(headers).send({ status: 'published' });
 
-    const search = await request(app)
-      .get(`/api/indoor/places/search?q=ICU&buildingId=${buildingId}`);
+    const search = await request(app).get(
+      `/api/indoor/places/search?q=ICU&buildingId=${buildingId}`,
+    );
     expect(search.status).toBe(200);
     expect(search.body.some((p: { name: string }) => p.name === 'ICU')).toBe(true);
 
@@ -233,28 +235,22 @@ describe('indoor graph map builder', () => {
     const headersA = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_G };
     const headersB = { Authorization: `Bearer ${token}`, 'X-Site-Id': SITE_OTHER };
 
-    const bA = await request(app)
-      .post('/api/admin/buildings')
-      .set(headersA)
-      .send({
-        name: 'A',
-        code: 'A1',
-        description: null,
-        latitude: 13.01,
-        longitude: 77.55,
-        floorsCount: 1,
-      });
-    const bB = await request(app)
-      .post('/api/admin/buildings')
-      .set(headersB)
-      .send({
-        name: 'B',
-        code: 'B1',
-        description: null,
-        latitude: 13.02,
-        longitude: 77.56,
-        floorsCount: 1,
-      });
+    const bA = await request(app).post('/api/admin/buildings').set(headersA).send({
+      name: 'A',
+      code: 'A1',
+      description: null,
+      latitude: 13.01,
+      longitude: 77.55,
+      floorsCount: 1,
+    });
+    const bB = await request(app).post('/api/admin/buildings').set(headersB).send({
+      name: 'B',
+      code: 'B1',
+      description: null,
+      latitude: 13.02,
+      longitude: 77.56,
+      floorsCount: 1,
+    });
 
     const fA = await request(app)
       .post('/api/admin/map-builder/indoor/floors')
@@ -273,7 +269,13 @@ describe('indoor graph map builder', () => {
     const nA = await request(app)
       .post('/api/admin/map-builder/indoor/graph/nodes')
       .set(headersA)
-      .send({ buildingId: bA.body.id, floorId: fA.body.id, planX: 1, planY: 1, mapId: mapA.body.id });
+      .send({
+        buildingId: bA.body.id,
+        floorId: fA.body.id,
+        planX: 1,
+        planY: 1,
+        mapId: mapA.body.id,
+      });
 
     const mapB = await request(app)
       .post('/api/admin/map-builder/indoor/graph/ensure-map')
@@ -283,7 +285,13 @@ describe('indoor graph map builder', () => {
     const nB = await request(app)
       .post('/api/admin/map-builder/indoor/graph/nodes')
       .set(headersB)
-      .send({ buildingId: bB.body.id, floorId: fB.body.id, planX: 2, planY: 2, mapId: mapB.body.id });
+      .send({
+        buildingId: bB.body.id,
+        floorId: fB.body.id,
+        planX: 2,
+        planY: 2,
+        mapId: mapB.body.id,
+      });
 
     const cross = await request(app)
       .post('/api/admin/map-builder/indoor/graph/edges')

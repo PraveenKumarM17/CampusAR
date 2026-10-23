@@ -88,14 +88,7 @@ export interface TwinEntrance {
 }
 
 export type CampusPoiCategory =
-  | 'gate'
-  | 'plaza'
-  | 'junction'
-  | 'landmark'
-  | 'medical'
-  | 'security'
-  | 'emergency_exit'
-  | 'other';
+  'gate' | 'plaza' | 'junction' | 'landmark' | 'medical' | 'security' | 'emergency_exit' | 'other';
 
 export interface CampusPOI {
   id: string;

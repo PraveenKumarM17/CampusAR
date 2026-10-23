@@ -83,7 +83,10 @@ export function FloorLayoutViewer({
   if (error) return <p className="text-sm text-muted">{error}</p>;
   if (!layout) return <p className="text-sm text-muted">Loading floor plan…</p>;
 
-  if (layout.floors.length === 0 || (rooms.length === 0 && corridors.length === 0 && pois.length === 0)) {
+  if (
+    layout.floors.length === 0 ||
+    (rooms.length === 0 && corridors.length === 0 && pois.length === 0)
+  ) {
     return (
       <p className="rounded-md border border-line bg-paper-raised px-3 py-4 text-sm text-muted">
         This place isn&apos;t on the map yet.
@@ -132,7 +135,12 @@ export function FloorLayoutViewer({
               stroke="#1d4ed8"
               strokeWidth={0.08}
             />
-            <text x={r.localGeometry![0].x + 0.2} y={r.localGeometry![0].y + 0.6} fontSize={0.5} fill="#1e3a8a">
+            <text
+              x={r.localGeometry![0].x + 0.2}
+              y={r.localGeometry![0].y + 0.6}
+              fontSize={0.5}
+              fill="#1e3a8a"
+            >
               {r.name}
             </text>
           </g>

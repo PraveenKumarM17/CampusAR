@@ -32,16 +32,16 @@ stateDiagram-v2
 
 ## Events (logical types)
 
-| Type | Direction | Payload intent |
-|------|-----------|----------------|
-| `hello` | S→C | version, server time |
-| `subscribe` | C→S | channels / campusId |
-| `crowd` | S→C | edge id → occupancy (diff or batch) |
-| `sensors` | S→C | latest readings summary |
-| `hazard` | S→C | created/updated/expired hazard summary |
-| `iot_status` | S→C | simulator/bridge running state |
-| `ping` / `pong` | both | heartbeat |
-| `error` | S→C | auth/rate/protocol |
+| Type            | Direction | Payload intent                         |
+| --------------- | --------- | -------------------------------------- |
+| `hello`         | S→C       | version, server time                   |
+| `subscribe`     | C→S       | channels / campusId                    |
+| `crowd`         | S→C       | edge id → occupancy (diff or batch)    |
+| `sensors`       | S→C       | latest readings summary                |
+| `hazard`        | S→C       | created/updated/expired hazard summary |
+| `iot_status`    | S→C       | simulator/bridge running state         |
+| `ping` / `pong` | both      | heartbeat                              |
+| `error`         | S→C       | auth/rate/protocol                     |
 
 **Compatibility:** Clients ignore unknown event types.
 
@@ -63,11 +63,11 @@ Future:
 
 ## Reconnection
 
-| Rule | Value guidance |
-|------|----------------|
-| Backoff | 1s → 30s exponential + jitter |
+| Rule            | Value guidance                                                    |
+| --------------- | ----------------------------------------------------------------- |
+| Backoff         | 1s → 30s exponential + jitter                                     |
 | After reconnect | Request HTTP snapshot **or** server `snapshot` event before diffs |
-| Auth expiry | Refresh token then reconnect; else continue guest public |
+| Auth expiry     | Refresh token then reconnect; else continue guest public          |
 
 UI: “Live updates paused” when disconnected during nav/twin.
 
@@ -83,12 +83,12 @@ UI: “Live updates paused” when disconnected during nav/twin.
 
 ## Failure handling
 
-| Failure | Handling |
-|---------|----------|
-| Server restart | Clients reconnect; resync snapshot |
-| Malformed message | Log; drop message; don’t kill socket unless abusive |
-| Slow consumer | Disconnect or skip non-critical crowd frames |
-| Broadcast storm | Coalesce crowd updates per tick (simulator already 10s) |
+| Failure           | Handling                                                |
+| ----------------- | ------------------------------------------------------- |
+| Server restart    | Clients reconnect; resync snapshot                      |
+| Malformed message | Log; drop message; don’t kill socket unless abusive     |
+| Slow consumer     | Disconnect or skip non-critical crowd frames            |
+| Broadcast storm   | Coalesce crowd updates per tick (simulator already 10s) |
 
 REST remains available if WS down (degraded freshness).
 
@@ -108,12 +108,12 @@ flowchart TB
   A1 --> R
 ```
 
-| Scale | Approach |
-|-------|----------|
-| Single instance | In-memory hub |
-| Multi instance | Redis (or NATS) pub/sub; each WS node fans out locally |
-| Sticky sessions | Optional at proxy if needed |
-| Large campuses | Per-campus topics; binary/compact payloads later |
+| Scale           | Approach                                               |
+| --------------- | ------------------------------------------------------ |
+| Single instance | In-memory hub                                          |
+| Multi instance  | Redis (or NATS) pub/sub; each WS node fans out locally |
+| Sticky sessions | Optional at proxy if needed                            |
+| Large campuses  | Per-campus topics; binary/compact payloads later       |
 
 Do not put pathfinding on the WS thread; only serialize and emit.
 

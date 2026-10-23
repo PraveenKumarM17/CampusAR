@@ -38,7 +38,11 @@ export function MapBuilderIssuesPanel({
           disabled={validateBusy}
           onClick={onReCheck}
         >
-          {validateBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          {validateBusy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
           Re-check now
         </button>
       </div>
@@ -51,7 +55,11 @@ export function MapBuilderIssuesPanel({
 
       <p className="text-xs text-muted">
         {errors.length} errors · {warnings.length} warnings
-        {validation && !pending ? (validation.valid ? ' · server: valid' : ' · server: invalid') : null}
+        {validation && !pending
+          ? validation.valid
+            ? ' · server: valid'
+            : ' · server: invalid'
+          : null}
       </p>
 
       {displayIssues.length === 0 ? (
@@ -59,18 +67,10 @@ export function MapBuilderIssuesPanel({
       ) : (
         <div className="space-y-4">
           {errors.length > 0 ? (
-            <IssueGroup
-              title="Errors"
-              issues={errors}
-              onSelectIssue={onSelectIssue}
-            />
+            <IssueGroup title="Errors" issues={errors} onSelectIssue={onSelectIssue} />
           ) : null}
           {warnings.length > 0 ? (
-            <IssueGroup
-              title="Warnings"
-              issues={warnings}
-              onSelectIssue={onSelectIssue}
-            />
+            <IssueGroup title="Warnings" issues={warnings} onSelectIssue={onSelectIssue} />
           ) : null}
         </div>
       )}
