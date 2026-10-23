@@ -29,8 +29,11 @@ interface XRRigidTransform {
   readonly orientation: DOMPointReadOnly;
 }
 
+// Opaque WebXR handles: members are not used, but the names must exist for the typings above.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface XRSpace {}
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface XRReferenceSpace extends XRSpace {}
 
 interface XRAnchor {

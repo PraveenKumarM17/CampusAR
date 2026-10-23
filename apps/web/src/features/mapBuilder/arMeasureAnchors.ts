@@ -105,7 +105,7 @@ function quatDot(a: Quat, b: Quat): number {
 
 /** Spherical linear interpolation between two unit quaternions. */
 export function slerpQuat(a: Quat, b: Quat, t: number): Quat {
-  let q1 = quatNormalize(a);
+  const q1 = quatNormalize(a);
   let q2 = quatNormalize(b);
   let dot = quatDot(q1, q2);
   if (dot < 0) {

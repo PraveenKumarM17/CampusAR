@@ -304,7 +304,12 @@ export const measurementPathService = {
       throw new AppError('PATH_NOT_FOUND', 'Measurement path not found', 404);
     }
 
-    const features: Feature[] = pathDetails.points.map((point): Feature => ({
+    const geoPoints = pathDetails.points.filter(
+      (p): p is typeof p & { latitude: number; longitude: number } =>
+        p.latitude != null && p.longitude != null,
+    );
+
+    const features: Feature[] = geoPoints.map((point): Feature => ({
       type: 'Feature',
       geometry: {
         type: 'Point',
@@ -320,12 +325,12 @@ export const measurementPathService = {
     }));
 
     // Add LineString feature for the path
-    if (pathDetails.points.length >= 2) {
+    if (geoPoints.length >= 2) {
       features.push({
         type: 'Feature',
         geometry: {
           type: 'LineString',
-          coordinates: pathDetails.points.map((p) => [p.longitude, p.latitude, p.altitude || 0]),
+          coordinates: geoPoints.map((p) => [p.longitude, p.latitude, p.altitude || 0]),
         },
         properties: {
           name: pathDetails.name,
