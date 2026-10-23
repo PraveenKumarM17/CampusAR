@@ -16,6 +16,9 @@ export const env = {
     'DATABASE_URL',
     'postgresql://campusar:campusar_secret@localhost:5433/campusar',
   ),
+  /** Empty disables the pin-point store. Example: mongodb://localhost:27018/campusar */
+  mongoUrl: process.env.MONGODB_URL ?? '',
+  mongoDb: process.env.MONGODB_DB ?? 'campusar',
   jwtAccessSecret: required('JWT_ACCESS_SECRET', 'dev-access-secret-min-32-characters!!'),
   jwtRefreshSecret: required('JWT_REFRESH_SECRET', 'dev-refresh-secret-min-32-characters!'),
   jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES ?? '8h',
@@ -23,4 +26,10 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
   nodeEnv: process.env.NODE_ENV ?? 'development',
   iotSimulator: (process.env.IOT_SIMULATOR ?? 'true').toLowerCase() !== 'false',
+  /**
+   * Map-editor rate limits (read by mapEditorRateLimit middleware):
+   * MAP_EDITOR_RATE_LIMIT_WINDOW_MS, MAP_EDITOR_RATE_LIMIT_MAX,
+   * MAP_EDITOR_WRITE_RATE_LIMIT_MAX, MAP_EDITOR_HEAVY_RATE_LIMIT_MAX,
+   * MAP_EDITOR_RATE_LIMIT_FORCE (test only).
+   */
 };

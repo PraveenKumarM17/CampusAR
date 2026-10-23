@@ -217,6 +217,106 @@ describe('map builder stabilization', () => {
     expect(updated!.distanceM).not.toBe(before);
   });
 
+  it.skipIf(!canUseDb)('rejects stale edits for nodes, edges, and areas', async () => {
+    const token = await loginAdmin();
+
+    const node = await request(app)
+      .post('/api/admin/paths/nodes')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({ latitude: 13.015, longitude: 77.555, kind: 'outdoor', name: 'OCC Node' });
+    expect(node.status).toBe(201);
+    expect(node.body.updatedAt).toBeTruthy();
+    const nodeStamp = node.body.updatedAt as string;
+
+    const nodeOk = await request(app)
+      .put(`/api/admin/paths/nodes/${node.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({ name: 'OCC Node v2', expectedUpdatedAt: nodeStamp });
+    expect(nodeOk.status).toBe(200);
+    expect(nodeOk.body.name).toBe('OCC Node v2');
+
+    const nodeStale = await request(app)
+      .put(`/api/admin/paths/nodes/${node.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({ name: 'OCC Node stale', expectedUpdatedAt: nodeStamp });
+    expect(nodeStale.status).toBe(409);
+    expect(nodeStale.body.code).toBe('STALE_EDIT');
+
+    const n2 = await request(app)
+      .post('/api/admin/paths/nodes')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({ latitude: 13.016, longitude: 77.556, kind: 'outdoor', name: 'OCC Node B' });
+    expect(n2.status).toBe(201);
+
+    const edge = await request(app)
+      .post('/api/admin/paths/edges')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({
+        fromNodeId: node.body.id,
+        toNodeId: n2.body.id,
+        distanceM: 50,
+        kind: 'walkway',
+        bidirectional: true,
+        blocked: false,
+        safetyScore: 0.9,
+        crowdScore: 0.2,
+        accessibilityScore: 0.9,
+      });
+    expect(edge.status).toBe(201);
+    expect(edge.body.updatedAt).toBeTruthy();
+    const edgeStamp = edge.body.updatedAt as string;
+
+    const edgeOk = await request(app)
+      .put(`/api/admin/paths/edges/${edge.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({ blocked: true, expectedUpdatedAt: edgeStamp });
+    expect(edgeOk.status).toBe(200);
+    expect(edgeOk.body.blocked).toBe(true);
+
+    const edgeStale = await request(app)
+      .put(`/api/admin/paths/edges/${edge.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({ blocked: false, expectedUpdatedAt: edgeStamp });
+    expect(edgeStale.status).toBe(409);
+    expect(edgeStale.body.code).toBe('STALE_EDIT');
+
+    const area = await request(app)
+      .post('/api/admin/areas')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({
+        name: 'OCC Lot',
+        type: 'parking',
+        footprint: VALID_FOOTPRINT,
+      });
+    expect(area.status).toBe(201);
+    expect(area.body.updatedAt).toBeTruthy();
+    const areaStamp = area.body.updatedAt as string;
+
+    const areaOk = await request(app)
+      .put(`/api/admin/areas/${area.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({ name: 'OCC Lot v2', expectedUpdatedAt: areaStamp });
+    expect(areaOk.status).toBe(200);
+    expect(areaOk.body.name).toBe('OCC Lot v2');
+
+    const areaStale = await request(app)
+      .put(`/api/admin/areas/${area.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Site-Id', SITE_B)
+      .send({ name: 'OCC Lot stale', expectedUpdatedAt: areaStamp });
+    expect(areaStale.status).toBe(409);
+    expect(areaStale.body.code).toBe('STALE_EDIT');
+  });
+
   it.skipIf(!canUseDb)('validates empty site and graph warnings', async () => {
     const token = await loginAdmin();
     const res = await request(app)

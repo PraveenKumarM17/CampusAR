@@ -40,7 +40,7 @@ export function PreviewBanner() {
             Validation: {errors} errors · {warnings} warnings
           </span>
           <Link
-            to="/admin/map-builder"
+            to="/map-builder"
             className="font-semibold underline underline-offset-2 hover:no-underline"
           >
             Return to Map Builder

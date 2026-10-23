@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
-import { api, ApiError } from '../lib/api';
+import { ApiError } from '../lib/api';
+import { adminApi as api } from '../lib/adminApi';
 
 /** True when the signed-in user may open the Map Builder (platform or org/site admin). */
 export function useMapEditorAccess(): { canEdit: boolean; loading: boolean } {

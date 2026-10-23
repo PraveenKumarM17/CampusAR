@@ -30,6 +30,12 @@ import {
 import { haversineMeters } from '../../domain/routing/astar';
 import { edgeGeometryHash, pointGeometryHash, ringGeometryHash } from '../../application/geometryHash';
 
+function toIsoTimestamp(value: unknown): string | undefined {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string' && value.length > 0) return value;
+  return undefined;
+}
+
 const BUILDING_SELECT = `
   SELECT id, stable_id, name, code, description, latitude, longitude, floors_count, floor_height_m, site_id, updated_at,
          CASE WHEN footprint_geom IS NOT NULL
@@ -40,7 +46,6 @@ const BUILDING_SELECT = `
 
 function mapBuildingRow(r: Record<string, unknown>): Building {
   const footprint = footprintFromGeoJson(r.footprint_geojson);
-  const updatedAt = r.updated_at as Date | string | undefined;
   return {
     id: r.id as string,
     stableId: r.stable_id as string,
@@ -53,12 +58,7 @@ function mapBuildingRow(r: Record<string, unknown>): Building {
     floorHeightM: Number(r.floor_height_m ?? 3.5),
     siteId: (r.site_id as string | null) ?? undefined,
     footprint,
-    updatedAt:
-      updatedAt instanceof Date
-        ? updatedAt.toISOString()
-        : typeof updatedAt === 'string'
-          ? updatedAt
-          : undefined,
+    updatedAt: toIsoTimestamp(r.updated_at),
   };
 }
 
@@ -509,16 +509,12 @@ export const campusRepository = {
       kind: r.kind as GraphNode['kind'],
       active: (r.active as boolean | undefined) ?? true,
       siteId: (r.site_id as string | null) ?? undefined,
+      updatedAt: toIsoTimestamp(r.updated_at),
     };
   },
 
-  async listEdges(siteId?: string | null, mapVersionId?: string | null): Promise<GraphEdge[]> {
-    if (!siteId || !mapVersionId) return [];
-    const { rows } = await query(`SELECT * FROM edges WHERE site_id = $1 AND map_version_id = $2`, [
-      siteId,
-      mapVersionId,
-    ]);
-    return (rows as Array<Record<string, unknown>>).map((r) => ({
+  mapEdgeRow(r: Record<string, unknown>): GraphEdge {
+    return {
       id: r.id as string,
       stableId: r.stable_id as string | undefined,
       fromNodeId: r.from_node_id as string,
@@ -531,7 +527,17 @@ export const campusRepository = {
       crowdScore: Number(r.crowd_score),
       accessibilityScore: Number(r.accessibility_score),
       siteId: (r.site_id as string | null) ?? undefined,
-    }));
+      updatedAt: toIsoTimestamp(r.updated_at),
+    };
+  },
+
+  async listEdges(siteId?: string | null, mapVersionId?: string | null): Promise<GraphEdge[]> {
+    if (!siteId || !mapVersionId) return [];
+    const { rows } = await query(`SELECT * FROM edges WHERE site_id = $1 AND map_version_id = $2`, [
+      siteId,
+      mapVersionId,
+    ]);
+    return (rows as Array<Record<string, unknown>>).map((r) => this.mapEdgeRow(r));
   },
 
   async getRoutingGraph(
@@ -623,22 +629,13 @@ export const campusRepository = {
       ],
     );
     const r = rows[0] as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      stableId: r.stable_id as string | undefined,
-      fromNodeId: r.from_node_id as string,
-      toNodeId: r.to_node_id as string,
-      distanceM: Number(r.distance_m),
-      kind: r.kind as GraphEdge['kind'],
-      bidirectional: r.bidirectional as boolean,
-      blocked: r.blocked as boolean,
-      safetyScore: Number(r.safety_score),
-      crowdScore: Number(r.crowd_score),
-      accessibilityScore: Number(r.accessibility_score),
-    };
+    return this.mapEdgeRow(r);
   },
 
-  async updateEdge(id: string, input: Partial<Omit<GraphEdge, 'id'>>) {
+  async updateEdge(
+    id: string,
+    input: Partial<Omit<GraphEdge, 'id'>> & { expectedUpdatedAt?: string },
+  ) {
     const existing = await this.getEdgeById(id);
     if (!existing) return null;
     const fromNodeId = input.fromNodeId ?? existing.fromNodeId;
@@ -648,6 +645,7 @@ export const campusRepository = {
     if (!from || !to) {
       throw new AppError('INVALID_NODE', 'Edge endpoints must be existing nodes', 422);
     }
+    const expectedUpdatedAt = input.expectedUpdatedAt ? new Date(input.expectedUpdatedAt) : null;
     const { rows } = await query(
       `UPDATE edges SET
          from_node_id = COALESCE($2, from_node_id),
@@ -659,8 +657,11 @@ export const campusRepository = {
          safety_score = COALESCE($8, safety_score),
          crowd_score = COALESCE($9, crowd_score),
          accessibility_score = COALESCE($10, accessibility_score),
-         geometry_hash = $11
-       WHERE id = $1 RETURNING *`,
+         geometry_hash = $11,
+         updated_at = NOW()
+       WHERE id = $1
+         AND ($12::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $12::timestamptz))
+       RETURNING *`,
       [
         id,
         input.fromNodeId ?? null,
@@ -673,42 +674,27 @@ export const campusRepository = {
         input.crowdScore ?? null,
         input.accessibilityScore ?? null,
         edgeGeometryHash(from, to),
+        expectedUpdatedAt,
       ],
     );
-    if (!rows[0]) return null;
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      stableId: r.stable_id as string | undefined,
-      fromNodeId: r.from_node_id as string,
-      toNodeId: r.to_node_id as string,
-      distanceM: Number(r.distance_m),
-      kind: r.kind as GraphEdge['kind'],
-      bidirectional: r.bidirectional as boolean,
-      blocked: r.blocked as boolean,
-      safetyScore: Number(r.safety_score),
-      crowdScore: Number(r.crowd_score),
-      accessibilityScore: Number(r.accessibility_score),
-    };
+    if (!rows[0]) {
+      const stillThere = await this.getEdgeById(id);
+      if (stillThere && input.expectedUpdatedAt) {
+        throw new AppError(
+          'STALE_EDIT',
+          'This walkway was modified elsewhere. Reload and try again.',
+          409,
+        );
+      }
+      return null;
+    }
+    return this.mapEdgeRow(rows[0] as Record<string, unknown>);
   },
 
   async getEdgeById(id: string): Promise<GraphEdge | null> {
     const { rows } = await query(`SELECT * FROM edges WHERE id = $1`, [id]);
     if (!rows[0]) return null;
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      fromNodeId: r.from_node_id as string,
-      toNodeId: r.to_node_id as string,
-      distanceM: Number(r.distance_m),
-      kind: r.kind as GraphEdge['kind'],
-      bidirectional: r.bidirectional as boolean,
-      blocked: r.blocked as boolean,
-      safetyScore: Number(r.safety_score),
-      crowdScore: Number(r.crowd_score),
-      accessibilityScore: Number(r.accessibility_score),
-      siteId: (r.site_id as string | null) ?? undefined,
-    };
+    return this.mapEdgeRow(rows[0] as Record<string, unknown>);
   },
 
   async countEdgesForNode(nodeId: string): Promise<number> {
@@ -747,17 +733,7 @@ export const campusRepository = {
         pointGeometryHash(input.latitude, input.longitude),
       ],
     );
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      stableId: r.stable_id as string | undefined,
-      name: r.name as string | null,
-      latitude: r.latitude as number,
-      longitude: r.longitude as number,
-      floorId: r.floor_id as string | null,
-      buildingId: r.building_id as string | null,
-      kind: r.kind as GraphNode['kind'],
-    };
+    return this.mapNodeRow(rows[0] as Record<string, unknown>);
   },
 
   async recalculateEdgesForNode(nodeId: string): Promise<void> {
@@ -783,12 +759,16 @@ export const campusRepository = {
     }
   },
 
-  async updateNode(id: string, input: Partial<Omit<GraphNode, 'id'>>) {
+  async updateNode(
+    id: string,
+    input: Partial<Omit<GraphNode, 'id'>> & { expectedUpdatedAt?: string },
+  ) {
     const positionChanging = input.latitude !== undefined || input.longitude !== undefined;
     const existing = await this.getNodeById(id);
     if (!existing) return null;
     const nextLatitude = input.latitude ?? existing.latitude;
     const nextLongitude = input.longitude ?? existing.longitude;
+    const expectedUpdatedAt = input.expectedUpdatedAt ? new Date(input.expectedUpdatedAt) : null;
     const { rows } = await query(
       `UPDATE nodes SET
          name = CASE WHEN $2::boolean THEN $3 ELSE name END,
@@ -800,8 +780,11 @@ export const campusRepository = {
          geometry_hash = CASE
            WHEN $4::boolean OR $6::boolean THEN $14
            ELSE geometry_hash
-         END
-       WHERE id = $1 RETURNING *`,
+         END,
+         updated_at = NOW()
+       WHERE id = $1
+         AND ($15::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $15::timestamptz))
+       RETURNING *`,
       [
         id,
         input.name !== undefined,
@@ -817,14 +800,24 @@ export const campusRepository = {
         input.kind !== undefined,
         input.kind ?? null,
         pointGeometryHash(nextLatitude, nextLongitude),
+        expectedUpdatedAt,
       ],
     );
-    if (!rows[0]) return null;
+    if (!rows[0]) {
+      const stillThere = await this.getNodeById(id);
+      if (stillThere && input.expectedUpdatedAt) {
+        throw new AppError(
+          'STALE_EDIT',
+          'This node was modified elsewhere. Reload and try again.',
+          409,
+        );
+      }
+      return null;
+    }
     if (positionChanging) {
       await this.recalculateEdgesForNode(id);
     }
-    const r = rows[0] as Record<string, unknown>;
-    return this.mapNodeRow(r);
+    return this.mapNodeRow(rows[0] as Record<string, unknown>);
   },
 
   async deleteNode(id: string) {

@@ -1,15 +1,16 @@
 import type {
   AccessibilityPrefs,
-  AnalyticsSummary,
   AppNotification,
   AuthResponse,
   Building,
-  CampusEvent,
   CampusPlace,
   CrowdLevel,
   DangerZone,
   EmergencyContact,
   EmergencyExit,
+  Floor,
+  FloorCorridor,
+  FloorPoi,
   GraphEdge,
   GraphNode,
   IndoorBuildingContext,
@@ -17,12 +18,10 @@ import type {
   IndoorPlace,
   IndoorRouteResponse,
   IotStatus,
-  MapValidationResult,
   NavigateResolveResponse,
   Room,
   RouteRequest,
   RouteResponse,
-  RouteWeights,
   SearchResult,
   SensorReading,
   SiteArea,
@@ -47,7 +46,6 @@ import type {
 import { useAuthStore } from '../stores/authStore';
 import { joinApiUrl, resolveApiBaseUrl } from './clientUrls';
 import { useSiteStore } from '../stores/siteStore';
-import { usePreviewStore } from '../stores/previewStore';
 import type { Site } from '@campusar/shared';
 
 /** Same-origin `/api` by default (Vite proxy in dev, nginx in Docker). */
@@ -102,7 +100,7 @@ export type ApiRequestOpts = {
   idempotencyKey?: string;
 };
 
-async function request<T>(
+export async function request<T>(
   path: string,
   options: RequestInit = {},
   token?: string | null,
@@ -131,11 +129,7 @@ async function request<T>(
   if (res.status === 401 && !retried && !path.startsWith('/auth/')) {
     const next = await refreshAccessToken();
     if (next) return request<T>(path, options, next, true);
-    throw new ApiError(
-      'UNAUTHORIZED',
-      'Session expired — sign in again as organization admin.',
-      401,
-    );
+    throw new ApiError('UNAUTHORIZED', 'Session expired. Sign in again.', 401);
   }
 
   if (res.status === 204) return undefined as T;
@@ -145,16 +139,9 @@ async function request<T>(
       res.status === 502 || res.status === 503 || res.status === 504
         ? 'Cannot reach the CampusAR API. Start the database and API, then try again.'
         : res.status === 401
-          ? 'Session expired — sign in again as organization admin.'
+          ? 'Session expired. Sign in again.'
           : 'Request failed';
     const code = data.code ?? 'ERROR';
-    if (
-      path.includes('/map-builder/preview/') &&
-      usePreviewStore.getState().active &&
-      ((res.status === 422 && code === 'PREVIEW_DRAFT_ONLY') || res.status === 404)
-    ) {
-      usePreviewStore.getState().exitPreview();
-    }
     throw new ApiError(code, data.message ?? fallback, res.status, data.details);
   }
   return data as T;
@@ -177,7 +164,8 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   sites: (token?: string | null) => request<Site[]>('/sites', {}, token),
-  site: (id: string, token?: string | null) => request<Site>(`/sites/${encodeURIComponent(id)}`, {}, token),
+  site: (id: string, token?: string | null) =>
+    request<Site>(`/sites/${encodeURIComponent(id)}`, {}, token),
   buildings: (token?: string | null) => request<Building[]>('/campus/buildings', {}, token),
   rooms: (token?: string | null, category?: string) =>
     request<Room[]>(`/campus/rooms${category ? `?category=${category}` : ''}`, {}, token),

@@ -10,7 +10,7 @@ type Props = {
   onDuplicate: () => void;
 };
 
-/** Explicit 409 conflict resolution — never auto-resolves. */
+/** Explicit STALE_EDIT conflict resolution — never auto-resolves. */
 export function MapBuilderConflictDialog({
   open,
   featureLabel,

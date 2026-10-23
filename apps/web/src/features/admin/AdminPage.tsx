@@ -11,6 +11,7 @@ import type {
 import { DEFAULT_ROUTE_WEIGHTS } from '@campusar/shared';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { adminApi } from '../../lib/adminApi';
 import { useAuthStore } from '../../stores/authStore';
 
 type Tab = 'weights' | 'buildings' | 'paths' | 'zones' | 'crowd' | 'events' | 'iot';
@@ -29,12 +30,12 @@ export function AdminPage() {
 
   async function refresh() {
     const [w, b, e, z, c, ev, status] = await Promise.all([
-      api.weights(token),
+      adminApi.weights(token),
       api.buildings(token),
-      api.adminEdges.list(token),
+      adminApi.adminEdges.list(token),
       api.zones(),
-      api.adminCrowd.list(token),
-      api.adminEvents.list(token),
+      adminApi.adminCrowd.list(token),
+      adminApi.adminEvents.list(token),
       api.iotStatus(),
     ]);
     setWeights(w);
@@ -53,7 +54,7 @@ export function AdminPage() {
 
   async function saveWeights(e: FormEvent) {
     e.preventDefault();
-    const saved = await api.updateWeights(weights, token);
+    const saved = await adminApi.updateWeights(weights, token);
     setWeights(saved);
     setMessage('Route weights updated');
   }
@@ -61,7 +62,7 @@ export function AdminPage() {
   async function addBuilding(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    await api.adminBuildings.create(
+    await adminApi.adminBuildings.create(
       {
         name: String(fd.get('name')),
         code: String(fd.get('code')),
@@ -93,7 +94,7 @@ export function AdminPage() {
         <h1 className="page-title text-2xl sm:text-3xl">Admin dashboard</h1>
         <p className="page-sub text-xs sm:text-sm">
           Tune route weights, hazards, and simulation. Outdoor map editing lives in{' '}
-          <Link to="/admin/map-builder" className="text-accent underline">
+          <Link to="/map-builder" className="text-accent underline">
             Map Builder
           </Link>
           .
@@ -194,7 +195,7 @@ export function AdminPage() {
                     type="button"
                     className="text-accent-danger text-xs"
                     onClick={async () => {
-                      await api.adminBuildings.remove(b.id, token);
+                      await adminApi.adminBuildings.remove(b.id, token);
                       await refresh();
                     }}
                   >
@@ -236,7 +237,7 @@ export function AdminPage() {
                       type="checkbox"
                       checked={edge.blocked}
                       onChange={async (e) => {
-                        await api.adminEdges.update(edge.id, { blocked: e.target.checked }, token);
+                        await adminApi.adminEdges.update(edge.id, { blocked: e.target.checked }, token);
                         await refresh();
                         setMessage(e.target.checked ? 'Path blocked' : 'Path reopened');
                       }}
@@ -256,7 +257,7 @@ export function AdminPage() {
             onSubmit={async (e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              await api.adminZones.create(
+              await adminApi.adminZones.create(
                 {
                   name: String(fd.get('name')),
                   type: String(fd.get('type')) as DangerZone['type'],
@@ -300,7 +301,7 @@ export function AdminPage() {
                   type="button"
                   className="text-accent-danger text-xs"
                   onClick={async () => {
-                    await api.adminZones.remove(z.id, token);
+                    await adminApi.adminZones.remove(z.id, token);
                     await refresh();
                   }}
                 >
@@ -331,7 +332,7 @@ export function AdminPage() {
                 step={0.05}
                 value={c.intensity}
                 onChange={async (e) => {
-                  await api.adminCrowd.upsert(
+                  await adminApi.adminCrowd.upsert(
                     { id: c.id, intensity: Number(e.target.value), label: c.label ?? undefined },
                     token,
                   );
@@ -351,7 +352,7 @@ export function AdminPage() {
             onSubmit={async (e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              await api.adminEvents.create(
+              await adminApi.adminEvents.create(
                 {
                   title: String(fd.get('title')),
                   description: String(fd.get('description') || '') || null,
@@ -393,7 +394,7 @@ export function AdminPage() {
                   type="button"
                   className="text-accent-danger text-xs"
                   onClick={async () => {
-                    await api.adminEvents.remove(ev.id, token);
+                    await adminApi.adminEvents.remove(ev.id, token);
                     await refresh();
                   }}
                 >
@@ -421,7 +422,7 @@ export function AdminPage() {
               type="button"
               className="btn-primary"
               onClick={async () => {
-                setIot(await api.iotStart(token));
+                setIot(await adminApi.iotStart(token));
                 setMessage('IoT simulator started');
               }}
             >
@@ -431,7 +432,7 @@ export function AdminPage() {
               type="button"
               className="btn-ghost"
               onClick={async () => {
-                setIot(await api.iotStop(token));
+                setIot(await adminApi.iotStop(token));
                 setMessage('IoT simulator stopped');
               }}
             >

@@ -2,11 +2,17 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { analyticsRepository } from '../../../infrastructure/repositories/analyticsRepository';
 import { campusRepository } from '../../../infrastructure/repositories/campusRepository';
+import { pinPointRepository } from '../../../infrastructure/repositories/pinPointRepository';
 import { notificationRepository } from '../../../infrastructure/repositories/analyticsRepository';
 import { siteAreaRepository } from '../../../infrastructure/repositories/siteAreaRepository';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
 import { requireMapEditor } from '../middleware/mapEditorAuth';
 import { idempotencyMiddleware } from '../middleware/idempotency';
+import {
+  mapEditorHeavyRateLimit,
+  mapEditorRateLimit,
+  mapEditorWriteRateLimit,
+} from '../middleware/mapEditorRateLimit';
 import {
   assertResourceInSite,
   resolveEditorSiteId,
@@ -80,6 +86,9 @@ async function assertBuildingInEditorSite(buildingId: string, siteId: string) {
 
 const mapEditorRouter = Router();
 mapEditorRouter.use(requireMapEditor);
+// Per-user caps: all traffic, then stricter write + heavy (publish/rollback).
+mapEditorRouter.use(mapEditorRateLimit);
+mapEditorRouter.use(mapEditorWriteRateLimit);
 
 mapEditorRouter.use('/map-builder/preview/:versionId', mapVersionPreviewRouter);
 
@@ -189,34 +198,46 @@ mapEditorRouter.get('/map-builder/history', async (req: AuthedRequest, res, next
   }
 });
 
-mapEditorRouter.post('/map-builder/versions/:versionId/rollback', async (req: AuthedRequest, res, next) => {
-  try {
-    const siteId = await editorSiteStrict(req);
-    const sourceVersionId = String(req.params.versionId);
-    res.status(201).json(await mapVersionService.rollbackToVersion(siteId, sourceVersionId, req.user?.sub ?? null));
-  } catch (err) {
-    next(err);
-  }
-});
-
-mapEditorRouter.post('/map-builder/versions/:versionId/publish', async (req: AuthedRequest, res, next) => {
-  try {
-    const siteId = await editorSiteStrict(req);
-    const versionId = String(req.params.versionId);
-    await mapVersionService.getVersion(siteId, versionId);
-    const result = await mapVersionPublishService.publishDraft(
-      siteId,
-      versionId,
-      req.user?.sub ?? null,
-    );
-    if (!result.published) {
-      return res.status(409).json(result);
+mapEditorRouter.post(
+  '/map-builder/versions/:versionId/rollback',
+  mapEditorHeavyRateLimit,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const siteId = await editorSiteStrict(req);
+      const sourceVersionId = String(req.params.versionId);
+      res
+        .status(201)
+        .json(
+          await mapVersionService.rollbackToVersion(siteId, sourceVersionId, req.user?.sub ?? null),
+        );
+    } catch (err) {
+      next(err);
     }
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-});
+  },
+);
+
+mapEditorRouter.post(
+  '/map-builder/versions/:versionId/publish',
+  mapEditorHeavyRateLimit,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const siteId = await editorSiteStrict(req);
+      const versionId = String(req.params.versionId);
+      await mapVersionService.getVersion(siteId, versionId);
+      const result = await mapVersionPublishService.publishDraft(
+        siteId,
+        versionId,
+        req.user?.sub ?? null,
+      );
+      if (!result.published) {
+        return res.status(409).json(result);
+      }
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 mapEditorRouter.get('/map-builder/validate', async (req: AuthedRequest, res, next) => {
   try {
@@ -318,7 +339,8 @@ mapEditorRouter.delete('/buildings/:id', idempotencyMiddleware, async (req: Auth
 mapEditorRouter.get('/paths/nodes', async (req, res, next) => {
   try {
     const ctx = await editorDraftContext(req as AuthedRequest);
-    res.json(await campusRepository.listNodes(ctx.siteId, ctx.draftVersionId));
+    // Soft-deleted nodes (active=false) must not reappear in the editor after remove.
+    res.json(await campusRepository.listActiveNodes(ctx.siteId, ctx.draftVersionId));
   } catch (err) {
     next(err);
   }
@@ -348,18 +370,18 @@ mapEditorRouter.post('/paths/nodes', idempotencyMiddleware, async (req: AuthedRe
         'Building',
       );
     }
-    res.status(201).json(
-      await campusRepository.createNode({
-        name: body.name ?? null,
-        latitude: body.latitude,
-        longitude: body.longitude,
-        floorId: body.floorId ?? null,
-        buildingId: body.buildingId ?? null,
-        kind: body.kind,
-        siteId: ctx.siteId,
-        mapVersionId: ctx.draftVersionId,
-      }),
-    );
+    const created = await campusRepository.createNode({
+      name: body.name ?? null,
+      latitude: body.latitude,
+      longitude: body.longitude,
+      floorId: body.floorId ?? null,
+      buildingId: body.buildingId ?? null,
+      kind: body.kind,
+      siteId: ctx.siteId,
+      mapVersionId: ctx.draftVersionId,
+    });
+    await pinPointRepository.saveNode(created.id);
+    res.status(201).json(created);
   } catch (err) {
     next(err);
   }
@@ -388,6 +410,7 @@ mapEditorRouter.put('/paths/nodes/:id', idempotencyMiddleware, async (req: Authe
         kind: z
           .enum(['outdoor', 'indoor', 'entrance', 'elevator', 'stairs', 'ramp', 'exit'])
           .optional(),
+        expectedUpdatedAt: z.string().datetime().optional(),
       })
       .parse(req.body);
     if (body.buildingId) {
@@ -397,6 +420,7 @@ mapEditorRouter.put('/paths/nodes/:id', idempotencyMiddleware, async (req: Authe
     }
     const updated = await campusRepository.updateNode(id, body);
     if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
+    await pinPointRepository.saveNode(updated.id);
     res.json(updated);
   } catch (err) {
     next(err);
@@ -415,6 +439,7 @@ mapEditorRouter.delete('/paths/nodes/:id', idempotencyMiddleware, async (req: Au
     );
     const cascade = req.query.cascade === 'true';
     await campusRepository.deleteNodeSafe(id, ctx.siteId, cascade);
+    await pinPointRepository.saveNode(id);
     res.status(204).send();
   } catch (err) {
     next(err);
@@ -488,6 +513,7 @@ mapEditorRouter.put('/paths/edges/:id', idempotencyMiddleware, async (req: Authe
         safetyScore: z.number().min(0).max(1).optional(),
         crowdScore: z.number().min(0).max(1).optional(),
         accessibilityScore: z.number().min(0).max(1).optional(),
+        expectedUpdatedAt: z.string().datetime().optional(),
       })
       .parse(req.body);
     const updated = await campusRepository.updateEdge(id, body);
@@ -569,6 +595,7 @@ mapEditorRouter.put('/areas/:id', idempotencyMiddleware, async (req: AuthedReque
         name: z.string().min(1).optional(),
         type: z.enum(['parking', 'open_area', 'restricted', 'assembly']).optional(),
         footprint: footprintSchema.optional(),
+        expectedUpdatedAt: z.string().datetime().optional(),
       })
       .parse(req.body);
     const updated = await siteAreaRepository.update(id, body);

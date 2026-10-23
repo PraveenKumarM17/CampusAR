@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Mutable
 import { createPortal } from 'react-dom';
 import { Camera, Circle, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
 import type { LocalVec2, LocalVec3 } from '@campusar/shared';
-import { api } from '../../lib/api';
+import { adminApi as api } from '../../lib/adminApi';
 import {
   arSessionToFloorPlan,
   attachCameraToVideo,

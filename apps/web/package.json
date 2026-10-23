@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev:admin": "vite --config vite.admin.config.ts",
+    "build:user": "tsc -b && vite build",
+    "build:admin": "vite build --config vite.admin.config.ts",
+    "build": "npm run build:user && node ../../scripts/check-admin-leak.mjs && npm run build:admin",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run"

@@ -44,6 +44,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Build web and check admin leak
+        run: npm run build -w @campusar/web
+
       - name: Migrate & seed
         env:
           DATABASE_URL: postgresql://campusar:campusar_secret@localhost:5432/campusar

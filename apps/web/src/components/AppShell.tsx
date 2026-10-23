@@ -1,16 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  Map,
-  Navigation,
-  Scan,
-  ShieldAlert,
-  BarChart3,
-  LogOut,
-  Bell,
-  Box,
-  QrCode,
-} from 'lucide-react';
+import { Map, Navigation, Scan, ShieldAlert, LogOut, Bell, Box, QrCode } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavStore } from '../stores/themeStore';
 import { useSiteStore } from '../stores/siteStore';
@@ -20,9 +9,6 @@ import type { AppNotification } from '@campusar/shared';
 import { DIGITAL_TWIN_PATH } from '../features/digitalTwin/types/digitalTwin';
 import { useSiteBootstrap } from '../hooks/useSiteBootstrap';
 import { useActiveSite } from '../hooks/useActiveSite';
-import { useMapEditorAccess } from '../hooks/useMapEditorAccess';
-import { PreviewBanner } from './PreviewBanner';
-import { syncPreviewSite } from '../stores/previewStore';
 
 const navLinks = [
   { to: '/map', label: 'Map', icon: Map },
@@ -57,28 +43,13 @@ export function AppShell() {
   useEffect(() => {
     if (previousSiteId.current && activeSiteId && previousSiteId.current !== activeSiteId) {
       resetForSiteChange();
-      syncPreviewSite(activeSiteId);
     }
     previousSiteId.current = activeSiteId;
   }, [activeSiteId, resetForSiteChange]);
 
-  const isAdmin = user?.role === 'admin';
   const isGuest = user?.role === 'guest';
-  const { canEdit: canMapEdit } = useMapEditorAccess();
-
   const links = navLinks;
-
-  const adminLinks = isAdmin
-    ? [
-        { to: '/admin', label: 'Admin', icon: LayoutDashboard },
-        { to: '/admin/map-builder', label: 'Map Builder', icon: Map },
-        { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-      ]
-    : canMapEdit
-      ? [{ to: '/admin/map-builder', label: 'Map Builder', icon: Map }]
-      : [];
-
-  const roleLabel = isAdmin ? 'Admin' : isGuest ? 'Guest' : 'Member';
+  const roleLabel = isGuest ? 'Guest' : 'Member';
 
   return (
     <div className="min-h-screen bg-atlas text-ink">
@@ -93,7 +64,7 @@ export function AppShell() {
             CampusAR
           </button>
           <nav className="hidden items-center gap-0.5 md:flex">
-            {[...links, ...adminLinks].map(({ to, label, icon: Icon }) => (
+            {links.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -184,7 +155,7 @@ export function AppShell() {
               ))}
             </select>
           )}
-          {[...links, ...adminLinks].map(({ to, label, icon: Icon }) => (
+          {links.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -200,7 +171,6 @@ export function AppShell() {
           ))}
         </nav>
       </header>
-      <PreviewBanner />
       <main className="mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-6">
         <Outlet />
       </main>

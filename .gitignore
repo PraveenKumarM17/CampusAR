@@ -9,6 +9,7 @@ coverage/
 .vite/
 *.tsbuildinfo
 apps/web/dist/
+apps/web/dist-admin/
 apps/api/dist/
 .idea/
 .vscode/

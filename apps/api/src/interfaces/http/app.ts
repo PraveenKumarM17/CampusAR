@@ -6,6 +6,7 @@ import swaggerUi from 'swagger-ui-express';
 import { env } from '../../infrastructure/config/env';
 import { openApiDocument } from '../../infrastructure/swagger/openapi';
 import { errorHandler } from './middleware/errorHandler';
+import { buildHelmetOptions } from './middleware/helmetOptions';
 import { authRouter } from './routes/authRoutes';
 import { campusRouter } from './routes/campusRoutes';
 import { navigationRouter } from './routes/navigationRoutes';
@@ -18,7 +19,7 @@ import measurementRouter from './routes/measurementRoutes';
 
 export function createApp() {
   const app = express();
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(helmet(buildHelmetOptions()));
   const corsOrigins = env.corsOrigin.split(',').map((o) => o.trim()).filter(Boolean);
   app.use(
     cors({
