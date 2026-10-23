@@ -16,6 +16,9 @@ export const env = {
     'DATABASE_URL',
     'postgresql://campusar:campusar_secret@localhost:5433/campusar',
   ),
+  /** Empty disables the pin-point store. Example: mongodb://localhost:27018/campusar */
+  mongoUrl: process.env.MONGODB_URL ?? '',
+  mongoDb: process.env.MONGODB_DB ?? 'campusar',
   jwtAccessSecret: required('JWT_ACCESS_SECRET', 'dev-access-secret-min-32-characters!!'),
   jwtRefreshSecret: required('JWT_REFRESH_SECRET', 'dev-refresh-secret-min-32-characters!'),
   jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES ?? '8h',

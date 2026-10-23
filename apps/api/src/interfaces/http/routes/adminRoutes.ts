@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { analyticsRepository } from '../../../infrastructure/repositories/analyticsRepository';
 import { campusRepository } from '../../../infrastructure/repositories/campusRepository';
+import { pinPointRepository } from '../../../infrastructure/repositories/pinPointRepository';
 import { notificationRepository } from '../../../infrastructure/repositories/analyticsRepository';
 import { siteAreaRepository } from '../../../infrastructure/repositories/siteAreaRepository';
 import { requireAuth, requireRole, type AuthedRequest } from '../middleware/auth';
@@ -369,18 +370,18 @@ mapEditorRouter.post('/paths/nodes', idempotencyMiddleware, async (req: AuthedRe
         'Building',
       );
     }
-    res.status(201).json(
-      await campusRepository.createNode({
-        name: body.name ?? null,
-        latitude: body.latitude,
-        longitude: body.longitude,
-        floorId: body.floorId ?? null,
-        buildingId: body.buildingId ?? null,
-        kind: body.kind,
-        siteId: ctx.siteId,
-        mapVersionId: ctx.draftVersionId,
-      }),
-    );
+    const created = await campusRepository.createNode({
+      name: body.name ?? null,
+      latitude: body.latitude,
+      longitude: body.longitude,
+      floorId: body.floorId ?? null,
+      buildingId: body.buildingId ?? null,
+      kind: body.kind,
+      siteId: ctx.siteId,
+      mapVersionId: ctx.draftVersionId,
+    });
+    await pinPointRepository.saveNode(created.id);
+    res.status(201).json(created);
   } catch (err) {
     next(err);
   }
@@ -419,6 +420,7 @@ mapEditorRouter.put('/paths/nodes/:id', idempotencyMiddleware, async (req: Authe
     }
     const updated = await campusRepository.updateNode(id, body);
     if (!updated) return res.status(404).json({ code: 'NOT_FOUND', message: 'Node not found' });
+    await pinPointRepository.saveNode(updated.id);
     res.json(updated);
   } catch (err) {
     next(err);
@@ -437,6 +439,7 @@ mapEditorRouter.delete('/paths/nodes/:id', idempotencyMiddleware, async (req: Au
     );
     const cascade = req.query.cascade === 'true';
     await campusRepository.deleteNodeSafe(id, ctx.siteId, cascade);
+    await pinPointRepository.saveNode(id);
     res.status(204).send();
   } catch (err) {
     next(err);
