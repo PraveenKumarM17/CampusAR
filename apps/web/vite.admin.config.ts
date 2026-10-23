@@ -50,6 +50,8 @@ function adminHtmlFallback(): Plugin {
 
 export default defineConfig({
   base: ADMIN_BASE,
+  // Separate from the visitor dev server; a shared cache makes each server invalidate the other's deps.
+  cacheDir: 'node_modules/.vite-admin',
   plugins: [basicSsl(), react(), adminAuthPersistName(), adminHtmlFallback()],
   optimizeDeps: {
     exclude: ['maplibre-gl'],
