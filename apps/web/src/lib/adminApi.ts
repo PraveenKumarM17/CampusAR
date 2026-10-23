@@ -36,6 +36,7 @@ import type {
   MeasurementPath,
   MeasurementPoint,
   GpsPoint,
+  SpatialMeasurementPoint,
 } from '@campusar/shared';
 import { request, type ApiRequestOpts } from './api';
 
@@ -607,7 +608,11 @@ export const adminApi = {
         { method: 'POST', body: JSON.stringify(body) },
         token,
       ),
-    addPoint: (pathId: string, body: { point: GpsPoint; label?: string }, token?: string | null) =>
+    addPoint: (
+      pathId: string,
+      body: { point: GpsPoint | SpatialMeasurementPoint; label?: string },
+      token?: string | null,
+    ) =>
       request<MeasurementPoint>(
         `/measurements/paths/${encodeURIComponent(pathId)}/points`,
         { method: 'POST', body: JSON.stringify(body) },

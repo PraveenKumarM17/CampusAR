@@ -32,7 +32,7 @@ import {
   evaluateGpsMovement,
   type GpsMovementSample,
 } from '../../lib/gpsMovement';
-import { GuideDollViewport, guideFacingBearing, poseFromRouteContext } from './GuideDoll';
+import { GuideDollViewport, poseFromRouteContext } from './GuideDoll';
 import { useActiveSite } from '../../hooks/useActiveSite';
 import { MAP_ENGINE } from '../../lib/mapEngine';
 import { IndoorDestinationPicker } from '../../components/indoor/IndoorDestinationPicker';
@@ -338,18 +338,6 @@ export function ArPage() {
     }
     return step?.bearing ?? 0;
   }, [gpsReady, pose, nextWaypoint, step?.bearing]);
-
-  const guideBearing = useMemo(
-    () =>
-      guideFacingBearing({
-        currentBearing: targetBearing,
-        nextBearing: route?.path[stepIndex + 2]?.bearing ?? nextStep?.bearing,
-        nextInstruction: nextStep?.instruction,
-        distanceToNextM: distToNextMeters,
-        turnWithinM: Math.max(35, Math.min(60, distToNextMeters * 0.85)),
-      }),
-    [targetBearing, route?.path, stepIndex, nextStep, distToNextMeters],
-  );
 
  const rawArrowRel =
   compassHeading != null
