@@ -86,8 +86,7 @@ export function FloorLayoutViewer({
   if (layout.floors.length === 0 || (rooms.length === 0 && corridors.length === 0 && pois.length === 0)) {
     return (
       <p className="rounded-md border border-line bg-paper-raised px-3 py-4 text-sm text-muted">
-        No indoor floor plan has been authored for this building yet. An administrator can create floors and
-        rooms in Map Builder.
+        This place isn't on the map yet.
       </p>
     );
   }

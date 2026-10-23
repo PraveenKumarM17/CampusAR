@@ -51,7 +51,8 @@ import type {
   SiteArea,
   UnifiedMapValidationResult,
 } from '@campusar/shared';
-import { api, ApiError } from '../../lib/api';
+import { ApiError } from '../../lib/api';
+import { adminApi as api } from '../../lib/adminApi';
 import { useAuthStore } from '../../stores/authStore';
 import { useActiveSite } from '../../hooks/useActiveSite';
 import { useMapEditorAccess } from '../../hooks/useMapEditorAccess';

@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_GOOGLE_MAPS_API_KEY?: string;
   readonly VITE_MAP_ENGINE?: 'leaflet' | 'maplibre';
   readonly VITE_MAPLIBRE_STYLE_URL?: string;
+  readonly VITE_AUTH_PERSIST_NAME?: string;
 }
 
 interface ImportMeta {

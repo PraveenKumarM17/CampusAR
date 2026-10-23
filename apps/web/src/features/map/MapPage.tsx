@@ -322,7 +322,7 @@ export function MapPage() {
             />
             <input
               className="input w-full pl-9 !py-2 !text-sm sm:!py-2.5"
-              placeholder="Search Admin, ECE, Ground A…"
+              placeholder="Search ECE, Ground A…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -362,7 +362,7 @@ export function MapPage() {
               if (!pose) return;
               const nearest = closestNamedPlace(pose, placeNodes);
               if (!nearest) {
-                setGpsNote('No named places nearby yet — ask an admin to pin locations.');
+                setGpsNote("This place isn't on the map yet.");
                 return;
               }
               setFollowGps(true);

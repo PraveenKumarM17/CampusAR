@@ -29,7 +29,8 @@ import type {
   RoomCategory,
 } from '@campusar/shared';
 import { DEFAULT_FLOOR_HEIGHT_M, FLOOR_PLAN_COORDINATE_SYSTEM } from '@campusar/shared';
-import { api, ApiError } from '../../lib/api';
+import { ApiError } from '../../lib/api';
+import { adminApi as api } from '../../lib/adminApi';
 import { useAuthStore } from '../../stores/authStore';
 import { useActiveSite } from '../../hooks/useActiveSite';
 import { useMapEditorAccess } from '../../hooks/useMapEditorAccess';
@@ -236,7 +237,7 @@ export function IndoorMapBuilderPage() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setError('That building is not in the current site map. Choose one from the list.');
-        navigate('/admin/map-builder/indoor', { replace: true });
+        navigate('/map-builder/indoor', { replace: true });
         return;
       }
       setError(err instanceof ApiError ? err.message : 'Failed to load indoor layout');
@@ -264,7 +265,7 @@ export function IndoorMapBuilderPage() {
     if (accessLoading || !canEdit || !buildingsReady || !buildingId) return;
     if (!buildings.some((b) => b.id === buildingId)) {
       setError('That building is not in the current site map. Choose one from the list.');
-      navigate('/admin/map-builder/indoor', { replace: true });
+      navigate('/map-builder/indoor', { replace: true });
       return;
     }
     reloadSnapshot().catch(() => undefined);
@@ -727,7 +728,7 @@ export function IndoorMapBuilderPage() {
           {buildings.map((b) => (
             <Link
               key={b.id}
-              to={`/admin/map-builder/indoor/${b.id}`}
+              to={`/map-builder/indoor/${b.id}`}
               className="rounded-lg border border-line bg-paper-raised p-3 transition-colors hover:border-accent sm:p-4"
             >
               <Building2 className="mb-2 h-4 w-4 text-accent sm:h-5 sm:w-5" />
@@ -761,7 +762,7 @@ export function IndoorMapBuilderPage() {
           <button type="button" className="btn-secondary w-full text-xs sm:w-auto sm:text-sm" onClick={() => void runValidation()}>
             Validate
           </button>
-          <Link to="/admin/map-builder/indoor" className="btn-secondary w-full text-xs sm:w-auto sm:text-sm">
+          <Link to="/map-builder/indoor" className="btn-secondary w-full text-xs sm:w-auto sm:text-sm">
             Change building
           </Link>
         </div>

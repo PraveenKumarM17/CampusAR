@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { AnalyticsSummary } from '@campusar/shared';
-import { api } from '../../lib/api';
+import { adminApi as api } from '../../lib/adminApi';
 import { useAuthStore } from '../../stores/authStore';
 
 export function AnalyticsPage() {

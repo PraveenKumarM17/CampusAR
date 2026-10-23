@@ -27,6 +27,12 @@ export default defineConfig({
       '@campusar/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
     },
   },
+  build: {
+    sourcemap: false,
+    rollupOptions: {
+      input: path.resolve(__dirname, 'index.html'),
+    },
+  },
   server: {
     https: true,
     port: 5173,
