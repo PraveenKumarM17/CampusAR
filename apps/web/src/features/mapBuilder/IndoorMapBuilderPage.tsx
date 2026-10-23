@@ -708,7 +708,7 @@ export function IndoorMapBuilderPage() {
   }
 
   if (accessLoading) return <p className="p-6 text-muted">Checking editor access…</p>;
-  if (!canEdit) return <Navigate to="/map" replace />;
+  if (!canEdit) return <Navigate to="/login" replace />;
   if (sites.length === 0) return <EmptySiteNotice />;
 
   if (!buildingId) {

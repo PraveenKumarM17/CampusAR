@@ -69,7 +69,7 @@ import { haversineMeters } from '../../lib/geo';
 import { BasemapModeSwitcher, RealBasemapTiles, type BasemapMode } from '../../components/maps/RealBasemap';
 import { InvalidateMapSize } from '../../components/maps/InvalidateMapSize';
 import { RecenterOnSite } from '../../components/maps/GpsTracker';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { EmptySiteNotice } from '../../components/EmptySiteNotice';
 import { EditableFootprintLayer } from './EditableFootprintLayer';
 import { MapBuilderNav } from './MapBuilderNav';
@@ -1298,7 +1298,6 @@ export function MapBuilderPage() {
   const { site, label, activeSiteId } = useActiveSite();
   const sites = useSiteStore((s) => s.sites);
   const setActiveSiteId = useSiteStore((s) => s.setActiveSiteId);
-  const navigate = useNavigate();
   const enterPreview = usePreviewStore((s) => s.enterPreview);
   const exitPreview = usePreviewStore((s) => s.exitPreview);
   const resetNavForSiteChange = useNavStore((s) => s.resetForSiteChange);
@@ -3019,7 +3018,7 @@ export function MapBuilderPage() {
     return <div className="p-6 text-sm text-muted">Checking map editor access…</div>;
   }
   if (!canEdit) {
-    return <Navigate to="/map" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   const emptySite = buildings.length === 0 && nodes.length === 0 && edges.length === 0;
@@ -3648,7 +3647,6 @@ export function MapBuilderPage() {
                       siteId: activeSiteId,
                       validation: val,
                     });
-                    navigate('/map');
                   } catch (err) {
                     setPreviewNote(
                       err instanceof ApiError ? err.message : 'Could not start preview',

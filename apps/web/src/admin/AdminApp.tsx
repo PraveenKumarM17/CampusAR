@@ -18,6 +18,10 @@ import { AnalyticsPage } from '../features/analytics/AnalyticsPage';
 import { MapBuilderPage } from '../features/mapBuilder/MapBuilderPage';
 import { IndoorMapBuilderPage } from '../features/mapBuilder/IndoorMapBuilderPage';
 import { PreviewBanner } from '../components/PreviewBanner';
+import { useSiteBootstrap } from '../hooks/useSiteBootstrap';
+import { useActiveSite } from '../hooks/useActiveSite';
+import { useSiteStore } from '../stores/siteStore';
+import { syncPreviewSite } from '../stores/previewStore';
 
 export { AdminMapEditor } from '../features/admin/AdminMapEditor';
 
@@ -152,11 +156,19 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
 }
 
 function AdminShell() {
+  useSiteBootstrap();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const { canEdit } = useMapEditorAccess();
+  const { site, activeSiteId, label } = useActiveSite();
+  const sites = useSiteStore((s) => s.sites);
+  const setActiveSiteId = useSiteStore((s) => s.setActiveSiteId);
   const isAdmin = user?.role === 'admin';
+
+  useEffect(() => {
+    syncPreviewSite(activeSiteId);
+  }, [activeSiteId]);
   const links = [
     ...(isAdmin
       ? [
@@ -198,11 +210,33 @@ function AdminShell() {
             ))}
           </nav>
           <div className="flex items-center gap-1.5 sm:gap-2">
+            {sites.length > 0 && (
+              <label className="hidden max-w-[14rem] lg:block">
+                <span className="sr-only">Active site</span>
+                <select
+                  className="input !py-1.5 !text-xs"
+                  value={site?.id ?? ''}
+                  onChange={(e) => setActiveSiteId(e.target.value || null)}
+                  aria-label="Active site"
+                >
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.organizationName} · {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="hidden text-right md:block">
               <p className="text-xs font-semibold sm:text-sm">{user?.name}</p>
               <p className="text-[10px] text-ink-faint sm:text-xs">
                 {isAdmin ? 'Admin' : 'Member'}
               </p>
+              {site && (
+                <p className="max-w-[8rem] truncate text-[10px] text-ink-faint sm:max-w-[10rem] sm:text-xs">
+                  {label}
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -218,6 +252,20 @@ function AdminShell() {
           </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto border-t border-line px-2 py-1.5 md:hidden">
+          {sites.length > 1 && (
+            <select
+              className="input mr-1 !w-auto !py-1.5 !text-xs"
+              value={site?.id ?? ''}
+              onChange={(e) => setActiveSiteId(e.target.value || null)}
+              aria-label="Active site"
+            >
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
           {links.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}

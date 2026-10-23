@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, type Connect, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import path from 'path';
@@ -18,9 +18,39 @@ function adminAuthPersistName(): Plugin {
   };
 }
 
+const ADMIN_BASE = '/dashboard/CampusAdmin/';
+
+/** Vite's own SPA fallback serves index.html (the visitor entry); route admin page loads to admin.html. */
+function adminHtmlFallback(): Plugin {
+  const rewrite: Connect.NextHandleFunction = (req, _res, next) => {
+    const url = req.url ?? '';
+    const pathname = url.split('?')[0];
+    const wantsHtml = req.headers.accept?.includes('text/html');
+    if (
+      req.method === 'GET' &&
+      wantsHtml &&
+      pathname.startsWith(ADMIN_BASE) &&
+      !pathname.startsWith(`${ADMIN_BASE}@`) &&
+      path.extname(pathname) === ''
+    ) {
+      req.url = `${ADMIN_BASE}admin.html`;
+    }
+    next();
+  };
+  return {
+    name: 'admin-html-fallback',
+    configureServer(server) {
+      server.middlewares.use(rewrite);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(rewrite);
+    },
+  };
+}
+
 export default defineConfig({
-  base: '/dashboard/CampusAdmin/',
-  plugins: [basicSsl(), react(), adminAuthPersistName()],
+  base: ADMIN_BASE,
+  plugins: [basicSsl(), react(), adminAuthPersistName(), adminHtmlFallback()],
   optimizeDeps: {
     exclude: ['maplibre-gl'],
   },
