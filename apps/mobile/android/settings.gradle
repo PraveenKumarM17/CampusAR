@@ -1,0 +1,24 @@
+pluginManagement {
+    def candidates = [
+        "../../../node_modules/@react-native/gradle-plugin",
+        "../node_modules/@react-native/gradle-plugin",
+    ]
+    def chosen = candidates.find { new File(settingsDir, it).exists() }
+    if (chosen == null) {
+        throw new GradleException(
+            "Could not find @react-native/gradle-plugin. From the repo root run: npm install",
+        )
+    }
+    includeBuild(chosen)
+}
+
+plugins { id("com.facebook.react.settings") }
+
+apply from: file("monorepo_node_modules.gradle")
+
+def rnGradlePlugin = campusArReactNativeGradlePluginDir(settingsDir)
+
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+rootProject.name = 'CampusARMobile'
+include ':app'
+includeBuild(rnGradlePlugin.absolutePath)
